@@ -1,0 +1,22 @@
+{
+  "license_id": "DEV-LIC-0001",
+  "customer_id": "centric-dev",
+  "customer": "Centric DEV",
+  "domain_name": "labdaniel.local",
+  "license_type": "trial",
+  "license_mode": "offline",
+  "expires_at": "2027-12-31",
+  "modules": {
+    "centric": true,
+    "reports": true,
+    "alerts": true,
+    "actions": true,
+    "settings": true
+  },
+  "max_users": 10,
+  "max_endpoints": 5000,
+  "cloud_ready": true,
+  "cloud_validation_url": null,
+  "grace_period_days": 7,
+  "signature": "PJr60UA91dJ5+DwE5sNT3R0taCuFdtjLT7Jblu4s8Ha7ZVHHLgFCSLAJnBjsVa4QVCbHC5N5WmjHjooLwGlDlIZ/j81Of31vzPIIRkZwdwAUJOy+RWKUfkQt86Oa4pponVA/QTFVPoLK+b/bx80q5gzJxlJ7ExUT1vFj3NIuFT4kBjdT8SLU+C5R8aFMfiwL0FKByRcUxu1sjm7HuV9BWllUtjfhLs+RPcdrg670vqrED9y5B0r4ALZ5H9CH7BY4bbn4kXN1lx0wP551h9YGkNQbOXMzYaRnLKIs4umfNnYTq93YFDKO9clzEYj87udaRFuOdP3AsSwx5m7ywfTvBg=="
+}

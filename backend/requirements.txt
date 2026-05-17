@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+requests
+python-dotenv
+python-multipart
+cryptography
+SQLAlchemy
+psycopg2-binary
+ldap3
+PyJWT
+pywinrm

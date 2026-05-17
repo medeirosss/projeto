@@ -1,0 +1,83 @@
+<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ações</title><link rel="stylesheet" href="/assets/style.css"></head><body>
+<div class="topbar"><div class="top-left"><div class="brand"><img id="brandLogo" src="/assets/logo.png" alt="Logo"><span>Centric</span></div><nav class="menu" id="mainMenu"></nav></div><div class="top-right"><span>Execução operacional por módulo</span></div></div>
+<div class="report-layout">
+  <aside class="report-sidebar" id="actionsSidebar"></aside>
+  <main class="report-content settings-content">
+    <section id="installerSection" class="report-section">
+      <div class="toolbar"><div class="title">Instalador UEM</div></div>
+      <div class="alert">Área para publicação de ações operacionais do módulo UEM. Nesta fase, o foco é manter o instalador como primeiro item do módulo.</div>
+      <div class="card"><div class="card-header">Instalador</div><div class="card-body"><div class="notice">Use este espaço para disponibilizar pacote, instruções e próximos atalhos do UEM. O bloco já está pronto para crescer com scans e tarefas operacionais.</div></div></div>
+    </section>
+
+    <section id="playbookAlertSection" class="hidden-section report-section">
+      <div class="toolbar"><div class="title">Executar playbook por alerta</div><div class="listener-chip" id="alertListenerBox">Listener: carregando...</div></div>
+      <div class="alert">Alertas recebidos por POST são exibidos abaixo com contexto de técnica, tática, NIST e severidade. Escolha o playbook na própria linha e execute sobre as variáveis recebidas.</div>
+      <div class="mini-stats"><div class="mini-stat"><small>Total de eventos</small><strong id="alertTotalCount">0</strong></div><div class="mini-stat"><small>Eventos com técnica MITRE</small><strong id="alertMitreCount">0</strong></div><div class="mini-stat"><small>Eventos críticos/altos</small><strong id="alertCriticalCount">0</strong></div></div>
+      <div class="card"><div class="card-header">Alertas recebidos</div><div class="table-wrap"><table><thead><tr><th>Alerta</th><th>Data</th><th>Evento</th><th>Usuário</th><th>Técnica</th><th>Tática</th><th>NIST</th><th>Severidade</th><th>Playbook</th><th>Credencial</th><th>Alvo</th><th>Ação</th></tr></thead><tbody id="alertRowsTable"></tbody></table></div></div>
+      <div class="card"><div class="card-header">Payload bruto</div><div class="card-body"><pre id="alertRawBox" class="result-box">Selecione um alerta para visualizar o payload bruto.</pre></div></div>
+      <div class="card result-card"><div class="card-header">Resultado da execução por alerta</div><div class="card-body"><pre id="alertResultBox" class="result-box">Nenhuma execução realizada.</pre></div></div>
+    </section>
+
+    <section id="playbookManualSection" class="hidden-section report-section">
+      <div class="toolbar"><div class="title">Execução manual</div></div>
+      <div class="alert">Escolha uma máquina conhecida ou preencha manualmente os campos de alvo. Selecione um script e a credencial que será injetada no runtime do script.</div>
+      <div class="card"><div class="card-header">Execução manual</div><div class="card-body form-grid">
+        <div class="field full"><label>Máquina/Target</label><select id="manualMachineSelect"></select></div>
+        <div class="field"><label>Hostname custom</label><input id="manualHostname" placeholder="Hostname opcional"></div>
+        <div class="field"><label>IP</label><input id="manualIp" placeholder="IP alvo"></div>
+        <div class="field"><label>Usuário</label><input id="manualUser" placeholder="Usuário alvo"></div>
+        <div class="field"><label>Resource ID</label><input id="manualResourceId" placeholder="Resource ID opcional"></div>
+        <div class="field"><label>Origem</label><input id="manualSource" placeholder="Origem opcional"></div>
+        <div class="field"><label>Script</label><select id="manualScriptSelect"></select></div>
+        <div class="field"><label>Executar como</label><select id="manualCredentialSelect"></select></div>
+        <div class="field full"><label>Custom variables</label><textarea id="manualCustomVariables" rows="5" placeholder="Formato JSON ou chave=valor por linha. Exemplo:
+computer_name=SRV01
+action=disable"></textarea></div>
+        <div class="field full metadata-panel"><div id="manualScriptMetadata" class="notice">Selecione um script para ver as variáveis exigidas.</div></div>
+      </div></div>
+      <div class="actions"><button class="btn primary" id="executeManualBtn" type="button">Executar script</button></div>
+      <div class="card result-card"><div class="card-header">Resultado da execução manual</div><div class="card-body"><pre id="manualResultBox" class="result-box">Nenhuma execução realizada.</pre></div></div>
+    </section>
+
+
+
+    <section id="executionsHistorySection" class="hidden-section report-section">
+      <div class="toolbar"><div class="title">Histórico de execuções</div></div>
+      <div class="alert">Registro persistente das execuções manuais e execuções por alerta. Os dados são gravados no PostgreSQL em <strong>playbook_executions</strong>.</div>
+      <div class="card"><div class="card-header">Últimas execuções</div><div class="table-wrap"><table><thead><tr><th>ID</th><th>Início</th><th>Fim</th><th>Status</th><th>Playbook</th><th>Credencial</th><th>Alvo</th><th>Executado por</th></tr></thead><tbody id="executionsTable"></tbody></table></div></div>
+      <div class="card result-card"><div class="card-header">Detalhes da execução</div><div class="card-body"><pre id="executionDetailBox" class="result-box">Selecione uma execução para visualizar detalhes.</pre></div></div>
+    </section>
+
+    <section id="credentialsRepoSection" class="hidden-section report-section">
+      <div class="toolbar"><div class="title">Repositório de credenciais</div></div>
+      <div class="alert">Cadastre as credenciais que poderão ser selecionadas na execução manual e usadas por playbooks. As senhas são salvas de forma criptografada e nunca retornam em texto plano.</div>
+      <div class="card"><div class="card-header">Nova credencial</div><div class="card-body form-grid">
+        <div class="field"><label>Nome</label><input id="credName" placeholder="ad_service_account"></div>
+        <div class="field"><label>Usuário</label><input id="credUsername" placeholder="DOMINIO\svc_ad"></div>
+        <div class="field"><label>Tipo</label><select id="credType"><option value="windows">Windows / AD</option><option value="winrm">WinRM / PowerShell remoto</option><option value="linux">Linux / SSH</option><option value="api">API / Token</option><option value="generic">Genérico</option></select></div>
+        <div class="field"><label>Senha</label><input id="credPassword" type="password" placeholder="Senha"></div>
+        <div class="field"><label>Host WinRM</label><input id="credWinrmHost" placeholder="192.168.0.50 ou srv-ad.local"></div>
+        <div class="field"><label>Porta WinRM</label><input id="credWinrmPort" type="number" value="5985"></div>
+        <div class="field"><label>Transporte WinRM</label><select id="credWinrmTransport"><option value="ntlm">NTLM</option><option value="basic">Basic</option><option value="kerberos">Kerberos</option></select></div>
+        <div class="field"><label><input id="credWinrmHttps" type="checkbox"> Usar HTTPS / 5986</label></div>
+        <div class="field full"><label>Descrição</label><input id="credDescription" placeholder="Uso previsto da credencial"></div>
+      </div></div>
+      <div class="actions"><button class="btn primary" id="saveCredentialBtn" type="button">Salvar credencial</button></div>
+      <div class="card"><div class="card-header">Credenciais cadastradas</div><div class="table-wrap"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Tipo</th><th>Senha</th><th>Descrição</th><th>Ação</th></tr></thead><tbody id="credentialsTable"></tbody></table></div></div>
+    </section>
+
+    <section id="scriptsRepoSection" class="hidden-section report-section">
+      <div class="toolbar"><div class="title">Repositório de scripts</div></div>
+      <div class="alert">Envie scripts .ps1 ou .sh para a pasta da ferramenta. Use os metadados abaixo para a aplicação detectar variáveis obrigatórias, opcionais e credencial sugerida.</div>
+      <div class="card"><div class="card-header">Instrução de metadados</div><div class="card-body"><pre class="result-box compact-box"># @centric-name: Disable AD User
+# @centric-required: username
+# @centric-optional: hostname,ip
+# @centric-credential: ad_service_account</pre></div></div>
+      <div class="card"><div class="card-header">Enviar script</div><div class="card-body form-grid"><div class="field full"><label>Arquivo</label><input id="scriptUploadInput" type="file" accept=".ps1,.sh"></div></div></div>
+      <div class="actions"><button class="btn primary" id="uploadScriptBtn" type="button">Enviar script</button></div>
+      <div class="card"><div class="card-header">Scripts cadastrados</div><div class="table-wrap"><table><thead><tr><th>Arquivo</th><th>Nome amigável</th><th>Obrigatórias</th><th>Opcionais</th><th>Credencial</th><th>Ação</th></tr></thead><tbody id="scriptsTable"></tbody></table></div></div>
+    </section>
+  </main>
+</div>
+<script src="/assets/common.js"></script><script src="/assets/actions.js"></script>
+</body></html>

@@ -1,0 +1,17 @@
+=== ALERT EXECUTION ===
+Timestamp: 2026-05-03T22:28:23.822572
+Mode: remote_winrm
+Reason: Credencial/tipo de execução WinRM selecionado.
+Script: teste.ps1
+Credential: AD
+Target: app4
+IP: 192.168.0.100
+Command: winrm:http://192.168.0.100:5985/wsman powershell -File teste.ps1
+--- STDERR ---
+Get-ADUser : Cannot find an object with identity: '%username%' under: 'DC=labdaniel,DC=local'.
+At line:31 char:9
++ $user = Get-ADUser -Identity $TargetUser -ErrorAction Stop
++         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (%username%:ADUser) [Get-ADUser], ADIdentityNotFoundException
+    + FullyQualifiedErrorId : ActiveDirectoryCmdlet:Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException,M 
+   icrosoft.ActiveDirectory.Management.Commands.GetADUser
