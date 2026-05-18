@@ -11,7 +11,7 @@ from app.services.alert_service import (
     list_resolved_alerts,
     register_execution_result,
     update_alert_status,
-    create_alert_from_payload,  # <-- IMPORTANTE
+    create_alert_from_inbound,  # ✅ corrigido
 )
 
 router = APIRouter(prefix='/api/alerts', tags=['alerts'])
@@ -27,11 +27,11 @@ async def api_alerts_resolved():
     return {'alerts': list_resolved_alerts()}
 
 
-# 🔥 NOVO ENDPOINT INBOUND (ANTES DO {alert_id})
+# 🔥 ENDPOINT INBOUND (posição correta, antes do {alert_id})
 @router.post('/inbound')
 async def api_alert_inbound(payload: Dict[str, Any] = Body(...)):
     try:
-        alert = create_alert_from_payload(payload)
+        alert = create_alert_from_inbound(payload)
         return {'success': True, 'alert': alert}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
