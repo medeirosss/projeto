@@ -5,7 +5,6 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.security.jwt_service import JWT_COOKIE_NAME, decode_access_token
-
 PUBLIC_AUTH_PATHS = (
     "/login",
     "/api/auth/login",
@@ -25,7 +24,6 @@ ROLE_ACCESS = {
     "operator": {"centric", "reports", "actions", "alerts"},
     "viewer": {"centric", "reports"},
 }
-
 
 def _module_for_path(path: str) -> str | None:
     if path in ("/", "/home", "/centric") or path.startswith("/api/dashboard") or path.startswith("/api/modules"):
