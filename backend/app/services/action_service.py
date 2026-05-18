@@ -43,50 +43,11 @@ def _append_alert_history(alert_payload: Dict[str, Any]) -> None:
 
 
 def normalize_inbound_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
-    technique = str(payload.get('technique') or payload.get('mitre_technique') or payload.get('mitre_id') or '').strip()
-    tactic = str(payload.get('tactic') or payload.get('mitre_tactic') or '').strip()
-    nist = str(payload.get('nist') or payload.get('nist_control') or '').strip()
-    severity = str(payload.get('severity') or payload.get('severity_text') or '').strip()
-    username = str(
-        payload.get('username')
-        or payload.get('target_user')
-        or payload.get('caller_user_sid')
-        or payload.get('user')
-        or payload.get('caller_user_name')
-        or payload.get('user_display_name')
-        or ''
-    ).strip()
-    event_number = str(payload.get('event_number') or payload.get('event_id') or '').strip()
-    display_name = str(payload.get('display_name') or payload.get('event_name') or '').strip()
-    event = str(payload.get('event') or event_number or display_name or payload.get('event_type') or '').strip()
-    timestamp = str(payload.get('timestamp') or payload.get('date') or payload.get('time') or payload.get('event_time') or datetime.now().isoformat()).strip()
-    source_ip = str(
-        payload.get('source_ip')
-        or payload.get('target_ip')
-        or payload.get('IP')
-        or payload.get('ip')
-        or payload.get('host_ip')
-        or ''
-    ).strip()
-    hostname = str(payload.get('hostname') or payload.get('host_name') or payload.get('machine') or payload.get('host') or '').strip()
-    alert_id = ensure_alert_id(payload.get('alert_id'))
-    return {
-        'alert_id': alert_id,
-        'date': timestamp,
-        'event': event or 'Inbound Alert',
-        'event_number': event_number,
-        'display_name': display_name,
-        'username': username,
-        'target_user': username,
-        'technique': technique,
-        'tactic': tactic,
-        'nist': nist,
-        'severity': severity,
-        'source_ip': source_ip,
-        'target_ip': source_ip,
-        'hostname': hostname,
-        'raw_payload': payload,
-    }
+    # Centraliza a normalização no serviço dedicado para permitir parsers por origem
+    # (ADAudit, SIEM, webhook genérico) sem acoplar essa lógica ao módulo de Ações.
+    from app.services.alert_normalizer import normalize_inbound_alert as _normalize_alert
+
+    return _normalize_alert(payload or {})
 
 def fetch_security_alerts() -> List[Dict[str, Any]]:
     return list_open_alerts()

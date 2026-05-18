@@ -57,9 +57,13 @@ def build_alert_record(normalized: Dict[str, Any]) -> Dict[str, Any]:
         "severity": str(normalized.get("severity") or ""),
         "source_system": str(normalized.get("source_system") or ""),
         "source_ip": source_ip,
-        "target_ip": str(normalized.get("target_ip") or source_ip or ""),
+        "target_ip": str(normalized.get("target_ip") or normalized.get("ip_address") or source_ip or ""),
+        "ip_address": str(normalized.get("ip_address") or normalized.get("target_ip") or source_ip or ""),
         "hostname": hostname,
-        "raw_payload": normalized.get("raw_payload") or normalized,
+        "raw_payload": {
+            "normalized": {k: v for k, v in normalized.items() if k != "raw_payload"},
+            "original": normalized.get("raw_payload") or normalized,
+        },
     }
 
 
