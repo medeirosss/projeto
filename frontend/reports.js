@@ -23,7 +23,7 @@ function showSection(section){
 
 async function loadSettings(){
   const data = await fetch('/api/settings').then(r=>r.json()).catch(()=> ({}));
-  setBrandLogo(data.logo_path || data?.theme?.logo_path);
+  applyBrandingSettings(data);
 }
 
 async function loadActiveUsersReport(){

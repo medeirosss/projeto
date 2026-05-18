@@ -31,22 +31,23 @@ function getThemePreference(){
 }
 
 function applyTheme(theme){
-  const centricBody = document.body;
-  if(!centricBody || !centricBody.classList.contains('centric-page')) return;
-  centricBody.setAttribute('data-theme', theme);
-  localStorage.setItem('centric-theme', theme);
+  const appBody = document.body;
+  if(!appBody || !appBody.classList.contains('centric-page')) return;
+  const selectedTheme = theme === 'light' ? 'light' : 'dark';
+  appBody.setAttribute('data-theme', selectedTheme);
+  localStorage.setItem('centric-theme', selectedTheme);
   const btn = document.getElementById('themeToggle');
-  if(btn) btn.textContent = theme === 'dark' ? 'Dark mode' : 'Light mode';
+  if(btn) btn.textContent = selectedTheme === 'dark' ? 'Dark mode' : 'Light mode';
 }
 
 function bindThemeToggle(){
-  const centricBody = document.body;
-  if(!centricBody || !centricBody.classList.contains('centric-page')) return;
+  const appBody = document.body;
+  if(!appBody || !appBody.classList.contains('centric-page')) return;
   applyTheme(getThemePreference());
   const btn = document.getElementById('themeToggle');
   if(btn){
     btn.addEventListener('click', ()=> {
-      const current = centricBody.getAttribute('data-theme') || 'light';
+      const current = appBody.getAttribute('data-theme') || 'dark';
       applyTheme(current === 'dark' ? 'light' : 'dark');
     });
   }
@@ -65,9 +66,58 @@ function buildHeader(activeKey){
   menu.innerHTML = items.map(item => `<a class="${item.key===activeKey?'active':''}" href="${item.href}">${item.label}</a>`).join('');
 }
 
+function normalizeAssetPath(value){
+  if(!value) return '';
+  const path = String(value).trim();
+  if(!path) return '';
+  if(path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:') || path.startsWith('/')) return path;
+  return `/assets/${path}`;
+}
+
 function setBrandLogo(logoPath){
-  const logo = document.getElementById('brandLogo');
-  if(logo && logoPath) logo.src = `/assets/${logoPath}`;
+  const src = normalizeAssetPath(logoPath);
+  document.querySelectorAll('#brandLogo, .brand-logo').forEach(logo => {
+    if(src) logo.src = src;
+  });
+}
+
+function setBrandName(name){
+  const value = String(name || '').trim();
+  if(!value) return;
+  document.querySelectorAll('.brand span, .sidebar-brand span, [data-brand-name]').forEach(el => {
+    el.textContent = value;
+  });
+}
+
+function setAccentColor(color){
+  const value = String(color || '').trim();
+  if(!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)) return;
+  document.documentElement.style.setProperty('--accent', value);
+  document.documentElement.style.setProperty('--primary-color', value);
+  document.documentElement.style.setProperty('--blue', value);
+}
+
+function applyBrandingSettings(settings = {}){
+  const theme = settings.theme || settings.branding || {};
+  const logoPath = settings.logo_path || theme.logo_path || theme.logo || localStorage.getItem('centric-brand-logo');
+  const brandName = settings.brand_name || theme.brand_name || theme.name || localStorage.getItem('centric-brand-name');
+  const accentColor = settings.accent_color || theme.accent_color || theme.primary_color || localStorage.getItem('centric-accent-color');
+  setBrandLogo(logoPath || 'logo.png');
+  setBrandName(brandName || 'Centric');
+  setAccentColor(accentColor || '#7c3aed');
+}
+
+async function initializeBranding(){
+  applyBrandingSettings();
+  try{
+    const res = await fetch('/api/settings');
+    if(res.ok){
+      const data = await res.json();
+      applyBrandingSettings(data);
+    }
+  }catch(_e){
+    // Mantém branding local/default quando o endpoint ainda não estiver disponível.
+  }
 }
 
 function renderModuleSidebar(containerId, groups, onClick){
@@ -126,4 +176,4 @@ async function bindUserMenu(){
   });
 }
 
-document.addEventListener('DOMContentLoaded', ()=>{ bindUserMenu(); });
+document.addEventListener('DOMContentLoaded', ()=>{ bindThemeToggle(); initializeBranding(); bindUserMenu(); });

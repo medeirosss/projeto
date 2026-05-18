@@ -221,3 +221,115 @@ th{color:#475467;background:#fbfcfe}
 @media(max-width:900px){.centric-shell{grid-template-columns:1fr}.centric-sidebar{position:relative;height:auto}.sidebar-user{display:none}.modern-topbar{height:auto;flex-wrap:wrap;padding:10px}.kpi-grid,.devices-grid,.bottom-grid{grid-template-columns:1fr}.modern-info{flex-direction:column;align-items:flex-start}.log-inline{margin-left:0}.score-content{grid-template-columns:1fr}.score-metrics{grid-template-columns:1fr}.top-right{flex-wrap:wrap}}
 .logout-btn{margin-top:6px;background:#334155;color:#fff;border:0;border-radius:8px;padding:5px 8px;cursor:pointer;font-size:12px}.logout-btn:hover{filter:brightness(1.1)}
 .btn.danger{background:#991b1b;color:#fff}
+
+
+/* === Sistema Magi - branding e padronizacao visual global === */
+:root{
+  --accent:#7c3aed;
+  --primary-color:var(--accent);
+  --accent-soft:rgba(124,58,237,.18);
+}
+
+.centric-page[data-theme="dark"]{
+  background:radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 18%, transparent), transparent 28%), linear-gradient(180deg,#0f172a 0%,#0b1324 100%);
+  color:#e5edf8;
+}
+.centric-page[data-theme="dark"] .topbar,
+.centric-page[data-theme="dark"] .modern-topbar{
+  background:rgba(8,15,29,.94);
+  border-bottom:1px solid rgba(51,65,85,.9);
+}
+.centric-page[data-theme="dark"] .menu a.active,
+.centric-page[data-theme="dark"] .menu a:hover,
+.modern-topbar .menu a.active{
+  background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 72%, transparent),rgba(49,46,129,.65))!important;
+  border-color:var(--accent)!important;
+}
+.side-menu a.active,
+.page-buttons button.active{
+  background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 82%, transparent),rgba(49,46,129,.65))!important;
+  border-color:var(--accent)!important;
+}
+.switch input:checked+span{background:var(--accent)!important}
+.score-main strong,.score-badge,.view-all{color:color-mix(in srgb, var(--accent) 72%, #ffffff)!important}
+.score-badge,.kpi-icon.purple,.gauge-center em{background:color-mix(in srgb, var(--accent) 24%, transparent)!important}
+.score-bar div{background:linear-gradient(90deg,var(--accent),color-mix(in srgb, var(--accent) 55%, #ffffff))!important}
+.sidebar-user .avatar{background:linear-gradient(135deg,var(--accent),#312e81)!important}
+
+.side-menu a.upcoming{opacity:.78;position:relative}
+.side-menu a.upcoming::after{
+  content:'em breve';
+  margin-left:auto;
+  font-size:10px;
+  color:#94a3b8;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.side-menu a.upcoming:hover{background:rgba(148,163,184,.08)}
+
+/* Dark mode aplicado também nas telas fora da Home */
+.centric-page[data-theme="dark"] .report-layout{
+  background:linear-gradient(180deg,#0f172a 0%,#0b1324 100%);
+  min-height:calc(100vh - 58px);
+}
+.centric-page[data-theme="dark"] .report-sidebar{
+  background:linear-gradient(180deg,#101827,#0b1220);
+  border-right:1px solid rgba(51,65,85,.9);
+}
+.centric-page[data-theme="dark"] .report-group-title{color:#94a3b8}
+.centric-page[data-theme="dark"] .report-nav a{
+  color:#dbe4f0;
+  border-radius:10px;
+}
+.centric-page[data-theme="dark"] .report-nav a.active,
+.centric-page[data-theme="dark"] .report-nav a:hover{
+  background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 75%, transparent),rgba(49,46,129,.58));
+  color:#fff;
+}
+.centric-page[data-theme="dark"] .report-content,
+.centric-page[data-theme="dark"] .settings-content{color:#e5edf8}
+.centric-page[data-theme="dark"] .toolbar .title{color:#fff}
+.centric-page[data-theme="dark"] .alert,
+.centric-page[data-theme="dark"] .notice,
+.centric-page[data-theme="dark"] .module-status-card{
+  background:rgba(17,24,39,.72);
+  border-color:rgba(51,65,85,.9);
+  color:#cbd5e1;
+}
+.centric-page[data-theme="dark"] .card,
+.centric-page[data-theme="dark"] .form-card{
+  background:linear-gradient(180deg,rgba(23,34,53,.95),rgba(17,28,43,.98));
+  border-color:rgba(51,65,85,.95);
+  color:#e5edf8;
+}
+.centric-page[data-theme="dark"] .card-header{
+  background:transparent;
+  border-bottom-color:rgba(51,65,85,.85);
+  color:#fff;
+}
+.centric-page[data-theme="dark"] input,
+.centric-page[data-theme="dark"] select,
+.centric-page[data-theme="dark"] textarea,
+.centric-page[data-theme="dark"] .text-area{
+  background:#111827;
+  border-color:#334155;
+  color:#e5edf8;
+}
+.centric-page[data-theme="dark"] input::placeholder,
+.centric-page[data-theme="dark"] textarea::placeholder{color:#64748b}
+.centric-page[data-theme="dark"] th{background:rgba(255,255,255,.03);color:#e5edf8}
+.centric-page[data-theme="dark"] td{color:#dbe4f0}
+.centric-page[data-theme="dark"] th,
+.centric-page[data-theme="dark"] td{border-bottom-color:rgba(51,65,85,.7)}
+.centric-page[data-theme="dark"] .report-search-box{background:#111827;border-color:#334155}
+.centric-page[data-theme="dark"] .report-search-box input{background:transparent;border:0}
+
+.centric-page[data-theme="light"]{
+  background:#f3f5f8;
+  color:#111827;
+}
+.centric-page[data-theme="light"] .topbar,
+.centric-page[data-theme="light"] .modern-topbar{background:#0b1220;color:#fff}
+.centric-page[data-theme="light"] .report-layout{background:#f3f5f8}
+.centric-page[data-theme="light"] .report-sidebar{background:#fff;border-right:1px solid #e5eaf3}
