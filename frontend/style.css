@@ -415,3 +415,63 @@ th{color:#475467;background:#fbfcfe}
 .centric-page[data-theme="dark"] .row-alert-red td{background:rgba(127,29,29,.12)!important}
 @media(max-width:1200px){.alert-stats{grid-template-columns:repeat(2,minmax(180px,1fr))}}
 @media(max-width:760px){.alert-stats{grid-template-columns:1fr}}
+
+
+/* === Magi global topbar unificada === */
+.centric-page .topbar{
+  height:58px!important;
+  position:sticky;
+  top:0;
+  z-index:40;
+  background:rgba(8,15,29,.94)!important;
+  border-bottom:1px solid rgba(51,65,85,.9)!important;
+  backdrop-filter:blur(16px);
+  padding:0 18px!important;
+}
+.centric-page .top-left{height:100%;align-items:center}
+.centric-page .brand{font-size:18px;font-weight:900;color:#fff}
+.centric-page .brand img{width:30px;height:30px;object-fit:contain;border-radius:8px}
+.centric-page .menu{height:100%;align-items:center;gap:6px}
+.centric-page .menu a{
+  display:flex;
+  align-items:center;
+  height:42px;
+  padding:0 16px!important;
+  border:none!important;
+  border-radius:10px;
+  color:#f8fafc!important;
+  font-weight:800;
+  opacity:.88;
+  transition:background .16s ease, opacity .16s ease, transform .16s ease;
+}
+.centric-page .menu a:hover{opacity:1;transform:translateY(-1px)}
+.centric-page .menu a.active,
+.centric-page .menu a:hover{
+  background:linear-gradient(135deg,color-mix(in srgb, var(--accent) 72%, transparent),rgba(49,46,129,.65))!important;
+  box-shadow:0 8px 18px rgba(76,29,149,.25);
+  color:#fff!important;
+}
+.centric-page .top-right{font-size:12px;color:#cbd5e1}
+
+/* === Branding settings === */
+.branding-preview-panel{
+  display:grid;
+  grid-template-columns:minmax(280px,1fr) minmax(220px,.6fr);
+  gap:14px;
+  margin-bottom:18px;
+}
+.brand-preview-card,.brand-preview-accent{
+  border:1px solid rgba(51,65,85,.9);
+  background:rgba(15,23,42,.72);
+  border-radius:16px;
+  padding:16px;
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+.brand-preview-card img{width:44px;height:44px;object-fit:contain;border-radius:12px;background:rgba(255,255,255,.04)}
+.brand-preview-card strong{display:block;color:#fff;font-size:18px;font-weight:950}
+.brand-preview-card span,.brand-preview-accent em{display:block;color:#94a3b8;font-style:normal;font-size:13px;margin-top:4px}
+.brand-preview-accent span{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,var(--accent),rgba(49,46,129,.78));box-shadow:0 10px 24px color-mix(in srgb, var(--accent) 28%, transparent)}
+#accent_color{padding:4px;height:42px;cursor:pointer}
+@media(max-width:900px){.branding-preview-panel{grid-template-columns:1fr}.centric-page .topbar{height:auto!important;min-height:58px;flex-wrap:wrap}.centric-page .menu{height:auto;flex-wrap:wrap;padding:8px 0}.centric-page .menu a{height:38px}}

@@ -20,7 +20,11 @@ function setMessage(id, text){
 
 function buildPayload(){
   return {
-    theme: { logo_path: document.getElementById('logo_path').value.trim() || 'logo.png' },
+    theme: {
+      logo_path: document.getElementById('logo_path')?.value.trim() || 'logo.png',
+      brand_name: document.getElementById('brand_name')?.value.trim() || 'Centric',
+      accent_color: document.getElementById('accent_color')?.value || '#7c3aed'
+    },
     modules: { uem: { enabled: moduleState.uem }, security: { enabled: moduleState.security } },
     mail_server: {
       host: document.getElementById('smtp_host').value.trim(),
@@ -89,8 +93,17 @@ async function saveSettings(messageTarget='statusBox'){
 async function loadSettings(){
   const data = await fetch('/api/settings').then(r=>r.json()).catch(()=> ({}));
   currentSettings = data;
-  setBrandLogo(data?.theme?.logo_path || 'logo.png');
-  document.getElementById('logo_path').value = data?.theme?.logo_path || 'logo.png';
+  const branding = data?.theme || {};
+  const savedLogo = branding.logo_path || 'logo.png';
+  const savedName = branding.brand_name || 'Centric';
+  const savedAccent = branding.accent_color || '#7c3aed';
+  setBrandLogo(savedLogo);
+  setBrandName(savedName);
+  setAccentColor(savedAccent);
+  if(document.getElementById('logo_path')) document.getElementById('logo_path').value = savedLogo;
+  if(document.getElementById('brand_name')) document.getElementById('brand_name').value = savedName;
+  if(document.getElementById('accent_color')) document.getElementById('accent_color').value = savedAccent;
+  updateBrandingPreview();
   document.getElementById('dc_host').value = data?.uem?.active_directory?.dc_host || '';
   document.getElementById('ldap_port').value = data?.uem?.active_directory?.ldap_port || (data?.uem?.active_directory?.use_ssl ? 636 : 389);
   document.getElementById('ad_use_ssl').value = data?.uem?.active_directory?.use_ssl ? 'true' : 'false';
@@ -152,6 +165,63 @@ async function forceScan(){
   setMessage('scanStatus', res.ok ? `Scan concluído | AD: ${data.ad_total} | EC: ${data.ec_total} | Token: ${data.token_source}` : (data.detail || 'Erro ao executar scan.'));
 }
 
+
+function updateBrandingPreview(){
+  const logoValue = document.getElementById('logo_path')?.value || 'logo.png';
+  const nameValue = document.getElementById('brand_name')?.value || 'Centric';
+  const accentValue = document.getElementById('accent_color')?.value || '#7c3aed';
+  const logo = document.getElementById('brandingPreviewLogo');
+  const name = document.getElementById('brandingPreviewName');
+  if(logo) logo.src = normalizeAssetPath(logoValue);
+  if(name) name.textContent = nameValue;
+  setBrandLogo(logoValue);
+  setBrandName(nameValue);
+  setAccentColor(accentValue);
+}
+
+function resetBranding(){
+  const logo = document.getElementById('logo_path');
+  const name = document.getElementById('brand_name');
+  const color = document.getElementById('accent_color');
+  if(logo) logo.value = 'logo.png';
+  if(name) name.value = 'Centric';
+  if(color) color.value = '#7c3aed';
+  localStorage.removeItem('centric-brand-logo');
+  localStorage.removeItem('centric-brand-name');
+  localStorage.removeItem('centric-accent-color');
+  updateBrandingPreview();
+  setMessage('brandingStatusBox', 'Padrão restaurado. Clique em Salvar branding para persistir.');
+}
+
+function bindBrandingActions(){
+  ['logo_path','brand_name','accent_color'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('input', updateBrandingPreview);
+  });
+  const file = document.getElementById('brand_logo_file');
+  if(file){
+    file.addEventListener('change', () => {
+      const selected = file.files && file.files[0];
+      if(!selected) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const logoInput = document.getElementById('logo_path');
+        if(logoInput) logoInput.value = String(reader.result || '');
+        updateBrandingPreview();
+        setMessage('brandingStatusBox', 'Logo carregado para prévia. Clique em Salvar branding para persistir.');
+      };
+      reader.readAsDataURL(selected);
+    });
+  }
+  document.getElementById('saveBrandingSettingsBtn')?.addEventListener('click', async () => {
+    localStorage.setItem('centric-brand-logo', document.getElementById('logo_path')?.value || 'logo.png');
+    localStorage.setItem('centric-brand-name', document.getElementById('brand_name')?.value || 'Centric');
+    localStorage.setItem('centric-accent-color', document.getElementById('accent_color')?.value || '#7c3aed');
+    await saveSettings('brandingStatusBox');
+  });
+  document.getElementById('resetBrandingBtn')?.addEventListener('click', resetBranding);
+}
+
 function bindFixedActions(){
   document.getElementById('saveMailSettingsBtn').addEventListener('click', ()=> saveSettings('statusBox'));
   document.getElementById('saveWebhookSettingsBtn')?.addEventListener('click', ()=> saveSettings('webhookStatusBox'));
@@ -172,13 +242,15 @@ function bindFixedActions(){
   document.getElementById('testEcBtn').addEventListener('click', testEc);
   document.getElementById('refreshTokenBtn').addEventListener('click', refreshToken);
   document.getElementById('forceScanBtn').addEventListener('click', forceScan);
+  bindBrandingActions();
 }
+
 
 async function bootSettings(){
   buildHeader('settings');
   settingsModules = await fetchModuleStatus();
   const groups = [
-    { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsStatusSection', label:'Status' }] },
+    { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }, { key:'settingsStatusSection', label:'Status' }] },
     { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }, { key:'settingsIpScopeSection', label:'IP Scope' }] }
   ];
   renderModuleSidebar('settingsSidebar', groups, (key)=> showSettingsSection(key));
@@ -235,7 +307,7 @@ bootSettings = async function(){
   buildHeader('settings');
   settingsModules = await fetchModuleStatus();
   const groups = [
-    { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsWebhookSection', label:'Webhook' }, { key:'settingsUsersSection', label:'Usuários' }, { key:'settingsStatusSection', label:'Status' }] },
+    { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }, { key:'settingsWebhookSection', label:'Webhook' }, { key:'settingsUsersSection', label:'Usuários' }, { key:'settingsStatusSection', label:'Status' }] },
     { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }, { key:'settingsIpScopeSection', label:'IP Scope' }] }
   ];
   renderModuleSidebar('settingsSidebar', groups, async (key)=> { showSettingsSection(key); if(key === 'settingsUsersSection') await loadAuthAccess(); });

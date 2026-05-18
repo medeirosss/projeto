@@ -1,5 +1,5 @@
 <!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Configurações</title><link rel="stylesheet" href="/assets/style.css"></head><body class="centric-page" data-theme="dark">
-<div class="topbar"><div class="top-left"><div class="brand"><img id="brandLogo" src="/assets/logo.png" alt="Logo"><span>Centric</span></div><nav class="menu" id="mainMenu"></nav></div><div class="top-right"><span>Parâmetros persistidos</span></div></div>
+<div class="topbar modern-topbar"><div class="top-left"><div class="brand"><img id="brandLogo" src="/assets/logo.png" alt="Logo"><span>Centric</span></div><nav class="menu" id="mainMenu"></nav></div><div class="top-right"><span>Parâmetros persistidos</span></div></div>
 <div class="report-layout settings-layout">
   <aside class="report-sidebar" id="settingsSidebar"></aside>
   <main class="report-content settings-content">
@@ -32,11 +32,37 @@
       </div><div class="form-body status-inline-actions"><button class="btn primary" id="saveModuleStateBtn" type="button">Salvar estado dos módulos</button></div></div>
     </section>
 
+    <section id="settingsBrandingSection" class="hidden-section report-section">
+      <div class="toolbar"><div class="title">Branding do portal</div></div>
+      <div class="card"><div class="card-header">Logo, nome e cor principal</div><div class="form-body">
+        <div class="branding-preview-panel">
+          <div class="brand-preview-card">
+            <img id="brandingPreviewLogo" src="/assets/logo.png" alt="Logo">
+            <div>
+              <strong id="brandingPreviewName">Centric</strong>
+              <span>Prévia do cabeçalho e menu lateral</span>
+            </div>
+          </div>
+          <div class="brand-preview-accent"><span></span><em>Cor do efeito ativo</em></div>
+        </div>
+        <div class="form-grid">
+          <div class="field"><label>Nome exibido</label><input id="brand_name" type="text" placeholder="Centric"></div>
+          <div class="field"><label>Cor principal</label><input id="accent_color" type="color" value="#7c3aed"></div>
+          <div class="field full"><label>Logo - caminho, URL ou base64</label><input id="logo_path" type="text" placeholder="logo.png ou https://exemplo/logo.png"></div>
+          <div class="field full"><label>Upload local para prévia</label><input id="brand_logo_file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"></div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="saveBrandingSettingsBtn" type="button">Salvar branding</button>
+          <button class="btn secondary" id="resetBrandingBtn" type="button">Restaurar padrão</button>
+        </div>
+        <div class="notice" id="brandingStatusBox">Por padrão, o Sistema Magi usa o logo atual e o efeito roxo. Essas opções permitem personalizar a identidade visual do cliente.</div>
+      </div></div>
+    </section>
+
     <section id="settingsUemApiSection" class="hidden-section report-section">
       <div class="toolbar"><div class="title">UEM · APIs</div></div>
       <div class="card"><div class="card-header">Credenciais da API</div><div class="form-body">
         <div class="form-grid">
-          <div class="field full"><label>Logo (arquivo dentro de /frontend)</label><input id="logo_path" type="text" placeholder="logo.png"></div>
           <div class="field"><label>Client ID</label><input id="client_id" type="text" placeholder="1000.xxxxx"></div>
           <div class="field"><label>Client Secret</label><input id="client_secret" type="password" placeholder="Deixe vazio para manter"></div>
           <div class="field"><label>Refresh Token</label><input id="manual_refresh_token" type="password" placeholder="Deixe vazio para manter"></div>
