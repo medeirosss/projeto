@@ -11,7 +11,10 @@ function showAlertSection(section){
 
 function statusBadge(alert){
   const status = Number(alert.status || 0);
-  const cls = status === 1 ? 'status-badge status-red' : 'status-badge';
+  let cls = 'status-badge';
+  if(status === 1) cls += ' status-red';
+  if(status === 2) cls += ' status-yellow';
+  if(status === 3) cls += ' status-green';
   return `<span class="${cls}">${esc(alert.status_label || status)}</span>`;
 }
 
