@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.security.jwt_service import JWT_COOKIE_NAME, decode_access_token
+
 PUBLIC_AUTH_PATHS = (
     "/login",
     "/api/auth/login",
@@ -16,7 +17,6 @@ PUBLIC_AUTH_PATHS = (
     "/license/upload",
     "/health",
     "/api/actions/inbound-alert",
-    "/api/alerts/inbound",
 )
 
 ROLE_ACCESS = {
@@ -24,6 +24,7 @@ ROLE_ACCESS = {
     "operator": {"centric", "reports", "actions", "alerts"},
     "viewer": {"centric", "reports"},
 }
+
 
 def _module_for_path(path: str) -> str | None:
     if path in ("/", "/home", "/centric") or path.startswith("/api/dashboard") or path.startswith("/api/modules"):
@@ -46,7 +47,7 @@ def _wants_html(request: Request) -> bool:
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path.startswith("/assets") or path in PUBLIC_AUTH_PATHS or path.startswith("/license/"):
+        if path.startswith("/assets") or path in PUBLIC_AUTH_PATHS or path.startswith("/license/") or path.startswith("/api/alerts/inbound"):
             return await call_next(request)
 
         token = request.cookies.get(JWT_COOKIE_NAME)
