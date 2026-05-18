@@ -7,8 +7,55 @@
       <div class="toolbar"><div><div class="title">Alertas recebidos</div><p class="section-subtitle">Triagem e ciclo de vida dos alertas do ambiente.</p></div></div>
       <div class="alert info-banner">Status 1 fica em vermelho. Status 2 indica conhecido/em tratamento. Os alertas finalizados saem desta lista e vão para Alertas resolvidos.</div>
       <div class="mini-stats alert-stats"><div class="mini-stat alert-total"><small>Total</small><strong id="alertsTotalCount">0</strong></div><div class="mini-stat alert-new"><small>Novos</small><strong id="alertsNewCount">0</strong></div><div class="mini-stat alert-known"><small>Conhecidos</small><strong id="alertsKnownCount">0</strong></div><div class="mini-stat alert-resolved"><small>Resolvidos</small><strong id="alertsResolvedCount">0</strong></div></div>
-      <div class="card alerts-card"><div class="card-header">Alertas ativos</div><div class="table-wrap"><table><thead><tr><th>Alerta</th><th>Status</th><th>Recebido em</th><th>Evento</th><th>MITRE</th><th>Tática</th><th>NIST</th><th>Severidade</th><th>Ações</th></tr></thead><tbody id="alertsOpenTable"></tbody></table></div></div>
-      <div class="card alerts-card"><div class="card-header">Payload bruto</div><div class="card-body"><pre id="alertsPayloadBox" class="result-box">Selecione um alerta para visualizar o payload bruto.</pre></div></div>
+      <div class="alerts-workspace">
+        <div class="card alerts-card alerts-list-card"><div class="card-header">Alertas ativos</div><div class="table-wrap"><table><thead><tr><th>Alerta</th><th>Status</th><th>Recebido em</th><th>Evento</th><th>MITRE</th><th>Tática</th><th>NIST</th><th>Severidade</th><th>Ações</th></tr></thead><tbody id="alertsOpenTable"></tbody></table></div></div>
+        <aside class="card alerts-card alert-detail-card" id="alertDetailPanel">
+          <div class="card-header detail-header"><span>Detalhe do alerta</span><span id="detailStatusSlot"></span></div>
+          <div class="card-body">
+            <div id="alertDetailEmpty" class="detail-empty">Selecione um alerta para visualizar o resumo operacional.</div>
+            <div id="alertDetailContent" class="hidden-section">
+              <div class="detail-title-row">
+                <div class="detail-icon" id="detailSeverityIcon">!</div>
+                <div>
+                  <h2 id="detailTitle">--</h2>
+                  <p id="detailSubtitle">--</p>
+                </div>
+              </div>
+              <div class="detail-badges">
+                <span id="detailSeverityBadge" class="severity-badge">--</span>
+                <span id="detailSourceBadge" class="source-badge">--</span>
+              </div>
+              <div class="detail-grid">
+                <div><small>Usuário alvo</small><strong id="detailUser">--</strong></div>
+                <div><small>Executor/origem</small><strong id="detailActor">--</strong></div>
+                <div><small>Host</small><strong id="detailHost">--</strong></div>
+                <div><small>IP</small><strong id="detailIp">--</strong></div>
+              </div>
+              <div class="detail-section">
+                <h3>MITRE / NIST</h3>
+                <div class="detail-grid compact">
+                  <div><small>Técnica</small><strong id="detailMitre">--</strong></div>
+                  <div><small>Tática</small><strong id="detailTactic">--</strong></div>
+                  <div><small>NIST</small><strong id="detailNist">--</strong></div>
+                </div>
+              </div>
+              <div class="detail-section recommendation-box">
+                <h3>Recomendação</h3>
+                <p id="detailRecommendation">--</p>
+              </div>
+              <div class="detail-actions">
+                <button class="btn secondary btn-sm" id="detailKnownBtn">Marcar conhecido</button>
+                <button class="btn success btn-sm" id="detailResolveBtn">Finalizar manual</button>
+                <a class="btn primary btn-sm" href="/acoes">Abrir em Ações</a>
+              </div>
+              <details class="payload-details">
+                <summary>Payload bruto</summary>
+                <pre id="alertsPayloadBox" class="result-box">--</pre>
+              </details>
+            </div>
+          </div>
+        </aside>
+      </div>
     </section>
 
     <section id="alertsResolvedSection" class="hidden-section report-section">
