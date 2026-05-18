@@ -37,8 +37,18 @@ def ensure_alert_id(value: Any = None) -> str:
 
 
 def _looks_normalized(payload: Dict[str, Any]) -> bool:
-    keys = {"display_name", "event_number", "target_user", "username", "mitre_technique", "technique", "normalized_context"}
-    return any(key in payload for key in keys)
+    # Payload bruto vindo de ADAudit/SIEM normalmente possui event_number, username,
+    # account_name etc. Isso NÃO significa que já passou pelo normalizer.
+    # Consideramos normalizado apenas quando já existem campos enriquecidos.
+    required_normalized_keys = {
+        "display_name",
+        "mitre_technique",
+        "mitre_tactic",
+        "nist_control",
+        "recommendation",
+        "normalized_context",
+    }
+    return any(key in payload for key in required_normalized_keys)
 
 
 def _normalize_if_needed(payload: Dict[str, Any]) -> Dict[str, Any]:
