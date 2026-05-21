@@ -569,8 +569,7 @@ def fetch_critical_cves(settings: Dict[str, Any]) -> Tuple[List[Dict[str, Any]],
             if not res.ok:
                 log = write_text_log(
                     "VULNstatus",
-                    "
-".join([
+                    "\n".join([
                         "=== VULNERABILITIES FETCH ERROR ===",
                         f"Timestamp: {datetime.now().isoformat()}",
                         f"Status: {res.status_code}",
@@ -611,8 +610,7 @@ def fetch_critical_cves(settings: Dict[str, Any]) -> Tuple[List[Dict[str, Any]],
 
         log = write_text_log(
             "VULNstatus",
-            "
-".join([
+            "\n".join([
                 "=== VULNERABILITIES FETCH OK ===",
                 f"Timestamp: {datetime.now().isoformat()}",
                 f"URL: {url}",
@@ -625,7 +623,6 @@ def fetch_critical_cves(settings: Dict[str, Any]) -> Tuple[List[Dict[str, Any]],
     except Exception as exc:
         log = write_text_log(
             "VULNstatus",
-            "
-".join(["=== VULNERABILITIES FETCH ERROR ===", f"Timestamp: {datetime.now().isoformat()}", f"URL: {url}", f"Error: {str(exc)}"]),
+            "\n".join(["=== VULNERABILITIES FETCH ERROR ===", f"Timestamp: {datetime.now().isoformat()}", f"URL: {url}", f"Error: {str(exc)}"]),
         )
         return [], {"source": "exception", "token_source": token_source, "token_debug_log": token_debug_log, "error": f"Exceção ao consultar vulnerabilidades. Log: {log.name}"}
