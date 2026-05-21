@@ -1,0 +1,272 @@
+{
+  "version": "1.0",
+  "description": "Base inicial local do Motor CVE do Sistema Magi. Nao e uma base completa de CVEs; e uma base de decisao para priorizar resposta.",
+  "default_actions": {
+    "critical": {
+      "risk_score": 78,
+      "risk_level": "Alto",
+      "recommended_playbook": "patch_urgent",
+      "recommended_action": "Aplicar patch urgente e validar exposicao do ativo."
+    },
+    "high": {
+      "risk_score": 65,
+      "risk_level": "Alto",
+      "recommended_playbook": "patch_priority",
+      "recommended_action": "Priorizar patch e revisar controles compensatorios."
+    },
+    "medium": {
+      "risk_score": 45,
+      "risk_level": "Medio",
+      "recommended_playbook": "monitor_and_patch",
+      "recommended_action": "Planejar correcao e monitorar atividade relacionada."
+    },
+    "low": {
+      "risk_score": 25,
+      "risk_level": "Baixo",
+      "recommended_playbook": "monitor",
+      "recommended_action": "Monitorar e corrigir em janela regular."
+    }
+  },
+  "exact_cves": {
+    "CVE-2021-44228": {
+      "name": "Log4Shell",
+      "exploit_type": "RCE",
+      "attack_vector": "network",
+      "requires_auth": false,
+      "risk_score": 100,
+      "risk_level": "Critico",
+      "recommended_playbook": "isolate_or_restrict_service",
+      "recommended_action": "Validar exposicao do servico Java/Log4j, restringir acesso externo e aplicar patch imediatamente.",
+      "decision_reason": "CVE historicamente explorado de forma remota e com alto impacto.",
+      "tags": [
+        "rce",
+        "network",
+        "java",
+        "log4j"
+      ]
+    },
+    "CVE-2020-1472": {
+      "name": "Zerologon",
+      "exploit_type": "Privilege Escalation",
+      "attack_vector": "network",
+      "requires_auth": false,
+      "risk_score": 98,
+      "risk_level": "Critico",
+      "recommended_playbook": "domain_controller_containment",
+      "recommended_action": "Tratar controlador de dominio como ativo critico, validar patch e revisar logs de autenticacao/controlador.",
+      "decision_reason": "Falha critica envolvendo controlador de dominio e risco de comprometimento de dominio.",
+      "tags": [
+        "domain-controller",
+        "privilege-escalation",
+        "ad"
+      ]
+    },
+    "CVE-2019-0708": {
+      "name": "BlueKeep",
+      "exploit_type": "RCE",
+      "attack_vector": "network",
+      "requires_auth": false,
+      "risk_score": 95,
+      "risk_level": "Critico",
+      "recommended_playbook": "restrict_rdp_and_patch",
+      "recommended_action": "Restringir RDP, validar exposicao de rede e aplicar patch imediatamente.",
+      "decision_reason": "RCE remoto associado a RDP e alto risco quando exposto.",
+      "tags": [
+        "rce",
+        "rdp",
+        "windows"
+      ]
+    },
+    "CVE-2023-23397": {
+      "name": "Outlook privilege escalation / credential exposure",
+      "exploit_type": "Credential Exposure",
+      "attack_vector": "network",
+      "requires_auth": false,
+      "risk_score": 90,
+      "risk_level": "Critico",
+      "recommended_playbook": "collect_mail_client_evidence",
+      "recommended_action": "Aplicar patch, revisar clientes Outlook e procurar autenticacoes NTLM suspeitas.",
+      "decision_reason": "CVE com impacto em credenciais e possibilidade de exploracao por vetor de mensagem/calendario.",
+      "tags": [
+        "credential-access",
+        "outlook",
+        "ntlm"
+      ]
+    },
+    "CVE-2023-34362": {
+      "name": "MOVEit Transfer SQL Injection/RCE chain",
+      "exploit_type": "RCE/Data Exposure",
+      "attack_vector": "network",
+      "requires_auth": false,
+      "risk_score": 96,
+      "risk_level": "Critico",
+      "recommended_playbook": "isolate_public_service",
+      "recommended_action": "Isolar servico exposto, aplicar patch e revisar possivel exfiltracao.",
+      "decision_reason": "CVE associado a servico exposto e risco de vazamento de dados.",
+      "tags": [
+        "rce",
+        "data-exposure",
+        "internet-facing"
+      ]
+    }
+  },
+  "keyword_rules": [
+    {
+      "name": "Remote Code Execution",
+      "keywords": [
+        "rce",
+        "remote code execution",
+        "code execution",
+        "execucao remota",
+        "execução remota"
+      ],
+      "exploit_type": "RCE",
+      "attack_vector": "network",
+      "requires_auth": null,
+      "risk_delta": 18,
+      "recommended_playbook": "isolate_or_restrict_service",
+      "recommended_action": "Validar se o servico afetado esta exposto. Se estiver exposto, restringir acesso e aplicar patch urgente.",
+      "tags": [
+        "rce",
+        "network"
+      ]
+    },
+    {
+      "name": "Authentication Bypass",
+      "keywords": [
+        "authentication bypass",
+        "auth bypass",
+        "bypass authentication",
+        "sem autenticacao",
+        "sem autenticação"
+      ],
+      "exploit_type": "Auth Bypass",
+      "attack_vector": "network",
+      "requires_auth": false,
+      "risk_delta": 16,
+      "recommended_playbook": "restrict_access_and_patch",
+      "recommended_action": "Restringir acesso ao servico vulneravel, aplicar patch e revisar logs de acesso.",
+      "tags": [
+        "auth-bypass",
+        "network"
+      ]
+    },
+    {
+      "name": "Privilege Escalation",
+      "keywords": [
+        "privilege escalation",
+        "elevation of privilege",
+        "local privilege",
+        "escalonamento",
+        "elevacao",
+        "elevação"
+      ],
+      "exploit_type": "Privilege Escalation",
+      "attack_vector": "local",
+      "requires_auth": true,
+      "risk_delta": 10,
+      "recommended_playbook": "patch_and_review_local_admins",
+      "recommended_action": "Aplicar patch e revisar usuarios com permissao local no host afetado.",
+      "tags": [
+        "privilege-escalation",
+        "local"
+      ]
+    },
+    {
+      "name": "Exchange exposed service",
+      "keywords": [
+        "exchange",
+        "owa",
+        "eac",
+        "microsoft exchange"
+      ],
+      "exploit_type": "Messaging Server Risk",
+      "attack_vector": "network",
+      "requires_auth": null,
+      "risk_delta": 12,
+      "recommended_playbook": "exchange_containment_review",
+      "recommended_action": "Validar exposicao externa do Exchange, aplicar patch e revisar logs IIS/Exchange.",
+      "tags": [
+        "exchange",
+        "mail",
+        "internet-facing"
+      ]
+    },
+    {
+      "name": "RDP/SMB Windows exposure",
+      "keywords": [
+        "rdp",
+        "remote desktop",
+        "smb",
+        "windows server",
+        "terminal services"
+      ],
+      "exploit_type": "Windows Network Service Risk",
+      "attack_vector": "network",
+      "requires_auth": null,
+      "risk_delta": 10,
+      "recommended_playbook": "restrict_windows_service",
+      "recommended_action": "Validar exposicao de RDP/SMB, restringir acesso de rede e aplicar patch.",
+      "tags": [
+        "windows",
+        "network-service"
+      ]
+    },
+    {
+      "name": "Public web application/service",
+      "keywords": [
+        "apache",
+        "nginx",
+        "tomcat",
+        "iis",
+        "web",
+        "http",
+        "struts",
+        "spring",
+        "log4j"
+      ],
+      "exploit_type": "Web Service Risk",
+      "attack_vector": "network",
+      "requires_auth": null,
+      "risk_delta": 8,
+      "recommended_playbook": "web_service_patch_review",
+      "recommended_action": "Validar se a aplicacao esta exposta, revisar WAF/proxy e aplicar patch.",
+      "tags": [
+        "web",
+        "internet-facing"
+      ]
+    }
+  ],
+  "playbooks": {
+    "isolate_or_restrict_service": {
+      "label": "Isolar ou restringir servico",
+      "automation_ready": false,
+      "description": "Restringe acesso ao servico vulneravel e orienta isolamento quando o risco for critico."
+    },
+    "patch_urgent": {
+      "label": "Aplicar patch urgente",
+      "automation_ready": false,
+      "description": "Prioriza patch no Endpoint Central ou ferramenta equivalente."
+    },
+    "patch_priority": {
+      "label": "Priorizar patch",
+      "automation_ready": false,
+      "description": "Inclui host em fila prioritaria de correcao."
+    },
+    "monitor_and_patch": {
+      "label": "Monitorar e corrigir",
+      "automation_ready": false,
+      "description": "Mantem monitoramento e agenda correcao."
+    },
+    "restrict_rdp_and_patch": {
+      "label": "Restringir RDP e aplicar patch",
+      "automation_ready": false,
+      "description": "Recomenda bloqueio/restricao de RDP antes de patch."
+    },
+    "domain_controller_containment": {
+      "label": "Contencao em Domain Controller",
+      "automation_ready": false,
+      "description": "Fluxo especial para ativos de dominio."
+    }
+  }
+}

@@ -42,13 +42,28 @@ function renderOnlyEcTable(rows, page){
 }
 
 function normalizeCve(cve){
+  const intel = cve.cve_intelligence || {};
   return {
-    id: cve.id || cve.cve_id || cve.cve || "-",
+    id: cve.id || cve.cve_id || cve.cve || intel.cve || "-",
     product: cve.product || cve.software || cve.name || "Microsoft Windows",
     platform: cve.platform || cve.os || "Windows",
     severity: cve.severity || "Crítico",
-    published: cve.published || cve.published_date || cve.release_date || "-"
+    published: cve.published || cve.published_date || cve.release_date || "-",
+    magiRiskLevel: cve.magi_risk_level || intel.magi_risk_level || "Alto",
+    magiRiskScore: cve.magi_risk_score || intel.magi_risk_score || "-",
+    exploitType: cve.exploit_type || intel.exploit_type || "Unknown",
+    recommendedPlaybook: cve.recommended_playbook || intel.recommended_playbook || "patch_urgent",
+    recommendedAction: cve.recommended_action || intel.recommended_action || "Aplicar patch e validar exposição.",
+    decisionReason: cve.decision_reason || intel.decision_reason || "Decisão baseada na severidade informada."
   };
+}
+
+function cveRiskClass(level){
+  const value = String(level || '').toLowerCase();
+  if(value.includes('crit')) return 'risk-critical';
+  if(value.includes('alto')) return 'risk-high';
+  if(value.includes('medio') || value.includes('médio')) return 'risk-medium';
+  return 'risk-low';
 }
 
 function renderCriticalCves(cves){
@@ -78,7 +93,15 @@ function renderCriticalCves(cves){
 
   tbody.innerHTML = chunk.map(cve => {
     const isNew = !seen.includes(cve.id);
-    return `<tr class="${isNew ? 'new-cve-row' : ''}"><td class="cve-id">${escapeHtml(cve.id)}</td><td>${escapeHtml(cve.product)}</td><td>${escapeHtml(cve.platform)}</td><td><span class="severity-pill">${escapeHtml(cve.severity)}</span></td><td>${escapeHtml(cve.published)}</td><td class="row-arrow">›</td></tr>`;
+    const riskClass = cveRiskClass(cve.magiRiskLevel);
+    return `<tr class="${isNew ? 'new-cve-row' : ''}" title="${escapeHtml(cve.recommendedAction)}">
+      <td class="cve-id">${escapeHtml(cve.id)}</td>
+      <td><strong>${escapeHtml(cve.product)}</strong><small class="cve-subline">${escapeHtml(cve.platform)} • ${escapeHtml(cve.published)}</small></td>
+      <td><span class="magi-risk-pill ${riskClass}">${escapeHtml(cve.magiRiskLevel)} ${escapeHtml(cve.magiRiskScore)}</span></td>
+      <td>${escapeHtml(cve.exploitType)}</td>
+      <td><span class="playbook-pill">${escapeHtml(cve.recommendedPlaybook)}</span></td>
+      <td class="row-arrow">›</td>
+    </tr>`;
   }).join('');
 
   info.textContent = `Mostrando ${start + 1} a ${Math.min(start + chunk.length, allCves.length)} de ${allCves.length} CVEs`;

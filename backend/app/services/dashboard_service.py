@@ -9,6 +9,7 @@ from app.repositories.reports_repository import get_latest_scan_snapshot, save_s
 from app.services.common import list_to_text, normalize_hostname
 from app.services.data_service import get_ad_hostnames, get_ad_records, get_ec_hostnames, get_ec_records
 from app.services.scanner_service import fetch_critical_cves
+from app.services.cve_intelligence_service import enrich_cve_rows
 from app.services.settings_service import get_uem_parameters
 
 
@@ -29,6 +30,7 @@ def build_dashboard_data(settings: Dict[str, Any]) -> Dict[str, Any]:
     install_percent = round((in_both_count / ad_count) * 100, 2) if ad_count else 0.0
 
     critical_cves, cve_meta = fetch_critical_cves(settings)
+    critical_cves = enrich_cve_rows(critical_cves)
 
     return {
         "summary": {
@@ -47,6 +49,7 @@ def build_dashboard_data(settings: Dict[str, Any]) -> Dict[str, Any]:
             "json_file": "PostgreSQL",
             "log_file": "-",
             "critical_cves_total": len(critical_cves),
+            "critical_cves_high_risk": len([c for c in critical_cves if int(c.get("magi_risk_score") or 0) >= 70]),
             "critical_cves_source": cve_meta.get("source", "none"),
         },
         "critical_cves": critical_cves,
