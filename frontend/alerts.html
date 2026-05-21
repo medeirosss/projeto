@@ -14,40 +14,84 @@
           <div class="card-body">
             <div id="alertDetailEmpty" class="detail-empty">Selecione um alerta para visualizar o resumo operacional.</div>
             <div id="alertDetailContent" class="hidden-section">
-              <div class="detail-title-row">
-                <div class="detail-icon" id="detailSeverityIcon">!</div>
-                <div>
-                  <h2 id="detailTitle">--</h2>
-                  <p id="detailSubtitle">--</p>
+              <div class="detail-hero">
+                <div class="detail-title-row">
+                  <div class="detail-icon" id="detailSeverityIcon">!</div>
+                  <div class="detail-title-block">
+                    <h2 id="detailTitle">--</h2>
+                    <p id="detailSubtitle">--</p>
+                    <div class="detail-badges">
+                      <span id="detailSeverityBadge" class="severity-badge">--</span>
+                      <span id="detailSourceBadge" class="source-badge">--</span>
+                      <span id="detailEventBadge" class="source-badge">Evento --</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div class="detail-badges">
-                <span id="detailSeverityBadge" class="severity-badge">--</span>
-                <span id="detailSourceBadge" class="source-badge">--</span>
+
+              <div class="detail-section detail-section-first">
+                <div class="detail-section-title">
+                  <h3>Contexto do alerta</h3>
+                  <span>Identidade, origem e ativo afetado</span>
+                </div>
+                <div class="detail-grid">
+                  <div><small>Usuário alvo</small><strong id="detailUser">--</strong></div>
+                  <div><small>Executor/origem</small><strong id="detailActor">--</strong></div>
+                  <div><small>Host</small><strong id="detailHost">--</strong></div>
+                  <div><small>IP</small><strong id="detailIp">--</strong></div>
+                  <div><small>Grupo / objeto</small><strong id="detailGroup">--</strong></div>
+                  <div><small>Identificador</small><strong id="detailAlertId">--</strong></div>
+                </div>
               </div>
-              <div class="detail-grid">
-                <div><small>Usuário alvo</small><strong id="detailUser">--</strong></div>
-                <div><small>Executor/origem</small><strong id="detailActor">--</strong></div>
-                <div><small>Host</small><strong id="detailHost">--</strong></div>
-                <div><small>IP</small><strong id="detailIp">--</strong></div>
-              </div>
+
               <div class="detail-section">
-                <h3>MITRE / NIST</h3>
-                <div class="detail-grid compact">
-                  <div><small>Técnica</small><strong id="detailMitre">--</strong></div>
-                  <div><small>Tática</small><strong id="detailTactic">--</strong></div>
-                  <div><small>NIST</small><strong id="detailNist">--</strong></div>
+                <div class="detail-section-title">
+                  <h3>Mapeamento de segurança</h3>
+                  <span>MITRE ATT&CK, NIST e severidade</span>
+                </div>
+                <div class="detail-map-grid">
+                  <div class="map-card mitre-card">
+                    <small>MITRE Técnica</small>
+                    <strong id="detailMitre">--</strong>
+                  </div>
+                  <div class="map-card">
+                    <small>MITRE Tática</small>
+                    <strong id="detailTactic">--</strong>
+                  </div>
+                  <div class="map-card nist-card">
+                    <small>NIST</small>
+                    <strong id="detailNist">--</strong>
+                  </div>
                 </div>
               </div>
+
               <div class="detail-section recommendation-box">
-                <h3>Recomendação</h3>
+                <div class="detail-section-title">
+                  <h3>Recomendação operacional</h3>
+                  <span>Primeira ação sugerida para triagem</span>
+                </div>
                 <p id="detailRecommendation">--</p>
               </div>
-              <div class="detail-actions">
+
+              <div class="detail-section">
+                <div class="detail-section-title">
+                  <h3>Linha do tempo</h3>
+                  <span>Ciclo de vida do alerta</span>
+                </div>
+                <div class="detail-timeline">
+                  <div class="timeline-item active"><span></span><div><small>Recebido</small><strong id="detailReceived">--</strong></div></div>
+                  <div class="timeline-item"><span></span><div><small>Status atual</small><strong id="detailCurrentStatus">--</strong></div></div>
+                  <div class="timeline-item"><span></span><div><small>Resolvido em</small><strong id="detailResolved">--</strong></div></div>
+                  <div class="timeline-item"><span></span><div><small>Resolvido por / método</small><strong id="detailResolvedBy">--</strong></div></div>
+                </div>
+              </div>
+
+              <div class="detail-actions detail-actions-sticky">
                 <button class="btn secondary btn-sm" id="detailKnownBtn">Marcar conhecido</button>
                 <button class="btn success btn-sm" id="detailResolveBtn">Finalizar manual</button>
-                <a class="btn primary btn-sm" href="/acoes">Abrir em Ações</a>
+                <a class="btn primary btn-sm" id="detailActionLink" href="/acoes">Abrir em Ações</a>
               </div>
+
               <details class="payload-details">
                 <summary>Payload bruto</summary>
                 <pre id="alertsPayloadBox" class="result-box">--</pre>

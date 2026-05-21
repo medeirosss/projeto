@@ -228,47 +228,100 @@ function clearDetail(){
   if(slot) slot.innerHTML = '';
 }
 
+function setText(id, value){
+  const el = document.getElementById(id);
+  if(el) el.textContent = value;
+}
+
+function statusLabel(alert){
+  const status = Number(alert?.status || 0);
+  if(status === 1) return alert.status_label || 'Novo Alarme';
+  if(status === 2) return alert.status_label || 'Conhecido / em tratamento';
+  if(status === 3) return alert.status_label || 'Finalizado';
+  return alert.status_label || String(status || '--');
+}
+
 function selectAlert(alert, rerender = true){
   selectedAlert = alert;
   document.getElementById('alertDetailEmpty')?.classList.add('hidden-section');
   document.getElementById('alertDetailContent')?.classList.remove('hidden-section');
 
+  const alertId = alertIdOf(alert);
   const title = val(alert.display_name || alert.event || alert.event_number, 'Alerta inbound');
   const source = val(alert.source_system, 'Origem não informada');
-  const received = val(alert.received_at, '--');
-  const targetUser = val(getFromAlert(alert, 'target_user', 'username', 'account_name'), '--');
+  const received = val(alert.received_at || getFromAlert(alert, 'received_at', 'event_time', 'timestamp'), '--');
+  const resolvedAt = val(alert.resolved_at, '--');
+  const resolvedBy = val(alert.resolved_by, '--');
+  const resolutionMethod = val(alert.resolution_method || alert.resolution_type, '--');
+  const eventNumber = val(alert.event_number || getFromAlert(alert, 'event_number', 'event_id', 'EventID'), '--');
+  const targetUser = val(getFromAlert(alert, 'target_user', 'username', 'account_name', 'TargetUserName'), '--');
   const actor = val(getFromAlert(alert, 'actor_user', 'caller_user_name', 'subject_user', 'SubjectUserName'), '--');
   const host = val(getFromAlert(alert, 'hostname', 'host', 'computer', 'winlog.computer_name'), '--');
   const ip = val(getFromAlert(alert, 'ip_address', 'target_ip', 'source_ip', 'source.ip'), '--');
-  const mitre = val(alert.technique || alert.mitre_technique, '--');
-  const tactic = val(alert.tactic || alert.mitre_tactic, '--');
-  const nist = val(alert.nist || alert.nist_control, '--');
+  const group = val(getFromAlert(alert, 'group_name', 'target_group', 'TargetGroupName', 'group'), '--');
+  const mitre = val(alert.technique || alert.mitre_technique || getFromAlert(alert, 'mitre_technique', 'technique'), '--');
+  const tactic = val(alert.tactic || alert.mitre_tactic || getFromAlert(alert, 'mitre_tactic', 'tactic'), '--');
+  const nist = val(alert.nist || alert.nist_control || getFromAlert(alert, 'nist_control', 'nist'), '--');
   const recommendation = val(getFromAlert(alert, 'recommendation'), 'Validar o evento com o time responsável e confirmar se a atividade foi autorizada.');
   const severity = val(alert.severity, 'Media');
+  const status = statusLabel(alert);
 
   document.getElementById('detailStatusSlot').innerHTML = statusBadge(alert);
-  document.getElementById('detailTitle').textContent = title;
-  document.getElementById('detailSubtitle').textContent = `${source} • Recebido em ${received}`;
-  document.getElementById('detailUser').textContent = targetUser;
-  document.getElementById('detailActor').textContent = actor;
-  document.getElementById('detailHost').textContent = host;
-  document.getElementById('detailIp').textContent = ip;
-  document.getElementById('detailMitre').textContent = mitre;
-  document.getElementById('detailTactic').textContent = tactic;
-  document.getElementById('detailNist').textContent = nist;
-  document.getElementById('detailRecommendation').textContent = recommendation;
-  document.getElementById('detailSeverityBadge').textContent = severity;
-  document.getElementById('detailSeverityBadge').className = `severity-badge ${severityClass(severity)}`;
-  document.getElementById('detailSourceBadge').textContent = source;
-  document.getElementById('detailSeverityIcon').className = `detail-icon ${severityClass(severity)}`;
-  document.getElementById('alertsPayloadBox').textContent = JSON.stringify(getRaw(alert), null, 2);
+  setText('detailTitle', title);
+  setText('detailSubtitle', `${source} • ${received}`);
+  setText('detailUser', targetUser);
+  setText('detailActor', actor);
+  setText('detailHost', host);
+  setText('detailIp', ip);
+  setText('detailGroup', group);
+  setText('detailAlertId', alertId || '--');
+  setText('detailMitre', mitre);
+  setText('detailTactic', tactic);
+  setText('detailNist', nist);
+  setText('detailRecommendation', recommendation);
+  setText('detailReceived', received);
+  setText('detailCurrentStatus', status);
+  setText('detailResolved', resolvedAt);
+  setText('detailResolvedBy', resolvedBy === '--' && resolutionMethod === '--' ? '--' : `${resolvedBy} / ${resolutionMethod}`);
+  setText('detailEventBadge', `Evento ${eventNumber}`);
+  setText('detailSeverityBadge', severity);
+  setText('detailSourceBadge', source);
 
-  const alertId = alertIdOf(alert);
+  const severityBadgeEl = document.getElementById('detailSeverityBadge');
+  if(severityBadgeEl) severityBadgeEl.className = `severity-badge ${severityClass(severity)}`;
+
+  const icon = document.getElementById('detailSeverityIcon');
+  if(icon){
+    icon.className = `detail-icon ${severityClass(severity)}`;
+    icon.textContent = severity.toLowerCase().includes('crit') ? '!' : severity.toLowerCase().includes('alta') ? '!' : 'i';
+  }
+
+  const payloadBox = document.getElementById('alertsPayloadBox');
+  if(payloadBox) payloadBox.textContent = JSON.stringify(getRaw(alert), null, 2);
+
   const known = document.getElementById('detailKnownBtn');
   const resolve = document.getElementById('detailResolveBtn');
+  const actionLink = document.getElementById('detailActionLink');
 
   if(known) known.onclick = () => setAlertStatus(alertId, 2, '', currentUserName(), 'Alerta marcado como conhecido.');
   if(resolve) resolve.onclick = () => setAlertStatus(alertId, 3, 'manual', currentUserName(), 'Alerta finalizado manualmente.');
+  if(actionLink){
+    const params = new URLSearchParams({
+      alert_id: alertId || '',
+      target_user: targetUser === '--' ? '' : targetUser,
+      host: host === '--' ? '' : host,
+      ip: ip === '--' ? '' : ip
+    });
+    actionLink.href = `/acoes?${params.toString()}`;
+  }
+
+  if(Number(alert.status || 0) === 3){
+    known?.setAttribute('disabled','disabled');
+    resolve?.setAttribute('disabled','disabled');
+  }else{
+    known?.removeAttribute('disabled');
+    resolve?.removeAttribute('disabled');
+  }
 
   if(rerender) renderOpenAlerts();
 }
