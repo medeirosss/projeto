@@ -49,7 +49,6 @@ def build_dashboard_data(settings: Dict[str, Any]) -> Dict[str, Any]:
             "json_file": "PostgreSQL",
             "log_file": "-",
             "critical_cves_total": len(critical_cves),
-            "critical_cves_high_risk": len([c for c in critical_cves if int(c.get("magi_risk_score") or 0) >= 70]),
             "critical_cves_source": cve_meta.get("source", "none"),
         },
         "critical_cves": critical_cves,

@@ -44,25 +44,29 @@ function renderOnlyEcTable(rows, page){
 function normalizeCve(cve){
   const intel = cve.cve_intelligence || {};
   return {
-    id: cve.id || cve.cve_id || cve.cve || intel.cve || "-",
+    id: cve.id || cve.cve_id || cve.cve || "-",
     product: cve.product || cve.software || cve.name || "Microsoft Windows",
     platform: cve.platform || cve.os || "Windows",
     severity: cve.severity || "Crítico",
     published: cve.published || cve.published_date || cve.release_date || "-",
-    magiRiskLevel: cve.magi_risk_level || intel.magi_risk_level || "Alto",
-    magiRiskScore: cve.magi_risk_score || intel.magi_risk_score || "-",
+    magiRisk: cve.magi_risk_level || intel.magi_risk_level || "Alto",
+    magiScore: cve.magi_risk_score || intel.magi_risk_score || "-",
     exploitType: cve.exploit_type || intel.exploit_type || "Unknown",
-    recommendedPlaybook: cve.recommended_playbook || intel.recommended_playbook || "patch_urgent",
-    recommendedAction: cve.recommended_action || intel.recommended_action || "Aplicar patch e validar exposição.",
-    decisionReason: cve.decision_reason || intel.decision_reason || "Decisão baseada na severidade informada."
+    defensePlaybook: cve.defense_playbook || intel.defense_playbook || cve.recommended_playbook || "monitor_until_patch",
+    remediationPlaybook: cve.remediation_playbook || intel.remediation_playbook || "schedule_patch",
+    immediateAction: cve.immediate_action || intel.immediate_action || cve.recommended_action || "Validar exposição do ativo.",
+    remediationAction: cve.remediation_action || intel.remediation_action || "Aplicar correção conforme janela operacional.",
+    exploitAvailable: cve.exploit_available ?? intel.exploit_available,
+    patchAvailable: cve.patch_available ?? intel.patch_available,
+    cvss: cve.cvss3 || cve.cvss_score || intel.cvss_score || "-"
   };
 }
 
-function cveRiskClass(level){
-  const value = String(level || '').toLowerCase();
-  if(value.includes('crit')) return 'risk-critical';
-  if(value.includes('alto')) return 'risk-high';
-  if(value.includes('medio') || value.includes('médio')) return 'risk-medium';
+function riskClass(value){
+  const text = String(value || '').toLowerCase();
+  if(text.includes('crit')) return 'risk-critical';
+  if(text.includes('alto')) return 'risk-high';
+  if(text.includes('medio') || text.includes('médio')) return 'risk-medium';
   return 'risk-low';
 }
 
@@ -82,7 +86,7 @@ function renderCriticalCves(cves){
   const chunk = allCves.slice(start, start + cvePageSize);
 
   if(!chunk.length){
-    tbody.innerHTML = `<tr><td colspan="6" class="empty-cell">Nenhuma CVE crítica identificada no momento.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-cell">Nenhuma CVE crítica identificada no momento.</td></tr>`;
     info.textContent = "Mostrando 0 CVEs";
     pages.innerHTML = "";
     document.getElementById("cvePrev").disabled = true;
@@ -93,13 +97,13 @@ function renderCriticalCves(cves){
 
   tbody.innerHTML = chunk.map(cve => {
     const isNew = !seen.includes(cve.id);
-    const riskClass = cveRiskClass(cve.magiRiskLevel);
-    return `<tr class="${isNew ? 'new-cve-row' : ''}" title="${escapeHtml(cve.recommendedAction)}">
+    return `<tr class="${isNew ? 'new-cve-row' : ''}" title="${escapeHtml(cve.immediateAction)}">
       <td class="cve-id">${escapeHtml(cve.id)}</td>
-      <td><strong>${escapeHtml(cve.product)}</strong><small class="cve-subline">${escapeHtml(cve.platform)} • ${escapeHtml(cve.published)}</small></td>
-      <td><span class="magi-risk-pill ${riskClass}">${escapeHtml(cve.magiRiskLevel)} ${escapeHtml(cve.magiRiskScore)}</span></td>
+      <td><strong>${escapeHtml(cve.product)}</strong><small class="cve-subline">CVSS: ${escapeHtml(cve.cvss)} | Exploit: ${cve.exploitAvailable === true ? 'sim' : cve.exploitAvailable === false ? 'não' : 'n/d'}</small></td>
+      <td><span class="magi-risk-pill ${riskClass(cve.magiRisk)}">${escapeHtml(cve.magiRisk)} ${escapeHtml(cve.magiScore)}</span></td>
       <td>${escapeHtml(cve.exploitType)}</td>
-      <td><span class="playbook-pill">${escapeHtml(cve.recommendedPlaybook)}</span></td>
+      <td><span class="defense-pill">${escapeHtml(cve.defensePlaybook)}</span></td>
+      <td><span class="remediation-pill">${escapeHtml(cve.remediationPlaybook)}</span></td>
       <td class="row-arrow">›</td>
     </tr>`;
   }).join('');

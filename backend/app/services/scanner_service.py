@@ -399,44 +399,7 @@ def fetch_endpointcentral_all(
 
 
 
-def _find_first_list(value: Any, preferred_keys: tuple[str, ...]) -> List[Dict[str, Any]]:
-    """Return the first list of dicts found in a nested API payload.
-
-    Endpoint Central responses can change shape depending on API version/tenant.
-    This helper allows the dashboard to remain tolerant to common wrappers like
-    message_response.vulnerabilities, vulnerability_details, data, response, etc.
-    """
-    if isinstance(value, list):
-        return [item for item in value if isinstance(item, dict)]
-
-    if not isinstance(value, dict):
-        return []
-
-    for key in preferred_keys:
-        current: Any = value
-        ok = True
-        for part in key.split("."):
-            if isinstance(current, dict) and part in current:
-                current = current[part]
-            else:
-                ok = False
-                break
-        if ok and isinstance(current, list):
-            return [item for item in current if isinstance(item, dict)]
-
-    # Fallback: recursively search shallow nested values for a list of dicts.
-    for item in value.values():
-        if isinstance(item, list) and any(isinstance(x, dict) for x in item):
-            return [x for x in item if isinstance(x, dict)]
-        if isinstance(item, dict):
-            nested = _find_first_list(item, preferred_keys)
-            if nested:
-                return nested
-
-    return []
-
-
-def _get_nested_value(data: Dict[str, Any], *keys: str) -> Any:
+def _first_value(data: Dict[str, Any], *keys: str) -> Any:
     for key in keys:
         current: Any = data
         ok = True
@@ -451,164 +414,126 @@ def _get_nested_value(data: Dict[str, Any], *keys: str) -> Any:
     return ""
 
 
-def _split_cve_ids(value: Any) -> List[str]:
+def _parse_cves(value: Any) -> List[str]:
     if isinstance(value, list):
-        parts = value
+        raw = " ".join(str(x) for x in value)
     else:
-        text = str(value or "")
-        # Accept comma, semicolon, pipe, whitespace and newline-separated CVEs.
-        parts = re.split(r"[,;|\s]+", text)
-
+        raw = str(value or "")
+    found = re.findall(r"CVE-\d{4}-\d{4,}", raw, flags=re.IGNORECASE)
     result: List[str] = []
-    seen: Set[str] = set()
-    for part in parts:
-        cve = str(part or "").strip().upper()
-        if not cve:
-            continue
-        match = re.search(r"CVE-\d{4}-\d{4,}", cve)
-        if not match:
-            continue
-        cve = match.group(0)
-        if cve in seen:
-            continue
-        seen.add(cve)
-        result.append(cve)
+    for cve in found:
+        cve = cve.upper()
+        if cve not in result:
+            result.append(cve)
     return result
 
 
-def _normalize_ec_severity(value: Any) -> str:
+def _parse_cvss(value: Any) -> float:
+    text = str(value or "").replace(",", ".")
+    match = re.search(r"\d+(?:\.\d+)?", text)
+    if not match:
+        return 0.0
+    try:
+        return float(match.group(0))
+    except Exception:
+        return 0.0
+
+
+def _bool_from_status(value: Any) -> bool | None:
     text = str(value or "").strip().lower()
     if not text:
-        return ""
-
-    aliases = {
-        "critical": "critical",
-        "critica": "critical",
-        "crítica": "critical",
-        "critico": "critical",
-        "crítico": "critical",
-        "5": "critical",
-        "4": "high",
-        "high": "high",
-        "alta": "high",
-        "medium": "medium",
-        "media": "medium",
-        "média": "medium",
-        "low": "low",
-        "baixa": "low",
-    }
-
-    if text in aliases:
-        return aliases[text]
-
-    if "critical" in text or "crític" in text or "critic" in text:
-        return "critical"
-    if "high" in text or "alta" in text:
-        return "high"
-    if "medium" in text or "média" in text or "media" in text:
-        return "medium"
-    if "low" in text or "baixa" in text:
-        return "low"
-
-    return text
+        return None
+    if any(x in text for x in ("dispon", "available", "exploit", "yes", "true", "sim")) and not any(x in text for x in ("não", "nao", "not ", "indispon")):
+        return True
+    if any(x in text for x in ("não", "nao", "not available", "indispon", "false", "no")):
+        return False
+    return None
 
 
-def _normalize_vulnerability_row(vuln: Dict[str, Any]) -> List[Dict[str, Any]]:
-    severity = _normalize_ec_severity(
-        _get_nested_value(
-            vuln,
-            "severity",
-            "severity_name",
-            "severityName",
-            "severity_text",
-            "severityText",
-            "risk",
-            "risk_level",
-            "riskLevel",
-            "vulnerability_severity",
-        )
+def _find_vulnerability_list(payload: Any) -> List[Dict[str, Any]]:
+    preferred_paths = (
+        "message_response.vulnerabilities",
+        "message_response.vulnerability_details",
+        "message_response.vulnerabilityDetails",
+        "message_response.data",
+        "vulnerabilities",
+        "vulnerability_details",
+        "vulnerabilityDetails",
+        "data",
+        "response.vulnerabilities",
+        "response.data",
     )
-
-    cve_value = _get_nested_value(
-        vuln,
-        "cveids",
-        "cve_ids",
-        "cveIds",
-        "cve_id",
-        "cveId",
-        "cves",
-        "cve",
-        "cve_details",
-        "cveDetails",
-        "cve_info",
-    )
-    cves = _split_cve_ids(cve_value)
-
-    if not cves:
-        # Some EC payloads embed the CVE only in the vulnerability name/description.
-        cves = _split_cve_ids(
-            " ".join(
-                str(_get_nested_value(vuln, key) or "")
-                for key in (
-                    "vulnerabilityname",
-                    "vulnerability_name",
-                    "name",
-                    "title",
-                    "description",
-                    "summary",
-                )
-            )
-        )
-
-    product = str(
-        _get_nested_value(
-            vuln,
-            "os_platform",
-            "platform",
-            "affected_platform",
-            "affectedPlatform",
-            "product",
-            "software",
-            "application",
-            "vulnerabilityname",
-            "vulnerability_name",
-            "name",
-        )
-        or "Unknown"
-    ).strip()
-
-    published = str(
-        _get_nested_value(
-            vuln,
-            "published",
-            "published_date",
-            "publishedDate",
-            "release_date",
-            "releaseDate",
-            "created_time",
-            "updated_time",
-        )
-        or "-"
-    ).strip()
-
-    # If the endpoint was called with severity=Critical but the payload omits severity,
-    # keep the item as critical instead of dropping it.
-    if not severity:
-        severity = "critical"
-
-    if severity != "critical":
+    if isinstance(payload, list):
+        return [x for x in payload if isinstance(x, dict)]
+    if not isinstance(payload, dict):
         return []
+    for path in preferred_paths:
+        current: Any = payload
+        ok = True
+        for part in path.split("."):
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                ok = False
+                break
+        if ok and isinstance(current, list):
+            return [x for x in current if isinstance(x, dict)]
+    for value in payload.values():
+        if isinstance(value, list) and any(isinstance(x, dict) for x in value):
+            return [x for x in value if isinstance(x, dict)]
+        if isinstance(value, dict):
+            nested = _find_vulnerability_list(value)
+            if nested:
+                return nested
+    return []
 
-    return [
-        {
+
+def _normalize_vulnerability(vuln: Dict[str, Any]) -> List[Dict[str, Any]]:
+    name = str(_first_value(vuln, "vulnerabilityname", "vulnerability_name", "name", "title", "display_name") or "").strip()
+    product = str(_first_value(vuln, "os_platform", "platform", "product", "software", "application", "affected_platform", "affectedPlatform") or name or "Unknown").strip()
+    platform = str(_first_value(vuln, "platform", "os_platform", "os", "operating_system") or product or "Unknown").strip()
+    severity = str(_first_value(vuln, "severity", "severity_name", "severityName", "risk", "risk_level") or "critical").strip()
+    published = str(_first_value(vuln, "published", "published_date", "publishedDate", "release_date", "releaseDate", "publication_date") or "-").strip()
+    exploit_status = str(_first_value(vuln, "exploit_status", "status_exploit", "exploitStatus", "exploit", "exploit_available", "exploits_available") or "").strip()
+    patch_status = str(_first_value(vuln, "patch_status", "patch_availability", "patchAvailability", "patch_available", "availability_of_patch") or "").strip()
+    cvss3_raw = _first_value(vuln, "cvss3", "cvss_3", "cvss3_score", "cvss_score", "cvssV3", "cvss")
+    cvss2_raw = _first_value(vuln, "cvss2", "cvss_2", "cvss2_score", "cvssV2")
+    cvss3 = _parse_cvss(cvss3_raw)
+    cvss2 = _parse_cvss(cvss2_raw)
+    affected = int(_parse_cvss(_first_value(vuln, "affected_systems", "systems_affected", "affected_count", "affectedSystems", "computer_count")))
+    exploited_cves = _parse_cves(_first_value(vuln, "exploited_cve_ids", "exploitedCveIds", "exploited_cves", "exploited"))
+    non_exploited_cves = _parse_cves(_first_value(vuln, "non_exploited_cve_ids", "nonExploitedCveIds", "non_exploited_cves"))
+    all_cves = _parse_cves(_first_value(vuln, "cveids", "cve_ids", "cveIds", "cve", "cves", "cve_id", "cveId"))
+    if not all_cves:
+        all_cves = _parse_cves(" ".join([name, str(vuln.get("description") or ""), str(vuln.get("summary") or "")]))
+    if not all_cves:
+        return []
+    exploit_available = _bool_from_status(exploit_status)
+    if exploited_cves:
+        exploit_available = True
+    patch_available = _bool_from_status(patch_status)
+    rows: List[Dict[str, Any]] = []
+    for cve in all_cves:
+        is_exploited = cve in exploited_cves
+        rows.append({
             "id": cve,
             "product": product,
-            "platform": product,
-            "severity": "Crítico",
+            "platform": platform,
+            "severity": severity or "Crítico",
             "published": published,
-        }
-        for cve in cves
-    ]
+            "name": name,
+            "description": str(_first_value(vuln, "description", "summary") or name or ""),
+            "cvss3": cvss3,
+            "cvss2": cvss2,
+            "cvss_vector": str(cvss3_raw or cvss2_raw or ""),
+            "exploit_status": exploit_status or ("Disponível" if is_exploited else ""),
+            "exploit_available": True if is_exploited else exploit_available,
+            "patch_status": patch_status,
+            "patch_available": patch_available,
+            "affected_systems": affected,
+            "is_exploited_cve": is_exploited,
+        })
+    return rows
 
 
 def fetch_critical_cves(settings: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -629,22 +554,7 @@ def fetch_critical_cves(settings: Dict[str, Any]) -> Tuple[List[Dict[str, Any]],
     rows: List[Dict[str, Any]] = []
     seen: Set[Tuple[str, str]] = set()
     total_records = 0
-    parsed_payload_shapes: List[str] = []
-
-    preferred_vulnerability_paths = (
-        "message_response.vulnerabilities",
-        "message_response.vulnerability_details",
-        "message_response.vulnerabilityDetails",
-        "message_response.data",
-        "message_response.result",
-        "vulnerabilities",
-        "vulnerability_details",
-        "vulnerabilityDetails",
-        "data",
-        "result",
-        "response.vulnerabilities",
-        "response.data",
-    )
+    payload_shapes: List[str] = []
 
     try:
         while True:
@@ -655,11 +565,12 @@ def fetch_critical_cves(settings: Dict[str, Any]) -> Tuple[List[Dict[str, Any]],
                 timeout=REQUEST_TIMEOUT,
             )
             content_type = res.headers.get("content-type", "")
-            preview = (res.text or "")[:4000]
+            preview = (res.text or "")[:3000]
             if not res.ok:
                 log = write_text_log(
                     "VULNstatus",
-                    "\n".join([
+                    "
+".join([
                         "=== VULNERABILITIES FETCH ERROR ===",
                         f"Timestamp: {datetime.now().isoformat()}",
                         f"Status: {res.status_code}",
@@ -668,105 +579,53 @@ def fetch_critical_cves(settings: Dict[str, Any]) -> Tuple[List[Dict[str, Any]],
                         f"Body preview: {preview}",
                     ]),
                 )
-                return [], {
-                    "source": "api_error",
-                    "token_source": token_source,
-                    "token_debug_log": token_debug_log,
-                    "error": f"Falha ao consultar vulnerabilidades. Log: {log.name}",
-                }
+                return [], {"source": "api_error", "token_source": token_source, "token_debug_log": token_debug_log, "error": f"Falha ao consultar vulnerabilidades. Log: {log.name}"}
 
-            try:
-                payload = res.json()
-            except Exception:
-                try:
-                    payload = json.loads(res.text)
-                except Exception:
-                    log = write_text_log(
-                        "VULNstatus",
-                        "\n".join([
-                            "=== VULNERABILITIES INVALID JSON ===",
-                            f"Timestamp: {datetime.now().isoformat()}",
-                            f"Status: {res.status_code}",
-                            f"Content-Type: {content_type}",
-                            f"URL: {res.url}",
-                            f"Body preview: {preview}",
-                        ]),
-                    )
-                    return [], {
-                        "source": "invalid_json",
-                        "token_source": token_source,
-                        "token_debug_log": token_debug_log,
-                        "error": f"Resposta inválida ao consultar vulnerabilidades. Log: {log.name}",
-                    }
-
+            payload = res.json()
             metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
-            if isinstance(metadata, dict):
-                total_records = int(metadata.get("totalRecords") or metadata.get("total_records") or total_records or 0)
-
-            vulns = _find_first_list(payload, preferred_vulnerability_paths)
-            parsed_payload_shapes.append(f"page={page} rows={len(vulns)} keys={list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__}")
+            total_records = int(metadata.get("totalRecords") or metadata.get("total_records") or total_records or 0) if isinstance(metadata, dict) else total_records
+            vulns = _find_vulnerability_list(payload)
+            payload_shapes.append(f"page={page}; rows={len(vulns)}; keys={list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__}")
 
             for vuln in vulns:
-                for normalized in _normalize_vulnerability_row(vuln):
-                    key = (normalized["id"], normalized["product"])
+                for normalized in _normalize_vulnerability(vuln):
+                    severity_text = str(normalized.get("severity") or "").lower()
+                    # API já foi chamada com severity=Critical, mas mantemos filtro tolerante.
+                    if not ("crit" in severity_text or severity_text in {"", "5"}):
+                        continue
+                    key = (str(normalized["id"]), str(normalized.get("product") or ""))
                     if key in seen:
                         continue
                     seen.add(key)
                     rows.append(normalized)
 
-            total_pages = 1
-            next_link = None
-            if isinstance(metadata, dict):
-                try:
-                    total_pages = int(metadata.get("totalPages") or metadata.get("total_pages") or 1)
-                except Exception:
-                    total_pages = 1
-                links = metadata.get("links")
-                next_link = links.get("next") if isinstance(links, dict) else None
-
-            # Some EC tenants do not return next link. Continue only while page is below totalPages.
+            total_pages = int(metadata.get("totalPages") or metadata.get("total_pages") or 1) if isinstance(metadata, dict) else 1
+            next_link = metadata.get("links", {}).get("next") if isinstance(metadata.get("links"), dict) else None
             if page >= total_pages:
                 break
             if not next_link and total_pages <= 1:
                 break
-
             page += 1
             if page > 100:
                 break
 
         log = write_text_log(
             "VULNstatus",
-            "\n".join([
+            "
+".join([
                 "=== VULNERABILITIES FETCH OK ===",
                 f"Timestamp: {datetime.now().isoformat()}",
                 f"URL: {url}",
                 f"Rows parsed: {len(rows)}",
                 f"Total records metadata: {total_records}",
-                *parsed_payload_shapes,
+                *payload_shapes,
             ]),
         )
-
-        return rows, {
-            "source": "endpoint_vulnerability_api",
-            "token_source": token_source,
-            "token_debug_log": token_debug_log,
-            "total_records": total_records,
-            "critical_rows": len(rows),
-            "parser_log": log.name,
-        }
+        return rows, {"source": "endpoint_vulnerability_api", "token_source": token_source, "token_debug_log": token_debug_log, "total_records": total_records, "critical_rows": len(rows), "parser_log": log.name}
     except Exception as exc:
         log = write_text_log(
             "VULNstatus",
-            "\n".join([
-                "=== VULNERABILITIES FETCH ERROR ===",
-                f"Timestamp: {datetime.now().isoformat()}",
-                f"URL: {url}",
-                f"Error: {str(exc)}",
-            ]),
+            "
+".join(["=== VULNERABILITIES FETCH ERROR ===", f"Timestamp: {datetime.now().isoformat()}", f"URL: {url}", f"Error: {str(exc)}"]),
         )
-        return [], {
-            "source": "exception",
-            "token_source": token_source,
-            "token_debug_log": token_debug_log,
-            "error": f"Exceção ao consultar vulnerabilidades. Log: {log.name}",
-        }
+        return [], {"source": "exception", "token_source": token_source, "token_debug_log": token_debug_log, "error": f"Exceção ao consultar vulnerabilidades. Log: {log.name}"}

@@ -1,30 +1,83 @@
 {
-  "version": "1.0",
-  "description": "Base inicial local do Motor CVE do Sistema Magi. Nao e uma base completa de CVEs; e uma base de decisao para priorizar resposta.",
-  "default_actions": {
-    "critical": {
-      "risk_score": 78,
-      "risk_level": "Alto",
-      "recommended_playbook": "patch_urgent",
-      "recommended_action": "Aplicar patch urgente e validar exposicao do ativo."
+  "version": "1.1",
+  "description": "Motor CVE do Sistema Magi. Não replica o scanner; transforma CVE detectado em decisão defensiva e remediação.",
+  "decision_model": {
+    "goal": "Separar defesa imediata de remediação por patch.",
+    "signals": [
+      "exploit_available",
+      "patch_available",
+      "cvss_score",
+      "exploit_type",
+      "attack_vector",
+      "affected_systems"
+    ]
+  },
+  "default_policy": {
+    "critical_with_exploit": {
+      "risk_score": 98,
+      "risk_level": "Critico",
+      "defense_playbook": "contain_exploitable_cve",
+      "remediation_playbook": "apply_patch_urgent",
+      "immediate_action": "Validar exposição do ativo, restringir acesso ao serviço afetado e iniciar contenção se houver exposição ou criticidade operacional.",
+      "remediation_action": "Aplicar patch emergencial e validar a correção.",
+      "defense_actions": [
+        "restrict_service_access",
+        "collect_host_evidence",
+        "monitor_connections",
+        "isolate_host_if_exposed"
+      ]
     },
-    "high": {
-      "risk_score": 65,
-      "risk_level": "Alto",
-      "recommended_playbook": "patch_priority",
-      "recommended_action": "Priorizar patch e revisar controles compensatorios."
+    "critical_no_patch": {
+      "risk_score": 94,
+      "risk_level": "Critico",
+      "defense_playbook": "virtual_patch_or_restrict_access",
+      "remediation_playbook": "vendor_fix_watch",
+      "immediate_action": "Como não há patch disponível, aplicar controle compensatório: restringir acesso, segmentar rede e monitorar exploração.",
+      "remediation_action": "Acompanhar correção do fabricante e aplicar assim que disponível.",
+      "defense_actions": [
+        "restrict_service_access",
+        "network_segmentation",
+        "increase_monitoring",
+        "block_external_exposure"
+      ]
     },
-    "medium": {
-      "risk_score": 45,
+    "critical_patch_available": {
+      "risk_score": 82,
+      "risk_level": "Alto",
+      "defense_playbook": "prioritize_and_reduce_exposure",
+      "remediation_playbook": "apply_patch_priority",
+      "immediate_action": "Priorizar ativo e reduzir superfície de ataque até a aplicação do patch.",
+      "remediation_action": "Aplicar patch prioritário pela ferramenta de patch management.",
+      "defense_actions": [
+        "prioritize_asset",
+        "restrict_service_access_if_exposed",
+        "schedule_patch_now"
+      ]
+    },
+    "high_no_patch": {
+      "risk_score": 76,
+      "risk_level": "Alto",
+      "defense_playbook": "restrict_and_monitor",
+      "remediation_playbook": "vendor_fix_watch",
+      "immediate_action": "Restringir acesso ao componente vulnerável e monitorar comportamento anômalo.",
+      "remediation_action": "Aguardar patch do fabricante ou aplicar workaround oficial.",
+      "defense_actions": [
+        "restrict_service_access",
+        "monitor_host",
+        "review_exposure"
+      ]
+    },
+    "patch_only": {
+      "risk_score": 58,
       "risk_level": "Medio",
-      "recommended_playbook": "monitor_and_patch",
-      "recommended_action": "Planejar correcao e monitorar atividade relacionada."
-    },
-    "low": {
-      "risk_score": 25,
-      "risk_level": "Baixo",
-      "recommended_playbook": "monitor",
-      "recommended_action": "Monitorar e corrigir em janela regular."
+      "defense_playbook": "monitor_until_patch",
+      "remediation_playbook": "schedule_patch",
+      "immediate_action": "Monitorar o ativo até a janela de correção. Não há indicação suficiente para contenção imediata.",
+      "remediation_action": "Agendar aplicação de patch conforme criticidade e janela operacional.",
+      "defense_actions": [
+        "monitor_host",
+        "schedule_patch"
+      ]
     }
   },
   "exact_cves": {
@@ -33,16 +86,14 @@
       "exploit_type": "RCE",
       "attack_vector": "network",
       "requires_auth": false,
-      "risk_score": 100,
-      "risk_level": "Critico",
-      "recommended_playbook": "isolate_or_restrict_service",
-      "recommended_action": "Validar exposicao do servico Java/Log4j, restringir acesso externo e aplicar patch imediatamente.",
-      "decision_reason": "CVE historicamente explorado de forma remota e com alto impacto.",
+      "force_policy": "critical_with_exploit",
+      "decision_reason": "RCE remoto historicamente explorado em serviços Java/Log4j.",
       "tags": [
         "rce",
         "network",
         "java",
-        "log4j"
+        "log4j",
+        "internet-facing"
       ]
     },
     "CVE-2020-1472": {
@@ -50,15 +101,12 @@
       "exploit_type": "Privilege Escalation",
       "attack_vector": "network",
       "requires_auth": false,
-      "risk_score": 98,
-      "risk_level": "Critico",
-      "recommended_playbook": "domain_controller_containment",
-      "recommended_action": "Tratar controlador de dominio como ativo critico, validar patch e revisar logs de autenticacao/controlador.",
-      "decision_reason": "Falha critica envolvendo controlador de dominio e risco de comprometimento de dominio.",
+      "force_policy": "critical_with_exploit",
+      "decision_reason": "Risco de comprometimento de domínio quando afeta controladores de domínio.",
       "tags": [
+        "ad",
         "domain-controller",
-        "privilege-escalation",
-        "ad"
+        "privilege-escalation"
       ]
     },
     "CVE-2019-0708": {
@@ -66,11 +114,8 @@
       "exploit_type": "RCE",
       "attack_vector": "network",
       "requires_auth": false,
-      "risk_score": 95,
-      "risk_level": "Critico",
-      "recommended_playbook": "restrict_rdp_and_patch",
-      "recommended_action": "Restringir RDP, validar exposicao de rede e aplicar patch imediatamente.",
-      "decision_reason": "RCE remoto associado a RDP e alto risco quando exposto.",
+      "force_policy": "critical_with_exploit",
+      "decision_reason": "RCE em serviço RDP; exige contenção de exposição além do patch.",
       "tags": [
         "rce",
         "rdp",
@@ -78,35 +123,16 @@
       ]
     },
     "CVE-2023-23397": {
-      "name": "Outlook privilege escalation / credential exposure",
+      "name": "Outlook credential exposure",
       "exploit_type": "Credential Exposure",
       "attack_vector": "network",
       "requires_auth": false,
-      "risk_score": 90,
-      "risk_level": "Critico",
-      "recommended_playbook": "collect_mail_client_evidence",
-      "recommended_action": "Aplicar patch, revisar clientes Outlook e procurar autenticacoes NTLM suspeitas.",
-      "decision_reason": "CVE com impacto em credenciais e possibilidade de exploracao por vetor de mensagem/calendario.",
+      "force_policy": "critical_with_exploit",
+      "decision_reason": "Risco de exposição/coleta de credenciais em cliente Outlook.",
       "tags": [
         "credential-access",
         "outlook",
         "ntlm"
-      ]
-    },
-    "CVE-2023-34362": {
-      "name": "MOVEit Transfer SQL Injection/RCE chain",
-      "exploit_type": "RCE/Data Exposure",
-      "attack_vector": "network",
-      "requires_auth": false,
-      "risk_score": 96,
-      "risk_level": "Critico",
-      "recommended_playbook": "isolate_public_service",
-      "recommended_action": "Isolar servico exposto, aplicar patch e revisar possivel exfiltracao.",
-      "decision_reason": "CVE associado a servico exposto e risco de vazamento de dados.",
-      "tags": [
-        "rce",
-        "data-exposure",
-        "internet-facing"
       ]
     }
   },
@@ -117,15 +143,14 @@
         "rce",
         "remote code execution",
         "code execution",
-        "execucao remota",
-        "execução remota"
+        "execução remota",
+        "execucao remota"
       ],
       "exploit_type": "RCE",
       "attack_vector": "network",
       "requires_auth": null,
-      "risk_delta": 18,
-      "recommended_playbook": "isolate_or_restrict_service",
-      "recommended_action": "Validar se o servico afetado esta exposto. Se estiver exposto, restringir acesso e aplicar patch urgente.",
+      "risk_bonus": 14,
+      "preferred_policy": "critical_with_exploit",
       "tags": [
         "rce",
         "network"
@@ -137,15 +162,14 @@
         "authentication bypass",
         "auth bypass",
         "bypass authentication",
-        "sem autenticacao",
-        "sem autenticação"
+        "sem autenticação",
+        "sem autenticacao"
       ],
       "exploit_type": "Auth Bypass",
       "attack_vector": "network",
       "requires_auth": false,
-      "risk_delta": 16,
-      "recommended_playbook": "restrict_access_and_patch",
-      "recommended_action": "Restringir acesso ao servico vulneravel, aplicar patch e revisar logs de acesso.",
+      "risk_bonus": 12,
+      "preferred_policy": "critical_with_exploit",
       "tags": [
         "auth-bypass",
         "network"
@@ -157,116 +181,156 @@
         "privilege escalation",
         "elevation of privilege",
         "local privilege",
-        "escalonamento",
-        "elevacao",
-        "elevação"
+        "elevação de privilégio",
+        "elevacao de privilegio",
+        "escalonamento"
       ],
       "exploit_type": "Privilege Escalation",
       "attack_vector": "local",
       "requires_auth": true,
-      "risk_delta": 10,
-      "recommended_playbook": "patch_and_review_local_admins",
-      "recommended_action": "Aplicar patch e revisar usuarios com permissao local no host afetado.",
+      "risk_bonus": 8,
+      "preferred_policy": "critical_patch_available",
       "tags": [
         "privilege-escalation",
         "local"
       ]
     },
     {
-      "name": "Exchange exposed service",
+      "name": "Denial of Service",
       "keywords": [
-        "exchange",
-        "owa",
-        "eac",
-        "microsoft exchange"
+        "denial of service",
+        "dos",
+        "crash",
+        "negação de serviço",
+        "negacao de servico"
       ],
-      "exploit_type": "Messaging Server Risk",
-      "attack_vector": "network",
+      "exploit_type": "DoS",
+      "attack_vector": "network_or_local",
       "requires_auth": null,
-      "risk_delta": 12,
-      "recommended_playbook": "exchange_containment_review",
-      "recommended_action": "Validar exposicao externa do Exchange, aplicar patch e revisar logs IIS/Exchange.",
+      "risk_bonus": 3,
+      "preferred_policy": "patch_only",
       "tags": [
-        "exchange",
-        "mail",
-        "internet-facing"
+        "availability"
       ]
     },
     {
-      "name": "RDP/SMB Windows exposure",
+      "name": "Information Disclosure",
       "keywords": [
-        "rdp",
-        "remote desktop",
-        "smb",
-        "windows server",
-        "terminal services"
+        "information disclosure",
+        "data exposure",
+        "exposure of sensitive",
+        "divulgação de informações",
+        "divulgacao de informacoes"
       ],
-      "exploit_type": "Windows Network Service Risk",
-      "attack_vector": "network",
+      "exploit_type": "Information Disclosure",
+      "attack_vector": "network_or_local",
       "requires_auth": null,
-      "risk_delta": 10,
-      "recommended_playbook": "restrict_windows_service",
-      "recommended_action": "Validar exposicao de RDP/SMB, restringir acesso de rede e aplicar patch.",
+      "risk_bonus": 5,
+      "preferred_policy": "restrict_and_monitor",
       "tags": [
-        "windows",
-        "network-service"
+        "data-exposure"
       ]
     },
     {
-      "name": "Public web application/service",
+      "name": "Memory/Buffer Corruption",
+      "keywords": [
+        "buffer overflow",
+        "write buffer",
+        "memory corruption",
+        "use after free",
+        "out-of-bounds",
+        "heap overflow"
+      ],
+      "exploit_type": "Memory Corruption",
+      "attack_vector": "unknown",
+      "requires_auth": null,
+      "risk_bonus": 6,
+      "preferred_policy": "critical_patch_available",
+      "tags": [
+        "memory-corruption"
+      ]
+    },
+    {
+      "name": "Public service exposure",
       "keywords": [
         "apache",
         "nginx",
         "tomcat",
         "iis",
-        "web",
-        "http",
-        "struts",
-        "spring",
-        "log4j"
+        "exchange",
+        "owa",
+        "rdp",
+        "smb",
+        "postgresql",
+        "postgres",
+        "curl",
+        "safari",
+        "windows"
       ],
-      "exploit_type": "Web Service Risk",
-      "attack_vector": "network",
+      "exploit_type": "Service Risk",
+      "attack_vector": "network_or_endpoint",
       "requires_auth": null,
-      "risk_delta": 8,
-      "recommended_playbook": "web_service_patch_review",
-      "recommended_action": "Validar se a aplicacao esta exposta, revisar WAF/proxy e aplicar patch.",
+      "risk_bonus": 4,
+      "preferred_policy": "prioritize_and_reduce_exposure",
       "tags": [
-        "web",
-        "internet-facing"
+        "service-risk"
       ]
     }
   ],
   "playbooks": {
-    "isolate_or_restrict_service": {
-      "label": "Isolar ou restringir servico",
+    "contain_exploitable_cve": {
+      "label": "Conter CVE explorável",
+      "type": "defense",
       "automation_ready": false,
-      "description": "Restringe acesso ao servico vulneravel e orienta isolamento quando o risco for critico."
+      "description": "Reduz exposição, coleta evidência e permite isolamento quando o ativo estiver exposto ou for crítico."
     },
-    "patch_urgent": {
-      "label": "Aplicar patch urgente",
+    "virtual_patch_or_restrict_access": {
+      "label": "Controle compensatório",
+      "type": "defense",
       "automation_ready": false,
-      "description": "Prioriza patch no Endpoint Central ou ferramenta equivalente."
+      "description": "Usa bloqueio/restrição de rede, segmentação ou WAF quando não há patch disponível."
     },
-    "patch_priority": {
-      "label": "Priorizar patch",
+    "prioritize_and_reduce_exposure": {
+      "label": "Reduzir exposição e priorizar",
+      "type": "defense",
       "automation_ready": false,
-      "description": "Inclui host em fila prioritaria de correcao."
+      "description": "Reduz superfície de ataque enquanto o patch é aplicado."
     },
-    "monitor_and_patch": {
-      "label": "Monitorar e corrigir",
+    "restrict_and_monitor": {
+      "label": "Restringir e monitorar",
+      "type": "defense",
       "automation_ready": false,
-      "description": "Mantem monitoramento e agenda correcao."
+      "description": "Restringe acesso ao componente e aumenta monitoramento temporário."
     },
-    "restrict_rdp_and_patch": {
-      "label": "Restringir RDP e aplicar patch",
+    "monitor_until_patch": {
+      "label": "Monitorar até correção",
+      "type": "defense",
       "automation_ready": false,
-      "description": "Recomenda bloqueio/restricao de RDP antes de patch."
+      "description": "Apenas monitora quando não há sinal de exploração imediata."
     },
-    "domain_controller_containment": {
-      "label": "Contencao em Domain Controller",
+    "apply_patch_urgent": {
+      "label": "Aplicar patch emergencial",
+      "type": "remediation",
       "automation_ready": false,
-      "description": "Fluxo especial para ativos de dominio."
+      "description": "Aplicação emergencial via Endpoint Central ou ferramenta equivalente."
+    },
+    "apply_patch_priority": {
+      "label": "Aplicar patch prioritário",
+      "type": "remediation",
+      "automation_ready": false,
+      "description": "Aplicação prioritária por criticidade."
+    },
+    "schedule_patch": {
+      "label": "Agendar patch",
+      "type": "remediation",
+      "automation_ready": false,
+      "description": "Agendamento de correção em janela regular."
+    },
+    "vendor_fix_watch": {
+      "label": "Aguardar correção/workaround",
+      "type": "remediation",
+      "automation_ready": false,
+      "description": "Acompanhar correção do fabricante ou aplicar workaround oficial."
     }
   }
 }
