@@ -1,12 +1,15 @@
+from __future__ import annotations
+
 import json
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import text
 
 from app.database.connection import SessionLocal
 
 
-def register_runner(runner_id: str, name: str | None, hostname: str | None):
+def register_runner(runner_id: str, name: str | None, hostname: str | None) -> None:
     with SessionLocal() as db:
         db.execute(
             text(
@@ -31,7 +34,7 @@ def register_runner(runner_id: str, name: str | None, hostname: str | None):
         db.commit()
 
 
-def update_heartbeat(runner_id: str):
+def update_heartbeat(runner_id: str) -> None:
     with SessionLocal() as db:
         db.execute(
             text(
@@ -49,7 +52,7 @@ def update_heartbeat(runner_id: str):
         db.commit()
 
 
-def get_pending_jobs(runner_id: str):
+def get_pending_jobs(runner_id: str) -> list[dict[str, Any]]:
     with SessionLocal() as db:
         rows = db.execute(
             text(
@@ -77,7 +80,12 @@ def get_pending_jobs(runner_id: str):
         return [dict(row) for row in rows]
 
 
-def create_runner_job(runner_id: str | None, job_type: str, target: str | None, payload: dict | None):
+def create_runner_job(
+    runner_id: str | None,
+    job_type: str,
+    target: str | None,
+    payload: dict | None,
+) -> dict[str, Any]:
     with SessionLocal() as db:
         row = db.execute(
             text(
@@ -98,7 +106,7 @@ def create_runner_job(runner_id: str | None, job_type: str, target: str | None, 
                     'pending',
                     :now
                 )
-                RETURNING id, status
+                RETURNING id, runner_id, job_type, target, payload, status
                 """
             ),
             {
@@ -111,10 +119,16 @@ def create_runner_job(runner_id: str | None, job_type: str, target: str | None, 
         ).mappings().first()
 
         db.commit()
-        return dict(row) if row else None
+        return dict(row)
 
 
-def save_job_result(job_id: int, runner_id: str, status: str, result: dict | None, error: str | None):
+def save_job_result(
+    job_id: int,
+    runner_id: str,
+    status: str,
+    result: dict | None,
+    error: str | None,
+) -> dict[str, Any] | None:
     with SessionLocal() as db:
         row = db.execute(
             text(
@@ -126,7 +140,7 @@ def save_job_result(job_id: int, runner_id: str, status: str, result: dict | Non
                     finished_at = :now
                 WHERE id = :job_id
                   AND (runner_id = :runner_id OR runner_id IS NULL)
-                RETURNING id, status
+                RETURNING id, runner_id, job_type, target, status, result, error
                 """
             ),
             {
@@ -135,6 +149,106 @@ def save_job_result(job_id: int, runner_id: str, status: str, result: dict | Non
                 "status": status,
                 "result": json.dumps(result or {}),
                 "error": error,
+                "now": datetime.utcnow(),
+            },
+        ).mappings().first()
+
+        db.commit()
+        return dict(row) if row else None
+
+
+def create_validation_job(
+    runner_job_id: int,
+    runner_id: str | None,
+    validation_type: str,
+    target: str | None,
+    expected_state: dict | None,
+) -> dict[str, Any]:
+    with SessionLocal() as db:
+        row = db.execute(
+            text(
+                """
+                INSERT INTO validation_jobs (
+                    runner_job_id,
+                    runner_id,
+                    validation_type,
+                    target,
+                    expected_state,
+                    status,
+                    created_at
+                )
+                VALUES (
+                    :runner_job_id,
+                    :runner_id,
+                    :validation_type,
+                    :target,
+                    CAST(:expected_state AS JSONB),
+                    'pending',
+                    :now
+                )
+                RETURNING id, runner_job_id, runner_id, validation_type, target, expected_state, status
+                """
+            ),
+            {
+                "runner_job_id": runner_job_id,
+                "runner_id": runner_id,
+                "validation_type": validation_type,
+                "target": target,
+                "expected_state": json.dumps(expected_state or {}),
+                "now": datetime.utcnow(),
+            },
+        ).mappings().first()
+
+        db.commit()
+        return dict(row)
+
+
+def mark_validation_running(runner_job_id: int) -> dict[str, Any] | None:
+    with SessionLocal() as db:
+        row = db.execute(
+            text(
+                """
+                UPDATE validation_jobs
+                SET status = 'running', started_at = :now
+                WHERE runner_job_id = :runner_job_id
+                  AND status = 'pending'
+                RETURNING id, status
+                """
+            ),
+            {
+                "runner_job_id": runner_job_id,
+                "now": datetime.utcnow(),
+            },
+        ).mappings().first()
+
+        db.commit()
+        return dict(row) if row else None
+
+
+def update_validation_from_runner_job(
+    runner_job_id: int,
+    status: str,
+    result: dict | None,
+    error: str | None,
+) -> dict[str, Any] | None:
+    with SessionLocal() as db:
+        row = db.execute(
+            text(
+                """
+                UPDATE validation_jobs
+                SET status = :status,
+                    result = CAST(:result AS JSONB),
+                    details = :details,
+                    finished_at = :now
+                WHERE runner_job_id = :runner_job_id
+                RETURNING id, runner_job_id, status, result, details
+                """
+            ),
+            {
+                "runner_job_id": runner_job_id,
+                "status": status,
+                "result": json.dumps(result or {}),
+                "details": error,
                 "now": datetime.utcnow(),
             },
         ).mappings().first()
