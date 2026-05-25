@@ -12,4 +12,5 @@ echo "Running database migrations..."
 alembic -c /app/alembic.ini upgrade heads
 
 echo "Starting Magi backend..."
-exec uvicorn backend.main:app --host 0.0.0.0 --port 8443
+cd /app/backend
+exec uvicorn main:app --host 0.0.0.0 --port 8443
