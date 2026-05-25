@@ -81,6 +81,9 @@ def _row_to_alert(row: Any) -> Dict[str, Any]:
         "mitre_tactic": m.get("mitre_tactic") or "",
         "nist_control": m.get("nist_control") or "",
         "severity": m.get("severity") or "",
+        "automation_status": m.get("automation_status") or "none",
+        "automation_message": m.get("automation_message") or "",
+        "automation_at": _to_iso(m.get("automation_at")),
         "raw_payload": raw_payload,
         # Backward-compatible keys used by the current frontend/actions view.
         "execution_status": "idle",

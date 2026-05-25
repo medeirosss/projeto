@@ -21,6 +21,10 @@ from app.repositories.alerts_repository import (
     update_alert_status,
     upsert_alert,
 )
+from app.repositories.runner_repository import (
+    create_runner_job,
+    create_validation_job,
+)
 
 
 def _now_iso() -> str:
@@ -108,7 +112,45 @@ def create_alert_from_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
     if existing:
         return existing
 
-    return upsert_alert(build_alert_record(normalized))
+    alert = upsert_alert(build_alert_record(normalized))
+
+    # Cria validação automática inicial para alertas com IP.
+    # Regra atual: isso NÃO finaliza o alerta. Apenas alimenta o Validation Engine.
+    try:
+        target_ip = (
+            alert.get("ip_address")
+            or alert.get("target_ip")
+            or alert.get("source_ip")
+            or ""
+        )
+        target_ip = str(target_ip).strip()
+
+        if target_ip:
+            runner_job = create_runner_job(
+                runner_id=None,  # qualquer runner habilitado pode consumir o job
+                job_type="validation",
+                target=target_ip,
+                payload={
+                    "validation_type": "host_reachable",
+                    "expected_state": {"reachable": True},
+                    "alert_uuid": alert.get("alert_uuid") or alert.get("alert_id"),
+                    "alert_db_id": alert.get("db_id"),
+                },
+            )
+
+            create_validation_job(
+                runner_job_id=runner_job["id"],
+                runner_id=None,
+                validation_type="host_reachable",
+                target=target_ip,
+                expected_state={"reachable": True},
+                alert_id=alert.get("db_id"),
+            )
+    except Exception as exc:
+        # Não bloqueia a entrada do alerta caso a automação falhe.
+        print(f"[ALERT_AUTOMATION_ERROR] {exc}")
+
+    return alert
 
 
 def get_alert_by_id(alert_id: str) -> Optional[Dict[str, Any]]:

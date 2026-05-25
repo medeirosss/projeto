@@ -4,12 +4,12 @@ from app.repositories.runner_repository import (
     create_runner_job,
     create_validation_job,
     get_pending_jobs,
-    mark_validation_running,
     register_runner,
     save_job_result,
     update_heartbeat,
     update_validation_from_runner_job,
 )
+from app.services.alert_automation_service import mark_alert_automation_from_validation
 
 
 VALID_JOB_STATUSES = ["success", "failed", "error"]
@@ -53,10 +53,6 @@ def list_jobs_service(runner_id: str):
 
     jobs = get_pending_jobs(runner_id)
 
-    for job in jobs:
-        if job.get("job_type") == "validation":
-            mark_validation_running(job["id"])
-
     return {
         "success": True,
         "runner_id": runner_id,
@@ -91,6 +87,15 @@ def create_job_service(data: dict):
             validation_type=validation_type,
             target=data.get("target"),
             expected_state=payload.get("expected_state"),
+            alert_id=(
+                data.get("alert_db_id")
+                or payload.get("alert_db_id")
+                or data.get("alert_id")
+                or payload.get("alert_id")
+                or data.get("alert_uuid")
+                or payload.get("alert_uuid")
+            ),
+            action_execution_id=data.get("action_execution_id") or payload.get("action_execution_id"),
         )
 
     return {
@@ -128,8 +133,20 @@ def job_result_service(job_id: int, data: dict):
         error=data.get("error"),
     )
 
+    alert_automation = None
+    alert_ref = None
+    if validation:
+        alert_ref = validation.get("alert_uuid") or validation.get("alert_id")
+
+    if alert_ref:
+        alert_automation = mark_alert_automation_from_validation(
+            alert_id=str(alert_ref),
+            validation_status=status,
+        )
+
     return {
         "success": True,
         "job": result,
         "validation": validation,
+        "alert_automation": alert_automation,
     }
