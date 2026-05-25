@@ -3,6 +3,7 @@ from app.repositories.runner_repository import (
     update_heartbeat,
     get_pending_jobs,
     save_job_result,
+    create_runner_job,
 )
 
 
@@ -20,7 +21,7 @@ def register_runner_service(data: dict):
     return {
         "success": True,
         "runner_id": runner_id,
-        "status": "registered"
+        "status": "registered",
     }
 
 
@@ -34,7 +35,7 @@ def heartbeat_service(data: dict):
     return {
         "success": True,
         "runner_id": runner_id,
-        "status": "online"
+        "status": "online",
     }
 
 
@@ -47,7 +48,25 @@ def list_jobs_service(runner_id: str):
     return {
         "success": True,
         "runner_id": runner_id,
-        "jobs": jobs
+        "jobs": jobs,
+    }
+
+
+def create_job_service(data: dict):
+    job_type = data.get("job_type")
+    if not job_type:
+        raise ValueError("job_type is required")
+
+    job = create_runner_job(
+        runner_id=data.get("runner_id"),
+        job_type=job_type,
+        target=data.get("target"),
+        payload=data.get("payload"),
+    )
+
+    return {
+        "success": True,
+        "job": job,
     }
 
 
@@ -74,5 +93,5 @@ def job_result_service(job_id: int, data: dict):
 
     return {
         "success": True,
-        "job": result
+        "job": result,
     }

@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException, Query
+
 from app.services.runner_service import (
     register_runner_service,
     heartbeat_service,
     list_jobs_service,
     job_result_service,
+    create_job_service,
 )
 
 router = APIRouter()
@@ -29,6 +31,14 @@ def runner_heartbeat(data: dict):
 def list_runner_jobs(runner_id: str = Query(...)):
     try:
         return list_jobs_service(runner_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/jobs")
+def create_runner_job(data: dict):
+    try:
+        return create_job_service(data)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
