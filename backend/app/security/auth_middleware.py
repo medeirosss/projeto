@@ -20,6 +20,7 @@ PUBLIC_AUTH_PATHS = (
     "/api/runner/register",
     "/api/runner/heartbeat",
     "/api/runner/jobs",
+    "/api/runner/jobs/1/result",
 )
 
 ROLE_ACCESS = {
