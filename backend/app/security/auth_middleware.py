@@ -17,10 +17,12 @@ PUBLIC_AUTH_PATHS = (
     "/license/upload",
     "/health",
     "/api/actions/inbound-alert",
-    "/api/runner/register",
-    "/api/runner/heartbeat",
-    "/api/runner/jobs",
-    "/api/runner/jobs/1/result",
+)
+
+PUBLIC_AUTH_PREFIXES = (
+    "/license/",
+    "/api/alerts/inbound",
+    "/api/runner",
 )
 
 ROLE_ACCESS = {
@@ -51,7 +53,12 @@ def _wants_html(request: Request) -> bool:
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path.startswith("/assets") or path in PUBLIC_AUTH_PATHS or path.startswith("/license/") or path.startswith("/api/alerts/inbound"):
+
+        if (
+            path.startswith("/assets")
+            or path in PUBLIC_AUTH_PATHS
+            or any(path.startswith(prefix) for prefix in PUBLIC_AUTH_PREFIXES)
+        ):
             return await call_next(request)
 
         token = request.cookies.get(JWT_COOKIE_NAME)
