@@ -49,6 +49,24 @@ function severityBadge(alert){
   return `<span class="severity-badge ${severityClass(severity)}">${esc(severity)}</span>`;
 }
 
+
+function automationLabel(status){
+  const normalized = String(status || 'none').toLowerCase();
+  if(normalized === 'executed_ok') return 'Automação OK';
+  if(normalized === 'executed_failed') return 'Automação falhou';
+  if(normalized === 'running') return 'Automação em execução';
+  return 'Sem automação';
+}
+
+function automationBadge(alert){
+  const status = String(alert?.automation_status || 'none').toLowerCase();
+  let cls = 'automation-badge automation-none';
+  if(status === 'executed_ok') cls = 'automation-badge automation-ok';
+  if(status === 'executed_failed') cls = 'automation-badge automation-failed';
+  if(status === 'running') cls = 'automation-badge automation-running';
+  return `<span class="${cls}">${esc(automationLabel(status))}</span>`;
+}
+
 function getRaw(alert){
   return alert?.raw_payload || alert?.payload || alert || {};
 }
@@ -120,7 +138,7 @@ async function loadAlertsPage(options = {}){
     console.error('Erro ao carregar alertas:', error);
     if(!options.silent){
       const tbody = document.getElementById('alertsOpenTable');
-      if(tbody) tbody.innerHTML = `<tr><td colspan="9">Erro ao carregar alertas.</td></tr>`;
+      if(tbody) tbody.innerHTML = `<tr><td colspan="10">Erro ao carregar alertas.</td></tr>`;
     }
   }finally{
     isLoadingAlerts = false;
@@ -133,7 +151,7 @@ function renderOpenAlerts(){
 
   tbody.innerHTML = '';
   if(!alertsOpen.length){
-    tbody.innerHTML = '<tr><td colspan="9">Nenhum alerta ativo.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10">Nenhum alerta ativo.</td></tr>';
     clearDetail();
     return;
   }
@@ -165,6 +183,7 @@ function renderOpenAlerts(){
       <td>${esc(alert.tactic || alert.mitre_tactic || '--')}</td>
       <td>${esc(alert.nist || alert.nist_control || '--')}</td>
       <td>${severityBadge(alert)}</td>
+      <td>${automationBadge(alert)}</td>
       <td>
         <div class="table-actions">
           <button class="btn primary btn-sm btn-detail" type="button">Detalhes</button>
@@ -265,6 +284,9 @@ function selectAlert(alert, rerender = true){
   const recommendation = val(getFromAlert(alert, 'recommendation'), 'Validar o evento com o time responsável e confirmar se a atividade foi autorizada.');
   const severity = val(alert.severity, 'Media');
   const status = statusLabel(alert);
+  const automationStatus = String(alert.automation_status || 'none').toLowerCase();
+  const automationMessage = val(alert.automation_message, automationStatus === 'none' ? 'Nenhuma automação executada.' : automationLabel(automationStatus));
+  const automationAt = val(alert.automation_at, '--');
 
   document.getElementById('detailStatusSlot').innerHTML = statusBadge(alert);
   setText('detailTitle', title);
@@ -286,6 +308,14 @@ function selectAlert(alert, rerender = true){
   setText('detailEventBadge', `Evento ${eventNumber}`);
   setText('detailSeverityBadge', severity);
   setText('detailSourceBadge', source);
+  setText('detailAutomationMessage', automationMessage);
+  setText('detailAutomationAt', automationAt === '--' ? '--' : `Executada em ${automationAt}`);
+
+  const automationBadgeEl = document.getElementById('detailAutomationBadge');
+  if(automationBadgeEl){
+    automationBadgeEl.className = `automation-badge automation-${automationStatus === 'executed_ok' ? 'ok' : automationStatus === 'executed_failed' ? 'failed' : automationStatus === 'running' ? 'running' : 'none'}`;
+    automationBadgeEl.textContent = automationLabel(automationStatus);
+  }
 
   const severityBadgeEl = document.getElementById('detailSeverityBadge');
   if(severityBadgeEl) severityBadgeEl.className = `severity-badge ${severityClass(severity)}`;
