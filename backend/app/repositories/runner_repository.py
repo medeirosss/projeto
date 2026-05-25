@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import text
-from app.database import SessionLocal
+from app.database.connection import SessionLocal
 
 
 def register_runner(runner_id: str, name: str | None, hostname: str | None):
