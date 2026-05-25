@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.routers.runner_router import router as runner_router
 
 import asyncio
 from fastapi import FastAPI
@@ -24,6 +25,7 @@ from app.repositories.auth_repository import ensure_local_auth_schema
 app = FastAPI(title="Centric - UEM Backend")
 app.add_middleware(AuthMiddleware)
 app.add_middleware(LicenseMiddleware)
+app.include_router(runner_router, prefix="/api/runner", tags=["Runner"])
 
 
 @app.on_event("startup")
