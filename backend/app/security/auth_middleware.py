@@ -17,6 +17,9 @@ PUBLIC_AUTH_PATHS = (
     "/license/upload",
     "/health",
     "/api/actions/inbound-alert",
+    "/api/runner/register",
+    "/api/runner/heartbeat",
+    "/api/runner/jobs",
 )
 
 ROLE_ACCESS = {

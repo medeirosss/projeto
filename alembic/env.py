@@ -1,7 +1,9 @@
-from __future__ import annotations
-
 import os
 import sys
+from __future__ import annotations
+
+sys.path.insert(0, "/app/backend")
+
 from logging.config import fileConfig
 from pathlib import Path
 
