@@ -425,11 +425,14 @@ function selectAlert(alert, rerender = true){
     actionLink.href = `/acoes?${params.toString()}`;
   }
 
-  const connectivityBtn = document.getElementById('detailConnectivityBtn');
+  const connectivityBtn = document.getElementById('detailConnectivityBtn') || document.getElementById('detailValidateConnectivityBtn');
   if(connectivityBtn){
-    connectivityBtn.onclick = () => runConnectivityValidation(alertId);
+    connectivityBtn.dataset.alertId = alertId || '';
     connectivityBtn.disabled = connectivityStatus === 'checking';
-    connectivityBtn.textContent = connectivityStatus === 'checking' ? 'Validando...' : 'Validar conectividade';
+    connectivityBtn.classList.toggle('is-loading', connectivityStatus === 'checking');
+    connectivityBtn.innerHTML = connectivityStatus === 'checking'
+      ? '<span class="btn-spinner"></span><span>Validando...</span>'
+      : '<span>Validar conectividade</span>';
   }
 
   if(Number(alert.status || 0) === 3){
@@ -452,35 +455,51 @@ function currentUserName(){
 }
 
 
-async function runConnectivityValidation(alertId){
+async function runConnectivityValidation(alertId, sourceButton = null){
   if(!alertId){
     alert('Alerta inválido para validação de conectividade.');
     return;
   }
 
-  const btn = document.getElementById('detailConnectivityBtn');
+  const btn = sourceButton || document.getElementById('detailConnectivityBtn') || document.getElementById('detailValidateConnectivityBtn');
   if(btn){
     btn.disabled = true;
-    btn.textContent = 'Validando...';
+    btn.classList.add('is-loading');
+    btn.innerHTML = '<span class="btn-spinner"></span><span>Validando...</span>';
   }
 
-  const response = await fetch(`/api/alerts/${encodeURIComponent(alertId)}/validate-connectivity`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'}
-  });
+  try{
+    const response = await fetch(`/api/alerts/${encodeURIComponent(alertId)}/validate-connectivity`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({})
+    });
 
-  if(!response.ok){
-    const errorText = await response.text();
-    console.error('Erro ao validar conectividade:', errorText);
-    alert('Não foi possível iniciar a validação de conectividade.');
-    if(btn){
-      btn.disabled = false;
-      btn.textContent = 'Validar conectividade';
+    if(!response.ok){
+      const errorText = await response.text();
+      console.error('Erro ao validar conectividade:', errorText);
+      alert('Não foi possível iniciar a validação de conectividade.');
+      return;
     }
-    return;
-  }
 
-  await loadAlertsPage({ silent: true });
+    if(btn){
+      btn.innerHTML = '<span class="btn-check">✓</span><span>Validação enviada</span>';
+    }
+
+    await loadAlertsPage({ silent: true });
+  }catch(error){
+    console.error('Erro ao validar conectividade:', error);
+    alert('Não foi possível iniciar a validação de conectividade.');
+  }finally{
+    setTimeout(() => {
+      const currentBtn = document.getElementById('detailConnectivityBtn') || document.getElementById('detailValidateConnectivityBtn');
+      if(currentBtn){
+        currentBtn.disabled = false;
+        currentBtn.classList.remove('is-loading');
+        currentBtn.innerHTML = '<span>Validar conectividade</span>';
+      }
+    }, 900);
+  }
 }
 
 async function setAlertStatus(alertId, status, resolution_type = '', resolved_by = 'admin', message = ''){
@@ -520,6 +539,18 @@ function startLiveAlertsRefresh(){
     await loadAlertsPage({ silent: true });
   }, 5000);
 }
+
+
+document.addEventListener('click', async (event) => {
+  const btn = event.target.closest('#detailConnectivityBtn, #detailValidateConnectivityBtn');
+  if(!btn) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const alertId = btn.dataset.alertId || alertIdOf(selectedAlert);
+  await runConnectivityValidation(alertId, btn);
+});
 
 async function bootAlerts(){
   buildHeader('alerts');

@@ -980,3 +980,43 @@ th{color:#475467;background:#fbfcfe}
   .operational-grid{grid-template-columns:1fr}
   .operational-header{flex-direction:column}
 }
+
+
+/* === Alertas - feedback visual da validação de conectividade === */
+#detailConnectivityBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  transition:transform .16s ease, opacity .16s ease, box-shadow .16s ease;
+}
+#detailConnectivityBtn.is-loading{
+  opacity:.86;
+  cursor:wait;
+  box-shadow:0 0 0 3px rgba(124,58,237,.16);
+}
+#detailConnectivityBtn:not(:disabled):active{
+  transform:scale(.98);
+}
+.btn-spinner{
+  width:14px;
+  height:14px;
+  border:2px solid rgba(255,255,255,.45);
+  border-top-color:#fff;
+  border-radius:50%;
+  display:inline-block;
+  animation:magiSpin .75s linear infinite;
+}
+.btn-check{
+  width:16px;
+  height:16px;
+  border-radius:999px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(34,197,94,.25);
+  color:#fff;
+  font-size:12px;
+  font-weight:900;
+}
+@keyframes magiSpin{to{transform:rotate(360deg)}}
