@@ -81,9 +81,14 @@ def _row_to_alert(row: Any) -> Dict[str, Any]:
         "mitre_tactic": m.get("mitre_tactic") or "",
         "nist_control": m.get("nist_control") or "",
         "severity": m.get("severity") or "",
+        "risk_score": int(m.get("risk_score") or 0),
+        "risk_level": m.get("risk_level") or "low",
         "automation_status": m.get("automation_status") or "none",
         "automation_message": m.get("automation_message") or "",
         "automation_at": _to_iso(m.get("automation_at")),
+        "connectivity_status": m.get("connectivity_status") or "not_checked",
+        "connectivity_message": m.get("connectivity_message") or "",
+        "connectivity_at": _to_iso(m.get("connectivity_at")),
         "raw_payload": raw_payload,
         # Backward-compatible keys used by the current frontend/actions view.
         "execution_status": "idle",
@@ -119,6 +124,8 @@ def upsert_alert(alert_record: Dict[str, Any]) -> Dict[str, Any]:
         "mitre_technique": str(alert_record.get("mitre_technique") or alert_record.get("technique") or ""),
         "nist_control": str(alert_record.get("nist_control") or alert_record.get("nist") or ""),
         "severity": str(alert_record.get("severity") or ""),
+        "risk_score": int(alert_record.get("risk_score") or 0),
+        "risk_level": str(alert_record.get("risk_level") or "low"),
         "status": int(alert_record.get("status") or 1),
         "raw_payload": json.dumps(raw_payload, ensure_ascii=False),
         "received_at": _to_dt(alert_record.get("received_at") or alert_record.get("date")),
@@ -131,11 +138,11 @@ def upsert_alert(alert_record: Dict[str, Any]) -> Dict[str, Any]:
                 INSERT INTO alerts
                     (alert_uuid, source_system, event_number, event_type, event_type_text,
                      display_name, username, hostname, ip_address, mitre_tactic,
-                     mitre_technique, nist_control, severity, status, raw_payload, received_at)
+                     mitre_technique, nist_control, severity, risk_score, risk_level, status, raw_payload, received_at)
                 VALUES
                     (:alert_uuid, :source_system, :event_number, :event_type, :event_type_text,
                      :display_name, :username, :hostname, :ip_address, :mitre_tactic,
-                     :mitre_technique, :nist_control, :severity, :status,
+                     :mitre_technique, :nist_control, :severity, :risk_score, :risk_level, :status,
                      CAST(:raw_payload AS jsonb), :received_at)
                 ON CONFLICT (alert_uuid) DO UPDATE SET
                     source_system = EXCLUDED.source_system,
@@ -150,6 +157,8 @@ def upsert_alert(alert_record: Dict[str, Any]) -> Dict[str, Any]:
                     mitre_technique = EXCLUDED.mitre_technique,
                     nist_control = EXCLUDED.nist_control,
                     severity = EXCLUDED.severity,
+                    risk_score = EXCLUDED.risk_score,
+                    risk_level = EXCLUDED.risk_level,
                     raw_payload = EXCLUDED.raw_payload
                 RETURNING *
                 """
@@ -367,3 +376,52 @@ def list_alert_history(alert_uuid: str) -> List[Dict[str, Any]]:
                 "created_at": _to_iso(m.get("created_at")),
             })
         return result
+
+
+def update_alert_connectivity_status(alert_uuid: str, connectivity_status: str, connectivity_message: str = "") -> Optional[Dict[str, Any]]:
+    if not alert_uuid:
+        return None
+    with get_db_session() as session:
+        row = session.execute(
+            text(
+                """
+                UPDATE alerts
+                SET connectivity_status = :connectivity_status,
+                    connectivity_message = :connectivity_message,
+                    connectivity_at = :connectivity_at
+                WHERE alert_uuid = :alert_uuid
+                RETURNING *
+                """
+            ),
+            {
+                "alert_uuid": str(alert_uuid),
+                "connectivity_status": connectivity_status,
+                "connectivity_message": connectivity_message or "",
+                "connectivity_at": _now(),
+            },
+        ).fetchone()
+        return _row_to_alert(row) if row else None
+
+def update_alert_connectivity_status_by_db_id(alert_db_id: int, connectivity_status: str, connectivity_message: str = "") -> Optional[Dict[str, Any]]:
+    if not alert_db_id:
+        return None
+    with get_db_session() as session:
+        row = session.execute(
+            text(
+                """
+                UPDATE alerts
+                SET connectivity_status = :connectivity_status,
+                    connectivity_message = :connectivity_message,
+                    connectivity_at = :connectivity_at
+                WHERE id = :alert_db_id
+                RETURNING *
+                """
+            ),
+            {
+                "alert_db_id": int(alert_db_id),
+                "connectivity_status": connectivity_status,
+                "connectivity_message": connectivity_message or "",
+                "connectivity_at": _now(),
+            },
+        ).fetchone()
+        return _row_to_alert(row) if row else None

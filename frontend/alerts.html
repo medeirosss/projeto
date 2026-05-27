@@ -14,6 +14,42 @@
           <div class="card-body">
             <div id="alertDetailEmpty" class="detail-empty">Selecione um alerta para visualizar o resumo operacional.</div>
             <div id="alertDetailContent" class="hidden-section">
+              <div class="detail-connectivity-panel" id="detailConnectivityPanel">
+                <div class="connectivity-head">
+                  <div>
+                    <h3>Validação de conectividade</h3>
+                    <span>Executada manualmente pelo analista via Runner</span>
+                  </div>
+                  <span id="detailConnectivityBadge" class="connectivity-badge connectivity-not-checked">Não validado</span>
+                </div>
+                <div class="connectivity-body">
+                  <div class="connectivity-target">
+                    <small>IP detectado</small>
+                    <strong id="detailConnectivityIp">--</strong>
+                  </div>
+                  <div class="connectivity-status-text">
+                    <small>Status</small>
+                    <strong id="detailConnectivityMessage">Ainda não validado</strong>
+                    <span id="detailConnectivityAt">--</span>
+                  </div>
+                  <button class="btn primary btn-sm" id="detailConnectivityBtn" type="button">Validar conectividade</button>
+                </div>
+              </div>
+
+              <div class="detail-automation-panel" id="detailAutomationPanel">
+                <div class="connectivity-head">
+                  <div>
+                    <h3>Automação</h3>
+                    <span>Execução de script/playbook será configurada na próxima etapa</span>
+                  </div>
+                  <span id="detailAutomationBadge" class="automation-badge automation-none">Sem automação</span>
+                </div>
+                <div class="automation-placeholder">
+                  <span>Script/playbook</span>
+                  <strong>Seleção será habilitada posteriormente</strong>
+                </div>
+              </div>
+
               <div class="detail-hero">
                 <div class="detail-title-row">
                   <div class="detail-icon" id="detailSeverityIcon">!</div>
@@ -71,20 +107,6 @@
                   <span>Primeira ação sugerida para triagem</span>
                 </div>
                 <p id="detailRecommendation">--</p>
-              </div>
-
-              <div class="detail-section automation-detail-section">
-                <div class="detail-section-title">
-                  <h3>Automação</h3>
-                  <span>Resultado da validação executada pelo Runner</span>
-                </div>
-                <div class="automation-detail-card" id="detailAutomationCard">
-                  <span id="detailAutomationBadge" class="automation-badge automation-none">Sem automação</span>
-                  <div class="automation-detail-text">
-                    <strong id="detailAutomationMessage">Nenhuma automação executada.</strong>
-                    <small id="detailAutomationAt">--</small>
-                  </div>
-                </div>
               </div>
 
               <div class="detail-section">

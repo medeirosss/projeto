@@ -11,6 +11,7 @@ from app.services.alert_service import (
     list_open_alerts,
     list_resolved_alerts,
     register_execution_result,
+    run_connectivity_validation_for_alert,
     update_alert_status,
 )
 
@@ -42,6 +43,14 @@ async def api_alert_by_id(alert_id: str):
     if not alert:
         raise HTTPException(status_code=404, detail='Alerta não encontrado.')
     return {'alert': alert}
+
+
+@router.post('/{alert_id}/validate-connectivity')
+async def api_alert_validate_connectivity(alert_id: str):
+    try:
+        return run_connectivity_validation_for_alert(alert_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post('/{alert_id}/status')
