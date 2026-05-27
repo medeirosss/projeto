@@ -183,31 +183,72 @@ def create_alert_from_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
     return alert
 
 def run_connectivity_validation_for_alert(alert_id: str) -> Dict[str, Any]:
+    """Enfileira validação manual de conectividade para um alerta.
+
+    Regras:
+    - Retorna 200 quando a validação é criada/enfileirada corretamente.
+    - Se já houver validação queued/running/checking, retorna 200 sem criar job duplicado.
+    - Se a última validação já terminou (success/failed/error), permite nova tentativa.
+    - A atualização de connectivity_status para checking é best-effort e não deve quebrar o endpoint.
+    """
     alert = get_alert_by_id(alert_id)
     if not alert:
         raise ValueError("Alerta não encontrado.")
+
+    alert_uuid = alert.get("alert_uuid") or alert.get("alert_id") or alert_id
+    alert_db_id = alert.get("db_id")
+
+    if not alert_db_id:
+        raise ValueError("Alerta sem identificador interno para validação.")
 
     target_ip = _alert_target_ip(alert)
     if not target_ip:
         raise ValueError("Alerta não possui IP para validação.")
 
     if not _is_internal_ip(target_ip):
-        update_alert_connectivity_status(
-            alert.get("alert_uuid") or alert.get("alert_id"),
-            "check_failed",
-            "Validação bloqueada: IP fora do escopo interno permitido.",
-        )
+        try:
+            update_alert_connectivity_status(
+                alert_uuid,
+                "check_failed",
+                "Validação bloqueada: IP fora do escopo interno permitido.",
+            )
+        except Exception as exc:
+            print(f"[CONNECTIVITY_STATUS_UPDATE_ERROR] {exc}")
         raise ValueError("IP fora do escopo interno permitido.")
 
-    validation = get_latest_validation_for_alert(int(alert.get("db_id")), "host_reachable")
-    if not validation:
+    validation = get_latest_validation_for_alert(int(alert_db_id), "host_reachable")
+
+    if validation:
+        current_status = str(validation.get("status") or "").lower()
+        runner_job_id = validation.get("runner_job_id")
+
+        if current_status in {"queued", "running", "checking"}:
+            return {
+                "success": True,
+                "already_running": True,
+                "message": "Validação de conectividade já está em andamento.",
+                "alert": alert,
+                "validation": validation,
+            }
+
+        if current_status == "pending_manual" and runner_job_id:
+            return {
+                "success": True,
+                "already_running": True,
+                "message": "Validação de conectividade já possui job vinculado.",
+                "alert": alert,
+                "validation": validation,
+            }
+
+    # Se não existe validação pendente, ou se a última terminou, cria nova tentativa.
+    if not validation or str(validation.get("status") or "").lower() in {"success", "failed", "error"}:
         validation = create_validation_job(
             runner_job_id=None,
             runner_id=None,
             validation_type="host_reachable",
             target=target_ip,
             expected_state={"reachable": True, "ping_count": 4, "min_success": 3},
-            alert_id=alert.get("db_id"),
+            alert_id=int(alert_db_id),
             status="pending_manual",
         )
 
@@ -219,8 +260,8 @@ def run_connectivity_validation_for_alert(alert_id: str) -> Dict[str, Any]:
             "validation_type": "host_reachable",
             "ping_count": 4,
             "min_success": 3,
-            "alert_id": alert.get("db_id"),
-            "alert_uuid": alert.get("alert_uuid") or alert.get("alert_id"),
+            "alert_id": int(alert_db_id),
+            "alert_uuid": alert_uuid,
             "validation_id": validation.get("id"),
         },
     )
@@ -231,19 +272,24 @@ def run_connectivity_validation_for_alert(alert_id: str) -> Dict[str, Any]:
         status="queued",
     )
 
-    updated_alert = update_alert_connectivity_status(
-        alert.get("alert_uuid") or alert.get("alert_id"),
-        "checking",
-        "Validação de conectividade enviada ao Runner.",
-    )
+    # Não deixe erro de atualização visual quebrar o enfileiramento já concluído.
+    updated_alert = None
+    try:
+        updated_alert = update_alert_connectivity_status(
+            alert_uuid,
+            "checking",
+            "Validação de conectividade enviada ao Runner.",
+        )
+    except Exception as exc:
+        print(f"[CONNECTIVITY_STATUS_UPDATE_ERROR] {exc}")
 
     return {
         "success": True,
+        "message": "Validação de conectividade enviada ao Runner.",
         "alert": updated_alert or alert,
         "runner_job": runner_job,
         "validation": validation,
     }
-
 
 def get_alert_by_id(alert_id: str) -> Optional[Dict[str, Any]]:
     return get_alert_by_uuid(alert_id)

@@ -502,9 +502,12 @@ async function runConnectivityValidation(alertId, sourceButton = null){
     setTimeout(() => {
       const currentBtn = document.getElementById('detailConnectivityBtn') || document.getElementById('detailValidateConnectivityBtn');
       if(currentBtn){
-        currentBtn.disabled = false;
-        currentBtn.classList.remove('is-loading');
-        currentBtn.innerHTML = '<span>Validar conectividade</span>';
+        const stillChecking = selectedAlert && String(selectedAlert.connectivity_status || '').toLowerCase() === 'checking';
+        currentBtn.disabled = stillChecking;
+        currentBtn.classList.toggle('is-loading', stillChecking);
+        currentBtn.innerHTML = stillChecking
+          ? '<span class="btn-spinner"></span><span>Validando...</span>'
+          : '<span>Validar conectividade</span>';
       }
     }, 900);
   }
