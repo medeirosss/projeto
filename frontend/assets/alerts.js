@@ -289,7 +289,6 @@ function renderResolvedAlerts(){
 
 function clearDetail(){
   selectedAlert = null;
-  document.getElementById('alertDetailEmpty')?.classList.remove('hidden-section');
   document.getElementById('alertDetailContent')?.classList.add('hidden-section');
   const slot = document.getElementById('detailStatusSlot');
   if(slot) slot.innerHTML = '';
@@ -310,7 +309,6 @@ function statusLabel(alert){
 
 function selectAlert(alert, rerender = true){
   selectedAlert = alert;
-  document.getElementById('alertDetailEmpty')?.classList.add('hidden-section');
   document.getElementById('alertDetailContent')?.classList.remove('hidden-section');
 
   const alertId = alertIdOf(alert);
@@ -370,16 +368,34 @@ function selectAlert(alert, rerender = true){
   setText('detailContextCategory', contextCategory);
 
   const riskBadgeEl = document.getElementById('detailRiskBadge');
-  if(riskBadgeEl) riskBadgeEl.outerHTML = riskBadge(alert);
+  if(riskBadgeEl){
+    const level = String(alert.risk_level || 'low').toLowerCase();
+    riskBadgeEl.className = `risk-badge risk-${['critical','high','medium','low'].includes(level) ? level : 'low'}`;
+    riskBadgeEl.textContent = `${riskLabel(level)}${riskScore ? ` ${riskScore}` : ''}`;
+  }
 
   const actionsList = document.getElementById('detailRecommendedActions');
   if(actionsList) actionsList.innerHTML = renderRecommendedActions(recommendedActions);
 
   const connBadge = document.getElementById('detailConnectivityBadge');
-  if(connBadge) connBadge.outerHTML = connectivityBadge(alert);
+  if(connBadge){
+    const connHtml = connectivityBadge(alert);
+    const tmp = document.createElement('div');
+    tmp.innerHTML = connHtml;
+    const newBadge = tmp.firstElementChild;
+    connBadge.className = newBadge?.className || 'connectivity-badge connectivity-not-checked';
+    connBadge.textContent = newBadge?.textContent || 'Não validado';
+  }
 
   const autoBadge = document.getElementById('detailAutomationBadge');
-  if(autoBadge) autoBadge.outerHTML = automationBadge(alert);
+  if(autoBadge){
+    const autoHtml = automationBadge(alert);
+    const tmp = document.createElement('div');
+    tmp.innerHTML = autoHtml;
+    const newBadge = tmp.firstElementChild;
+    autoBadge.className = newBadge?.className || 'automation-badge automation-none';
+    autoBadge.textContent = newBadge?.textContent || 'Sem automação';
+  }
 
   const severityBadgeEl = document.getElementById('detailSeverityBadge');
   if(severityBadgeEl) severityBadgeEl.className = `severity-badge ${severityClass(severity)}`;
