@@ -8,45 +8,67 @@
       <div class="alert info-banner">Status 1 fica em vermelho. Status 2 indica conhecido/em tratamento. Os alertas finalizados saem desta lista e vão para Alertas resolvidos.</div>
       <div class="mini-stats alert-stats"><div class="mini-stat alert-total"><small>Total</small><strong id="alertsTotalCount">0</strong></div><div class="mini-stat alert-new"><small>Novos</small><strong id="alertsNewCount">0</strong></div><div class="mini-stat alert-known"><small>Conhecidos</small><strong id="alertsKnownCount">0</strong></div><div class="mini-stat alert-resolved"><small>Resolvidos</small><strong id="alertsResolvedCount">0</strong></div></div>
       <div class="alerts-workspace">
-        <div class="card alerts-card alerts-list-card"><div class="card-header">Alertas ativos</div><div class="table-wrap"><table><thead><tr><th>Alerta</th><th>Status</th><th>Recebido em</th><th>Evento</th><th>MITRE</th><th>Tática</th><th>NIST</th><th>Severidade</th><th>Automação</th><th>Ações</th></tr></thead><tbody id="alertsOpenTable"></tbody></table></div></div>
+        <div class="card alerts-card alerts-list-card"><div class="card-header">Alertas ativos</div><div class="table-wrap"><table><thead><tr><th>Alerta</th><th>Status</th><th>Recebido em</th><th>Evento</th><th>MITRE</th><th>Tática</th><th>NIST</th><th>Severidade</th><th>Risco</th><th>Automação</th><th>Ações</th></tr></thead><tbody id="alertsOpenTable"></tbody></table></div></div>
         <aside class="card alerts-card alert-detail-card" id="alertDetailPanel">
           <div class="card-header detail-header"><span>Detalhe do alerta</span><span id="detailStatusSlot"></span></div>
           <div class="card-body">
-            <div id="alertDetailEmpty" class="detail-empty">Selecione um alerta para visualizar o resumo operacional.</div>
+            <div id="alertDetailEmpty" class="detail-empty hidden-section">Selecione um alerta para visualizar o resumo operacional.</div>
             <div id="alertDetailContent" class="hidden-section">
-              <div class="detail-connectivity-panel" id="detailConnectivityPanel">
-                <div class="connectivity-head">
+              <div class="detail-operational-panel" id="detailOperationalPanel">
+                <div class="operational-header">
                   <div>
-                    <h3>Validação de conectividade</h3>
-                    <span>Executada manualmente pelo analista via Runner</span>
+                    <h3>Resumo operacional</h3>
+                    <span>Priorização, contexto e validações do alerta</span>
                   </div>
-                  <span id="detailConnectivityBadge" class="connectivity-badge connectivity-not-checked">Não validado</span>
+                  <span id="detailRiskBadge" class="risk-badge risk-low">Risco baixo</span>
                 </div>
-                <div class="connectivity-body">
-                  <div class="connectivity-target">
-                    <small>IP detectado</small>
-                    <strong id="detailConnectivityIp">--</strong>
-                  </div>
-                  <div class="connectivity-status-text">
-                    <small>Status</small>
-                    <strong id="detailConnectivityMessage">Ainda não validado</strong>
-                    <span id="detailConnectivityAt">--</span>
-                  </div>
-                  <button class="btn primary btn-sm" id="detailConnectivityBtn" type="button">Validar conectividade</button>
-                </div>
-              </div>
 
-              <div class="detail-automation-panel" id="detailAutomationPanel">
-                <div class="connectivity-head">
-                  <div>
-                    <h3>Automação</h3>
-                    <span>Execução de script/playbook será configurada na próxima etapa</span>
+                <div class="operational-grid">
+                  <div class="operational-card risk-card">
+                    <small>Risco calculado</small>
+                    <strong id="detailRiskScore">--</strong>
+                    <span id="detailRiskLevelText">--</span>
                   </div>
-                  <span id="detailAutomationBadge" class="automation-badge automation-none">Sem automação</span>
+
+                  <div class="operational-card context-card">
+                    <small>Contexto operacional</small>
+                    <strong id="detailContextSummary">--</strong>
+                    <span id="detailContextCategory">--</span>
+                  </div>
+
+                  <div class="operational-card connectivity-card">
+                    <div class="operational-card-head">
+                      <div>
+                        <small>Conectividade</small>
+                        <strong id="detailConnectivityMessage">Não validado</strong>
+                      </div>
+                      <span id="detailConnectivityBadge" class="connectivity-badge connectivity-not-checked">Não validado</span>
+                    </div>
+                    <span>IP detectado: <b id="detailConnectivityIp">--</b></span>
+                    <span id="detailConnectivityAt">Sem execução registrada</span>
+                    <button class="btn primary btn-sm" id="detailConnectivityBtn" type="button">Validar conectividade</button>
+                  </div>
+
+                  <div class="operational-card automation-card">
+                    <div class="operational-card-head">
+                      <div>
+                        <small>Automação</small>
+                        <strong>Script/playbook</strong>
+                      </div>
+                      <span id="detailAutomationBadge" class="automation-badge automation-none">Sem automação</span>
+                    </div>
+                    <span>Seleção de script e credencial será habilitada na etapa XDR/SOAR-lite.</span>
+                  </div>
                 </div>
-                <div class="automation-placeholder">
-                  <span>Script/playbook</span>
-                  <strong>Seleção será habilitada posteriormente</strong>
+
+                <div class="operational-actions">
+                  <div class="detail-section-title">
+                    <h3>Sugestões de ação</h3>
+                    <span>Ações recomendadas para triagem do técnico</span>
+                  </div>
+                  <ul id="detailRecommendedActions" class="recommended-actions-list">
+                    <li>Nenhuma sugestão calculada para este alerta.</li>
+                  </ul>
                 </div>
               </div>
 

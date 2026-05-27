@@ -49,6 +49,44 @@ function severityBadge(alert){
   return `<span class="severity-badge ${severityClass(severity)}">${esc(severity)}</span>`;
 }
 
+function riskLabel(level){
+  const value = String(level || 'low').toLowerCase();
+  if(value === 'critical') return 'Crítico';
+  if(value === 'high') return 'Alto';
+  if(value === 'medium') return 'Médio';
+  return 'Baixo';
+}
+
+function riskBadge(alert){
+  const level = String(alert.risk_level || 'low').toLowerCase();
+  const score = Number(alert.risk_score || 0);
+  let cls = 'risk-badge risk-low';
+  if(level === 'critical') cls = 'risk-badge risk-critical';
+  if(level === 'high') cls = 'risk-badge risk-high';
+  if(level === 'medium') cls = 'risk-badge risk-medium';
+  return `<span class="${cls}">${esc(riskLabel(level))}${score ? ` ${score}` : ''}</span>`;
+}
+
+function normalizeActions(actions){
+  if(Array.isArray(actions)) return actions.map(a => String(a || '').trim()).filter(Boolean);
+  if(typeof actions === 'string'){
+    const text = actions.trim();
+    if(!text) return [];
+    try{
+      const parsed = JSON.parse(text);
+      if(Array.isArray(parsed)) return parsed.map(a => String(a || '').trim()).filter(Boolean);
+    }catch{}
+    return text.split(/[;\n]/).map(a => a.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function renderRecommendedActions(actions){
+  const items = normalizeActions(actions);
+  if(!items.length) return '<li>Nenhuma sugestão calculada para este alerta.</li>';
+  return items.map(item => `<li>${esc(item)}</li>`).join('');
+}
+
 function automationBadge(alert){
   const status = String(alert.automation_status || 'none').toLowerCase();
   if(status === 'executed_ok') return '<span class="automation-badge automation-ok">Automação OK</span>';
@@ -147,7 +185,7 @@ async function loadAlertsPage(options = {}){
     console.error('Erro ao carregar alertas:', error);
     if(!options.silent){
       const tbody = document.getElementById('alertsOpenTable');
-      if(tbody) tbody.innerHTML = `<tr><td colspan="10">Erro ao carregar alertas.</td></tr>`;
+      if(tbody) tbody.innerHTML = `<tr><td colspan="11">Erro ao carregar alertas.</td></tr>`;
     }
   }finally{
     isLoadingAlerts = false;
@@ -160,7 +198,7 @@ function renderOpenAlerts(){
 
   tbody.innerHTML = '';
   if(!alertsOpen.length){
-    tbody.innerHTML = '<tr><td colspan="10">Nenhum alerta ativo.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11">Nenhum alerta ativo.</td></tr>';
     clearDetail();
     return;
   }
@@ -192,6 +230,7 @@ function renderOpenAlerts(){
       <td>${esc(alert.tactic || alert.mitre_tactic || '--')}</td>
       <td>${esc(alert.nist || alert.nist_control || '--')}</td>
       <td>${severityBadge(alert)}</td>
+      <td>${riskBadge(alert)}</td>
       <td>${automationBadge(alert)}</td>
       <td>
         <div class="table-actions">
@@ -296,6 +335,11 @@ function selectAlert(alert, rerender = true){
   const connectivityStatus = String(alert.connectivity_status || 'not_checked').toLowerCase();
   const connectivityMessage = val(alert.connectivity_message, connectivityLabel(connectivityStatus));
   const connectivityAt = val(alert.connectivity_at, '--');
+  const riskLevel = String(alert.risk_level || 'low').toLowerCase();
+  const riskScore = Number(alert.risk_score || 0);
+  const contextSummary = val(alert.context_summary, 'Contexto ainda não calculado para este alerta.');
+  const contextCategory = val(alert.context_category, 'Sem categoria');
+  const recommendedActions = alert.recommended_actions || [];
 
   document.getElementById('detailStatusSlot').innerHTML = statusBadge(alert);
   setText('detailTitle', title);
@@ -320,6 +364,16 @@ function selectAlert(alert, rerender = true){
   setText('detailConnectivityIp', ip);
   setText('detailConnectivityMessage', connectivityMessage);
   setText('detailConnectivityAt', connectivityAt === '--' ? 'Sem execução registrada' : `Executada em ${connectivityAt}`);
+  setText('detailRiskScore', riskScore ? `${riskScore}/100` : '--');
+  setText('detailRiskLevelText', `Nível ${riskLabel(riskLevel)}`);
+  setText('detailContextSummary', contextSummary);
+  setText('detailContextCategory', contextCategory);
+
+  const riskBadgeEl = document.getElementById('detailRiskBadge');
+  if(riskBadgeEl) riskBadgeEl.outerHTML = riskBadge(alert);
+
+  const actionsList = document.getElementById('detailRecommendedActions');
+  if(actionsList) actionsList.innerHTML = renderRecommendedActions(recommendedActions);
 
   const connBadge = document.getElementById('detailConnectivityBadge');
   if(connBadge) connBadge.outerHTML = connectivityBadge(alert);

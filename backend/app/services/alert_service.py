@@ -30,6 +30,8 @@ from app.repositories.runner_repository import (
     link_validation_to_runner_job,
 )
 
+from app.services.alert_rules import evaluate_alert_rules
+
 def _now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
@@ -127,142 +129,17 @@ def _normalize_text(value: Any) -> str:
 
 
 def calculate_alert_risk(alert_record: Dict[str, Any]) -> tuple[int, str]:
-    """Calcula risco inicial do alerta para priorização operacional.
-
-    Regra simples e determinística para MVP:
-    - Severidade alta/critica tem maior peso.
-    - Eventos de identidade/privilegio aumentam risco.
-    - Presença de IP e mapeamento MITRE aumentam contexto.
-    """
-    score = 0
-    severity = _normalize_text(alert_record.get("severity"))
-    event_number = str(alert_record.get("event_number") or "").strip()
-
-    if "crit" in severity:
-        score += 50
-    elif "alta" in severity or "high" in severity:
-        score += 40
-    elif "media" in severity or "média" in severity or "medium" in severity:
-        score += 20
-    elif "baixa" in severity or "low" in severity:
-        score += 10
-
-    if event_number in {"4728", "4732", "4756"}:  # adição em grupo privilegiado/local/global/universal
-        score += 40
-    elif event_number == "4720":  # usuário criado
-        score += 30
-    elif event_number == "4625":  # falha de login
-        score += 20
-    elif event_number in {"4726", "4729", "4733", "4757"}:
-        score += 15
-
-    if alert_record.get("ip_address") or alert_record.get("target_ip") or alert_record.get("source_ip"):
-        score += 10
-
-    if alert_record.get("mitre_technique") or alert_record.get("technique"):
-        score += 10
-
-    score = max(0, min(int(score), 100))
-
-    if score >= 80:
-        level = "critical"
-    elif score >= 60:
-        level = "high"
-    elif score >= 30:
-        level = "medium"
-    else:
-        level = "low"
-
-    return score, level
-
+    rule_result = evaluate_alert_rules(alert_record, alert_record.get("connectivity_status") or "not_checked")
+    return int(rule_result.get("risk_score") or 0), str(rule_result.get("risk_level") or "low")
 
 def build_alert_context(alert_record: Dict[str, Any], connectivity_status: str | None = None) -> tuple[str, str]:
-    """Gera contexto operacional em português para o analista.
-
-    O contexto é propositalmente curto para aparecer no detalhe do alerta.
-    """
-    event_number = str(alert_record.get("event_number") or "").strip()
-    connectivity = str(connectivity_status or alert_record.get("connectivity_status") or "not_checked").strip()
-
-    if event_number == "4720":
-        category = "identity"
-        base = "Usuário criado"
-    elif event_number in {"4728", "4732", "4756"}:
-        category = "identity_privilege"
-        base = "Usuário adicionado a grupo privilegiado"
-    elif event_number == "4625":
-        category = "authentication"
-        base = "Tentativa de login inválida"
-    elif event_number == "9001":
-        category = "service"
-        base = "Serviço crítico parado"
-    else:
-        category = "generic"
-        display_name = str(alert_record.get("display_name") or alert_record.get("event") or "Evento recebido").strip()
-        base = display_name or "Evento recebido"
-
-    if connectivity == "reachable":
-        return f"{base} em host alcançável.", category
-    if connectivity == "unreachable":
-        return f"{base} em host não alcançável.", category
-    if connectivity == "checking":
-        return f"{base}; validação de conectividade em andamento.", category
-    if connectivity == "check_failed":
-        return f"{base}; validação de conectividade falhou.", category
-
-    return f"{base}; conectividade ainda não validada.", category
-
+    rule_result = evaluate_alert_rules(alert_record, connectivity_status)
+    return str(rule_result.get("context_summary") or ""), str(rule_result.get("context_category") or "generic")
 
 def build_recommended_actions(alert_record: Dict[str, Any], connectivity_status: str | None = None) -> List[str]:
-    """Gera sugestões operacionais iniciais para o analista.
-
-    As sugestões não executam automação. Elas apenas orientam a triagem.
-    A automação/playbook será tratada em etapa posterior, baseada em evento/regra.
-    """
-    event_number = str(alert_record.get("event_number") or "").strip()
-    severity = _normalize_text(alert_record.get("severity"))
-    connectivity = str(connectivity_status or alert_record.get("connectivity_status") or "not_checked").strip()
-
-    actions: List[str] = []
-
-    if event_number == "4720":
-        actions.append("Revisar se a criação do usuário foi autorizada")
-        actions.append("Validar privilégios e grupos atribuídos ao usuário")
-        actions.append("Confirmar solicitante ou mudança vinculada ao processo interno")
-
-    elif event_number in {"4728", "4732", "4756"}:
-        actions.append("Validar se a inclusão em grupo privilegiado foi autorizada")
-        actions.append("Revisar associação do usuário em grupos administrativos")
-        actions.append("Verificar se há mudança aprovada para a elevação de privilégio")
-
-    elif event_number == "4625":
-        actions.append("Verificar volume e origem das tentativas de login inválidas")
-        actions.append("Validar se o usuário está bloqueado ou sob tentativa de força bruta")
-
-    elif event_number == "9001":
-        actions.append("Validar impacto do serviço crítico parado")
-        actions.append("Verificar se houve janela de manutenção ou parada autorizada")
-
-    else:
-        actions.append("Validar o evento com o responsável pelo ativo ou identidade")
-
-    if connectivity == "reachable":
-        actions.append("Host alcançável: verificar atividade recente no ativo")
-    elif connectivity == "unreachable":
-        actions.append("Host não alcançável: validar se o ativo está desligado, isolado ou fora da rede")
-    elif connectivity == "not_checked":
-        actions.append("Executar validação de conectividade pelo painel do alerta")
-
-    if "crit" in severity or "alta" in severity or "high" in severity:
-        actions.append("Priorizar triagem por severidade elevada")
-
-    # Remove duplicados preservando ordem
-    deduped: List[str] = []
-    for item in actions:
-        if item and item not in deduped:
-            deduped.append(item)
-
-    return deduped
+    rule_result = evaluate_alert_rules(alert_record, connectivity_status)
+    actions = rule_result.get("recommended_actions") or []
+    return list(actions)
 
 def create_alert_from_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
     normalized = _normalize_if_needed(payload or {})
