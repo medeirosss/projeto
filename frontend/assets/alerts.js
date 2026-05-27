@@ -433,6 +433,14 @@ function selectAlert(alert, rerender = true){
     connectivityBtn.innerHTML = connectivityStatus === 'checking'
       ? '<span class="btn-spinner"></span><span>Validando...</span>'
       : '<span>Validar conectividade</span>';
+
+    // Ligacao direta do botao ao endpoint de conectividade.
+    // Mantemos tambem o event delegation mais abaixo como fallback.
+    connectivityBtn.onclick = async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await runConnectivityValidation(alertId, connectivityBtn);
+    };
   }
 
   if(Number(alert.status || 0) === 3){
