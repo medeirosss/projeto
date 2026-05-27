@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from app.repositories.alerts_repository import update_alert_connectivity_status_by_db_id
+from datetime import datetime
+from sqlalchemy import text
+
+from app.database.connection import SessionLocal
 from app.repositories.runner_repository import (
     create_runner_job,
     create_validation_job,
@@ -61,6 +64,7 @@ def create_job_service(data: dict):
         validation_type = payload.get("validation_type")
         if not validation_type:
             raise ValueError("payload.validation_type is required for validation jobs")
+
         validation = create_validation_job(
             runner_job_id=job["id"],
             runner_id=data.get("runner_id"),
@@ -75,32 +79,50 @@ def create_job_service(data: dict):
 
 
 def _connectivity_status_from_result(status: str, result: dict | None) -> tuple[str, str]:
-    if status == "success" and bool((result or {}).get("reachable")):
+    result = result or {}
+
+    if status == "success" and bool(result.get("reachable")):
         return "reachable", "Host alcançável."
+
     if status in ["success", "failed"]:
         return "unreachable", "Host não alcançável."
+
     return "check_failed", "Falha ao validar conectividade."
 
 
-def _update_alert_connectivity_from_validation(validation: dict | None, status: str, result: dict | None):
-    if not validation or validation.get("validation_type") != "host_reachable":
-        return None
+def _update_alert_connectivity_status_by_db_id(
+    alert_db_id: int,
+    connectivity_status: str,
+    connectivity_message: str,
+):
+    """Atualiza somente os campos de conectividade.
 
-    alert_db_id = validation.get("alert_id")
-    if not alert_db_id:
-        return None
-
-    # validation_jobs.alert_id guarda o ID interno da tabela alerts.
-    # Buscamos o alert_uuid para atualizar o alerta mantendo o padrão da API.
-    # Mantemos fallback em branco para evitar quebrar retorno do runner.
-    alert_uuid = None
-    try:
-        # Pequena consulta local via repository não existe por db_id; por isso usamos SQL indireto só no repository de alerta em versão futura.
-        # Neste patch, usamos o alert_id vindo do payload quando disponível via result/payload em melhorias futuras.
-        pass
-    except Exception:
-        pass
-    return {"pending_alert_update_by_db_id": alert_db_id}
+    Importante:
+    - Não atualiza automation_status.
+    - Não recalcula recommended_actions aqui para evitar quebrar o retorno do Runner.
+    - Contexto e recomendações podem ser recalculados em uma etapa posterior, de forma controlada.
+    """
+    with SessionLocal() as db:
+        row = db.execute(
+            text(
+                """
+                UPDATE alerts
+                SET connectivity_status = :connectivity_status,
+                    connectivity_message = :connectivity_message,
+                    connectivity_at = :connectivity_at
+                WHERE id = :alert_db_id
+                RETURNING id, alert_uuid, connectivity_status, connectivity_message, connectivity_at, automation_status
+                """
+            ),
+            {
+                "alert_db_id": alert_db_id,
+                "connectivity_status": connectivity_status,
+                "connectivity_message": connectivity_message,
+                "connectivity_at": datetime.utcnow(),
+            },
+        ).mappings().first()
+        db.commit()
+        return dict(row) if row else None
 
 
 def job_result_service(job_id: int, data: dict):
@@ -134,11 +156,10 @@ def job_result_service(job_id: int, data: dict):
     )
 
     connectivity = None
-    # O update final de connectivity_status por alert_id interno é feito no repository abaixo.
-    # Mantemos a lógica aqui para não misturar ping com automation_status.
+
     if validation and validation.get("validation_type") == "host_reachable" and validation.get("alert_id"):
         connectivity_status, connectivity_message = _connectivity_status_from_result(status, result_payload)
-        connectivity = update_alert_connectivity_status_by_db_id(
+        connectivity = _update_alert_connectivity_status_by_db_id(
             alert_db_id=int(validation.get("alert_id")),
             connectivity_status=connectivity_status,
             connectivity_message=connectivity_message,
