@@ -10,3 +10,5 @@ ldap3
 PyJWT
 pywinrm
 alembic
+
+PyYAML

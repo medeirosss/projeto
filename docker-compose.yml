@@ -10,9 +10,12 @@ services:
       - "${APP_PORT:-8443}:8443"
     depends_on:
       - db
+    environment:
+      ATOMIC_RED_TEAM_PATH: /opt/atomic-red-team/atomics
     volumes:
       - ./license:/app/license
       - ./backend/logs:/app/backend/logs
+      - ./atomic-red-team:/opt/atomic-red-team:ro
     networks:
       - public_net
       - backend_net

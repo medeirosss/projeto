@@ -26,8 +26,8 @@ PUBLIC_AUTH_PREFIXES = (
 )
 
 ROLE_ACCESS = {
-    "admin": {"centric", "reports", "actions", "alerts", "settings"},
-    "operator": {"centric", "reports", "actions", "alerts"},
+    "admin": {"centric", "reports", "actions", "alerts", "validations", "settings"},
+    "operator": {"centric", "reports", "actions", "alerts", "validations"},
     "viewer": {"centric", "reports"},
 }
 
@@ -41,6 +41,8 @@ def _module_for_path(path: str) -> str | None:
         return "actions"
     if path.startswith("/alertas") or path.startswith("/api/alerts"):
         return "alerts"
+    if path.startswith("/validacoes") or path.startswith("/api/validations"):
+        return "validations"
     if path.startswith("/configuracoes") or path.startswith("/api/settings") or path.startswith("/api/auth/allowed"):
         return "settings"
     return None

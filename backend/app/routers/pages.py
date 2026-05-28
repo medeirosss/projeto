@@ -51,6 +51,11 @@ async def installer_page():
 async def alerts_page():
     return serve_frontend_file("alerts.html")
 
+@router.get("/validacoes", response_class=HTMLResponse)
+async def validations_page():
+    return serve_frontend_file("validations.html")
+
+
 @router.get("/configuracoes", response_class=HTMLResponse)
 async def settings_page():
     return serve_frontend_file("settings.html")
