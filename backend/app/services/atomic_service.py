@@ -7,11 +7,17 @@ from typing import Any
 import yaml
 
 from app.repositories.atomic_repository import (
+    approve_atomic_test,
+    create_atomic_execution_preview,
     create_failed_import_run,
     get_catalog_summary,
+    get_atomic_test_by_id,
+    list_atomic_executions,
     list_techniques,
     list_tests,
     replace_catalog,
+    update_atomic_test_flags,
+    update_atomic_test_risk,
 )
 
 SENSITIVE_KEYWORDS = (
@@ -72,7 +78,7 @@ def parse_atomic_catalog(atomics_path: str | Path) -> tuple[list[dict[str, Any]]
         executors: set[str] = set()
         technique_tests = 0
 
-        for test in atomic_tests:
+        for test_index, test in enumerate(atomic_tests, start=1):
             if not isinstance(test, dict):
                 skipped += 1
                 continue
@@ -88,6 +94,7 @@ def parse_atomic_catalog(atomics_path: str | Path) -> tuple[list[dict[str, Any]]
             technique_tests += 1
             tests.append({
                 "technique_id": technique_id,
+                "atomic_test_number": test_index,
                 "atomic_name": test.get("name") or "Unnamed atomic test",
                 "description": test.get("description"),
                 "supported_platforms": supported_platforms,
@@ -136,3 +143,81 @@ def get_atomic_techniques(search: str | None = None, limit: int = 200, offset: i
 
 def get_atomic_tests(technique_id: str | None = None, platform: str | None = None, executor: str | None = None, risk_level: str | None = None, limit: int = 200, offset: int = 0) -> dict[str, Any]:
     return {"tests": list_tests(technique_id=technique_id, platform=platform, executor=executor, risk_level=risk_level, limit=limit, offset=offset)}
+
+
+def set_atomic_test_approval(test_id: int, approved: bool = True) -> dict[str, Any]:
+    return {"success": True, "test": approve_atomic_test(test_id, approved)}
+
+
+def set_atomic_test_risk(test_id: int, risk_level: str) -> dict[str, Any]:
+    risk = (risk_level or "").strip().lower()
+    if risk not in ["low", "medium", "high", "critical"]:
+        raise ValueError("risk_level must be low, medium, high or critical")
+    return {"success": True, "test": update_atomic_test_risk(test_id, risk)}
+
+
+def set_atomic_test_flags(test_id: int, flags: dict[str, Any]) -> dict[str, Any]:
+    allowed_runner_groups = flags.get("allowed_runner_groups")
+    if allowed_runner_groups is not None and not isinstance(allowed_runner_groups, list):
+        allowed_runner_groups = [str(allowed_runner_groups)]
+    return {
+        "success": True,
+        "test": update_atomic_test_flags(
+            test_id=test_id,
+            safe_for_production=bool(flags.get("safe_for_production", False)),
+            requires_reboot=bool(flags.get("requires_reboot", False)),
+            allowed_runner_groups=allowed_runner_groups or [],
+        ),
+    }
+
+
+def _build_preview_command(test: dict[str, Any]) -> str:
+    technique_id = test.get("technique_id")
+    test_number = test.get("atomic_test_number")
+    if not test_number:
+        test_number = test.get("computed_test_number") or 1
+    return f"Invoke-AtomicTest {technique_id} -TestNumbers {int(test_number)} -ShowDetailsBrief"
+
+
+def prepare_atomic_execution_preview(test_id: int, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = payload or {}
+    test = get_atomic_test_by_id(test_id)
+    if not test:
+        raise ValueError("Atomic test not found")
+
+    command_preview = _build_preview_command(test)
+    block_reasons: list[str] = []
+
+    if not bool(test.get("approved_for_execution")):
+        block_reasons.append("Teste ainda não aprovado para execução.")
+    if str(test.get("risk_level") or "").lower() == "critical":
+        block_reasons.append("Risco CRITICAL bloqueado para execução automática.")
+    if bool(test.get("requires_reboot")):
+        block_reasons.append("Teste marcado como requires_reboot.")
+
+    status = "blocked" if block_reasons else "pending_review"
+
+    execution = create_atomic_execution_preview(
+        atomic_test_id=test_id,
+        technique_id=test.get("technique_id"),
+        atomic_test_number=test.get("atomic_test_number") or test.get("computed_test_number"),
+        runner_id=payload.get("runner_id"),
+        target_host=payload.get("target_host"),
+        requested_by=payload.get("requested_by") or "ui",
+        command_preview=command_preview,
+        status=status,
+        block_reason="; ".join(block_reasons) if block_reasons else None,
+        payload={
+            "mode": "preview_only",
+            "executor_name": test.get("executor_name"),
+            "supported_platforms": test.get("supported_platforms") or [],
+            "risk_level": test.get("risk_level"),
+            "atomic_name": test.get("atomic_name"),
+        },
+    )
+
+    return {"success": True, "execution": execution, "test": test, "blocked": bool(block_reasons), "block_reasons": block_reasons}
+
+
+def get_atomic_execution_previews(limit: int = 100, offset: int = 0) -> dict[str, Any]:
+    return {"executions": list_atomic_executions(limit=limit, offset=offset)}

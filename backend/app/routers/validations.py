@@ -5,10 +5,15 @@ from typing import Any
 from fastapi import APIRouter, Body, HTTPException
 
 from app.services.atomic_service import (
+    get_atomic_execution_previews,
     get_atomic_summary,
     get_atomic_techniques,
     get_atomic_tests,
     import_atomic_catalog,
+    prepare_atomic_execution_preview,
+    set_atomic_test_approval,
+    set_atomic_test_flags,
+    set_atomic_test_risk,
 )
 
 router = APIRouter(prefix="/api/validations", tags=["validations"])
@@ -50,3 +55,42 @@ async def api_atomic_tests(
         limit=limit,
         offset=offset,
     )
+
+
+
+@router.post("/atomic/tests/{test_id}/approve")
+async def api_atomic_test_approve(test_id: int, payload: dict[str, Any] | None = Body(default=None)):
+    try:
+        payload = payload or {}
+        return set_atomic_test_approval(test_id, bool(payload.get("approved", True)))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/atomic/tests/{test_id}/risk")
+async def api_atomic_test_risk(test_id: int, payload: dict[str, Any] = Body(...)):
+    try:
+        return set_atomic_test_risk(test_id, payload.get("risk_level"))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/atomic/tests/{test_id}/flags")
+async def api_atomic_test_flags(test_id: int, payload: dict[str, Any] | None = Body(default=None)):
+    try:
+        return set_atomic_test_flags(test_id, payload or {})
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/atomic/tests/{test_id}/prepare-execution")
+async def api_atomic_prepare_execution(test_id: int, payload: dict[str, Any] | None = Body(default=None)):
+    try:
+        return prepare_atomic_execution_preview(test_id, payload or {})
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/atomic/executions")
+async def api_atomic_executions(limit: int = 100, offset: int = 0):
+    return get_atomic_execution_previews(limit=limit, offset=offset)

@@ -5,12 +5,26 @@
   <main class="report-content settings-content alerts-content">
     <section id="atomicCatalogSection" class="report-section">
       <div class="toolbar"><div><div class="title">Catálogo Atomic Red Team</div><p class="section-subtitle">Importação e consulta de testes atômicos mapeados ao MITRE ATT&CK. Esta etapa não executa testes.</p></div></div>
-      <div class="alert info-banner">Etapa 1: catálogo somente leitura. A aprovação e execução via Runner serão tratadas em etapa posterior.</div>
+      <div class="alert info-banner">Etapa 3A: preparação de execução controlada. Esta fase cria apenas preview/job de revisão; nenhum teste é executado pelo backend.</div>
       <div class="mini-stats alert-stats"><div class="mini-stat"><small>Técnicas</small><strong id="atomicTechniquesCount">0</strong></div><div class="mini-stat"><small>Testes</small><strong id="atomicTestsCount">0</strong></div><div class="mini-stat"><small>Aprovados lab</small><strong id="atomicApprovedCount">0</strong></div><div class="mini-stat"><small>Com dependências</small><strong id="atomicDependenciesCount">0</strong></div></div>
       <div class="card alerts-card"><div class="card-header">Importador</div><div class="card-body"><div class="form-grid"><label>Caminho do repositório Atomic/atomics<input id="atomicSourcePath" placeholder="/opt/atomic-red-team/atomics"></label></div><div class="detail-actions"><button class="btn primary btn-sm" id="atomicImportBtn" type="button">Importar catálogo</button><button class="btn secondary btn-sm" id="atomicRefreshBtn" type="button">Atualizar lista</button></div><pre id="atomicImportResult" class="result-box">Aguardando importação.</pre></div></div>
+
+      <div class="card alerts-card">
+        <div class="card-header">Execução controlada via Runner — 3A Preview</div>
+        <div class="card-body">
+          <p class="section-subtitle">Esta área apenas prepara a execução e gera o comando de preview. O Runner ainda não executa testes nesta etapa.</p>
+          <div class="form-grid">
+            <label>Runner ID opcional<input id="atomicRunnerId" placeholder="runner-lab-01"></label>
+            <label>Target host opcional<input id="atomicTargetHost" placeholder="host-lab-01"></label>
+          </div>
+          <div class="detail-actions"><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar previews</button></div>
+          <pre id="atomicExecutionResult" class="result-box">Aguardando preparação.</pre>
+          <div class="table-wrap"><table><thead><tr><th>ID</th><th>Técnica</th><th>Teste</th><th>Runner</th><th>Target</th><th>Status</th><th>Preview</th></tr></thead><tbody id="atomicExecutionsTable"></tbody></table></div>
+        </div>
+      </div>
       <div class="alerts-workspace">
         <div class="card alerts-card alerts-list-card"><div class="card-header">Técnicas MITRE</div><div class="card-body"><input id="atomicSearch" placeholder="Buscar técnica, nome ou tática"><div class="table-wrap"><table><thead><tr><th>Técnica</th><th>Nome</th><th>Tática</th><th>Testes</th><th>Plataformas</th><th>Executores</th></tr></thead><tbody id="atomicTechniquesTable"></tbody></table></div></div></div>
-        <aside class="card alerts-card alert-detail-card"><div class="card-header">Testes da técnica</div><div class="card-body"><div id="atomicSelectedTitle" class="section-subtitle">Selecione uma técnica para visualizar os testes.</div><div class="table-wrap"><table><thead><tr><th>Teste</th><th>Plataformas</th><th>Executor</th><th>Admin</th><th>Dependências</th><th>Risco</th></tr></thead><tbody id="atomicTestsTable"></tbody></table></div></div></aside>
+        <aside class="card alerts-card alert-detail-card"><div class="card-header">Testes da técnica</div><div class="card-body"><div id="atomicSelectedTitle" class="section-subtitle">Selecione uma técnica para visualizar os testes.</div><div class="table-wrap"><table><thead><tr><th>Teste</th><th>Plataformas</th><th>Executor</th><th>Admin</th><th>Dependências</th><th>Risco</th><th>Aprovação</th><th>Uso</th><th>Reboot</th><th>Ação</th></tr></thead><tbody id="atomicTestsTable"></tbody></table></div></div></aside>
       </div>
     </section>
   </main>
