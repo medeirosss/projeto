@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import text
 
 from app.database.connection import SessionLocal
+from app.repositories.atomic_repository import update_atomic_execution_from_runner_job
 from app.repositories.runner_repository import (
     create_runner_job,
     create_validation_job,
@@ -155,6 +156,16 @@ def job_result_service(job_id: int, data: dict):
         error=data.get("error"),
     )
 
+    atomic_execution = None
+    if result and result.get("job_type") == "atomic_validation":
+        atomic_execution = update_atomic_execution_from_runner_job(
+            runner_job_id=job_id,
+            runner_id=runner_id,
+            status=status,
+            result=result_payload,
+            error=data.get("error"),
+        )
+
     connectivity = None
 
     if validation and validation.get("validation_type") == "host_reachable" and validation.get("alert_id"):
@@ -169,5 +180,6 @@ def job_result_service(job_id: int, data: dict):
         "success": True,
         "job": result,
         "validation": validation,
+        "atomic_execution": atomic_execution,
         "connectivity": connectivity,
     }

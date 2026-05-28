@@ -67,7 +67,7 @@ def create_runner_job(runner_id: str | None, job_type: str, target: str | None, 
         row = db.execute(text("""
             INSERT INTO runner_jobs (runner_id, job_type, target, payload, status, created_at)
             VALUES (:runner_id, :job_type, :target, CAST(:payload AS JSONB), 'pending', :now)
-            RETURNING id, status
+            RETURNING id, status, job_type, payload
         """), {
             "runner_id": runner_id,
             "job_type": job_type,
@@ -89,7 +89,7 @@ def save_job_result(job_id: int, runner_id: str, status: str, result: dict | Non
                 finished_at = :now
             WHERE id = :job_id
               AND (runner_id = :runner_id OR runner_id IS NULL)
-            RETURNING id, status
+            RETURNING id, status, job_type, payload
         """), {
             "job_id": job_id,
             "runner_id": runner_id,

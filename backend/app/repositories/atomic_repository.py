@@ -289,11 +289,104 @@ def list_atomic_executions(limit: int = 100, offset: int = 0) -> list[dict[str, 
     with SessionLocal() as db:
         rows = db.execute(text("""
             SELECT e.id, e.execution_uuid, e.atomic_test_id, e.technique_id, e.atomic_test_number,
-                   e.runner_id, e.target_host, e.status, e.requested_by, e.command_preview,
-                   e.block_reason, e.created_at, t.atomic_name, t.risk_level, t.executor_name
+                   e.runner_id, e.runner_job_id, e.target_host, e.status, e.requested_by, e.command_preview,
+                   e.block_reason, e.created_at, e.started_at, e.finished_at, e.exit_code, e.error_message,
+                   t.atomic_name, t.risk_level, t.executor_name
             FROM atomic_execution_jobs e
             LEFT JOIN atomic_tests t ON t.id = e.atomic_test_id
             ORDER BY e.id DESC
             LIMIT :limit OFFSET :offset
         """), {"limit": limit, "offset": offset}).mappings().all()
         return [dict(row) for row in rows]
+
+
+
+def get_atomic_execution_by_id(execution_id: int) -> dict[str, Any] | None:
+    with SessionLocal() as db:
+        row = db.execute(text("""
+            SELECT e.id, e.execution_uuid, e.atomic_test_id, e.technique_id, e.atomic_test_number,
+                   e.runner_id, e.runner_job_id, e.target_host, e.status, e.requested_by,
+                   e.approved_by, e.command_preview, e.block_reason, e.payload,
+                   e.created_at, e.started_at, e.finished_at, e.exit_code, e.stdout, e.stderr, e.error_message,
+                   t.atomic_name, t.risk_level, t.executor_name,
+                   COALESCE(t.approved_for_execution, t.approved_for_lab) AS approved_for_execution,
+                   COALESCE(t.safe_for_production, FALSE) AS safe_for_production,
+                   COALESCE(t.requires_reboot, FALSE) AS requires_reboot
+            FROM atomic_execution_jobs e
+            LEFT JOIN atomic_tests t ON t.id = e.atomic_test_id
+            WHERE e.id = :execution_id
+        """), {"execution_id": execution_id}).mappings().first()
+        return dict(row) if row else None
+
+
+def dispatch_atomic_execution_job(execution_id: int, runner_id: str | None, runner_job_id: int, approved_by: str | None) -> dict[str, Any]:
+    with SessionLocal() as db:
+        row = db.execute(text("""
+            UPDATE atomic_execution_jobs
+            SET status = 'queued',
+                runner_id = COALESCE(:runner_id, runner_id),
+                runner_job_id = :runner_job_id,
+                approved_by = :approved_by,
+                block_reason = NULL
+            WHERE id = :execution_id
+            RETURNING id, execution_uuid, atomic_test_id, technique_id, atomic_test_number, runner_id,
+                      runner_job_id, target_host, status, requested_by, approved_by, command_preview, payload, created_at
+        """), {
+            "execution_id": execution_id,
+            "runner_id": runner_id,
+            "runner_job_id": runner_job_id,
+            "approved_by": approved_by,
+        }).mappings().first()
+        db.commit()
+        if not row:
+            raise ValueError("Atomic execution job not found")
+        return dict(row)
+
+
+def mark_atomic_execution_blocked(execution_id: int, reason: str) -> dict[str, Any]:
+    with SessionLocal() as db:
+        row = db.execute(text("""
+            UPDATE atomic_execution_jobs
+            SET status = 'blocked', block_reason = :reason
+            WHERE id = :execution_id
+            RETURNING id, execution_uuid, status, block_reason
+        """), {"execution_id": execution_id, "reason": reason}).mappings().first()
+        db.commit()
+        if not row:
+            raise ValueError("Atomic execution job not found")
+        return dict(row)
+
+
+def update_atomic_execution_from_runner_job(runner_job_id: int, runner_id: str, status: str, result: dict | None, error: str | None) -> dict[str, Any] | None:
+    result = result or {}
+    mapped_status = {
+        "success": "success",
+        "failed": "failed",
+        "error": "error",
+    }.get(status, status)
+    with SessionLocal() as db:
+        row = db.execute(text("""
+            UPDATE atomic_execution_jobs
+            SET status = :status,
+                runner_id = COALESCE(runner_id, :runner_id),
+                started_at = COALESCE(started_at, :now),
+                finished_at = :now,
+                exit_code = :exit_code,
+                stdout = :stdout,
+                stderr = :stderr,
+                error_message = :error_message
+            WHERE runner_job_id = :runner_job_id
+            RETURNING id, execution_uuid, atomic_test_id, technique_id, atomic_test_number, runner_id,
+                      runner_job_id, target_host, status, exit_code, stdout, stderr, error_message, finished_at
+        """), {
+            "runner_job_id": runner_job_id,
+            "runner_id": runner_id,
+            "status": mapped_status,
+            "exit_code": result.get("exit_code"),
+            "stdout": result.get("stdout"),
+            "stderr": result.get("stderr"),
+            "error_message": error or result.get("error_message"),
+            "now": datetime.utcnow(),
+        }).mappings().first()
+        db.commit()
+        return dict(row) if row else None

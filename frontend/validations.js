@@ -114,7 +114,7 @@ async function loadAtomicExecutions(){
   const data = await fetchJson('/api/validations/atomic/executions?limit=20');
   const tbody = document.getElementById('atomicExecutionsTable');
   const rows = data.executions || [];
-  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="7">Nenhum preview criado.</td></tr>'; return; }
+  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="8">Nenhum preview criado.</td></tr>'; return; }
   tbody.innerHTML = rows.map(row => `
     <tr>
       <td>${row.id}</td>
@@ -122,9 +122,27 @@ async function loadAtomicExecutions(){
       <td>${safeText(row.atomic_name)}</td>
       <td>${safeText(row.runner_id)}</td>
       <td>${safeText(row.target_host)}</td>
-      <td>${safeText(row.status)}${row.block_reason ? `<br><small>${safeText(row.block_reason)}</small>` : ''}</td>
+      <td>${safeText(row.status)}${row.block_reason ? `<br><small>${safeText(row.block_reason)}</small>` : ''}${row.error_message ? `<br><small>${safeText(row.error_message)}</small>` : ''}</td>
       <td><code>${safeText(row.command_preview)}</code></td>
+      <td>${row.status === 'pending_review' ? `<button class="btn primary btn-sm dispatch-execution" data-id="${row.id}">Enviar ao Runner</button>` : safeText(row.runner_job_id)}</td>
     </tr>`).join('');
+  document.querySelectorAll('.dispatch-execution').forEach(btn => btn.addEventListener('click', () => dispatchAtomicExecution(btn.dataset.id)));
+}
+
+async function dispatchAtomicExecution(executionId){
+  const result = document.getElementById('atomicExecutionResult');
+  const runnerId = document.getElementById('atomicRunnerId').value.trim();
+  if(!runnerId){ result.textContent = 'Informe o Runner ID antes de enviar o job.'; return; }
+  result.textContent = `Enviando execução ${executionId} ao Runner ${runnerId}...`;
+  try{
+    const data = await fetchJson(`/api/validations/atomic/executions/${executionId}/dispatch`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({runner_id: runnerId, approved_by: 'ui', mode: 'dry_run'})
+    });
+    result.textContent = jsonPretty(data);
+    await loadAtomicExecutions();
+  }catch(err){ result.textContent = err.message; }
 }
 
 async function importAtomicCatalog(){

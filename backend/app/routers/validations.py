@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Body, HTTPException
 
 from app.services.atomic_service import (
+    dispatch_atomic_execution_to_runner,
     get_atomic_execution_previews,
     get_atomic_summary,
     get_atomic_techniques,
@@ -94,3 +95,12 @@ async def api_atomic_prepare_execution(test_id: int, payload: dict[str, Any] | N
 @router.get("/atomic/executions")
 async def api_atomic_executions(limit: int = 100, offset: int = 0):
     return get_atomic_execution_previews(limit=limit, offset=offset)
+
+
+
+@router.post("/atomic/executions/{execution_id}/dispatch")
+async def api_atomic_dispatch_execution(execution_id: int, payload: dict[str, Any] | None = Body(default=None)):
+    try:
+        return dispatch_atomic_execution_to_runner(execution_id, payload or {})
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

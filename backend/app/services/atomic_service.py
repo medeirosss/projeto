@@ -7,6 +7,8 @@ from typing import Any
 import yaml
 
 from app.repositories.atomic_repository import (
+    dispatch_atomic_execution_job,
+    get_atomic_execution_by_id,
     approve_atomic_test,
     create_atomic_execution_preview,
     create_failed_import_run,
@@ -18,7 +20,9 @@ from app.repositories.atomic_repository import (
     replace_catalog,
     update_atomic_test_flags,
     update_atomic_test_risk,
+    mark_atomic_execution_blocked,
 )
+from app.repositories.runner_repository import create_runner_job
 
 SENSITIVE_KEYWORDS = (
     "credential", "password", "hash", "lsass", "mimikatz", "dump", "exfil", "ransom",
@@ -221,3 +225,66 @@ def prepare_atomic_execution_preview(test_id: int, payload: dict[str, Any] | Non
 
 def get_atomic_execution_previews(limit: int = 100, offset: int = 0) -> dict[str, Any]:
     return {"executions": list_atomic_executions(limit=limit, offset=offset)}
+
+
+
+def dispatch_atomic_execution_to_runner(execution_id: int, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Libera um preview aprovado para a fila do Runner.
+
+    3B ainda mantém a execução controlada: o backend não executa comando.
+    O Runner recebe um job com modo padrão dry_run/show_details.
+    """
+    payload = payload or {}
+    execution = get_atomic_execution_by_id(execution_id)
+    if not execution:
+        raise ValueError("Atomic execution job not found")
+
+    status = str(execution.get("status") or "")
+    if status not in ["pending_review", "prepared"]:
+        raise ValueError(f"Execution status must be pending_review/prepared before dispatch. Current status: {status}")
+
+    block_reasons: list[str] = []
+    if not bool(execution.get("approved_for_execution")):
+        block_reasons.append("Teste não aprovado para execução.")
+    if str(execution.get("risk_level") or "").lower() == "critical":
+        block_reasons.append("Risco CRITICAL bloqueado.")
+    if bool(execution.get("requires_reboot")):
+        block_reasons.append("Teste marcado como requires_reboot.")
+
+    runner_id = payload.get("runner_id") or execution.get("runner_id")
+    if not runner_id:
+        block_reasons.append("runner_id é obrigatório para despacho ao Runner.")
+
+    if block_reasons:
+        blocked = mark_atomic_execution_blocked(execution_id, "; ".join(block_reasons))
+        return {"success": False, "blocked": True, "block_reasons": block_reasons, "execution": blocked}
+
+    runner_payload = {
+        "validation_type": "atomic_red_team",
+        "atomic_execution_id": execution["id"],
+        "atomic_test_id": execution.get("atomic_test_id"),
+        "technique_id": execution.get("technique_id"),
+        "atomic_test_number": execution.get("atomic_test_number"),
+        "atomic_name": execution.get("atomic_name"),
+        "executor_name": execution.get("executor_name"),
+        "risk_level": execution.get("risk_level"),
+        "command_preview": execution.get("command_preview"),
+        "mode": payload.get("mode") or "dry_run",
+        "target_host": payload.get("target_host") or execution.get("target_host"),
+    }
+
+    runner_job = create_runner_job(
+        runner_id=runner_id,
+        job_type="atomic_validation",
+        target=runner_payload.get("target_host"),
+        payload=runner_payload,
+    )
+
+    dispatched = dispatch_atomic_execution_job(
+        execution_id=execution_id,
+        runner_id=runner_id,
+        runner_job_id=int(runner_job["id"]),
+        approved_by=payload.get("approved_by") or payload.get("requested_by") or "ui",
+    )
+
+    return {"success": True, "blocked": False, "execution": dispatched, "runner_job": runner_job}
