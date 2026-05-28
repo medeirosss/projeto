@@ -1,0 +1,13 @@
+Governance Layer
+
+Filtros:
+- Approved
+- Safe
+- Risk
+- Platform
+
+Risk badges:
+LOW = azul
+MEDIUM = amarelo
+HIGH = laranja
+CRITICAL = vermelho
