@@ -9,6 +9,7 @@ from app.repositories.runner_repository import (
     create_runner_job,
     create_validation_job,
     get_pending_jobs,
+    list_runners,
     register_runner,
     save_job_result,
     update_heartbeat,
@@ -21,10 +22,16 @@ def register_runner_service(data: dict):
     if not runner_id:
         raise ValueError("runner_id is required")
 
+    metadata = data.get("metadata") or {}
+    for key in ["ip_address", "os", "runner_version", "atomic_mode", "remote_addr"]:
+        if data.get(key) is not None:
+            metadata[key] = data.get(key)
+
     register_runner(
         runner_id=runner_id,
         name=data.get("name"),
         hostname=data.get("hostname"),
+        metadata=metadata,
     )
 
     return {"success": True, "runner_id": runner_id, "status": "registered"}
@@ -35,9 +42,18 @@ def heartbeat_service(data: dict):
     if not runner_id:
         raise ValueError("runner_id is required")
 
-    update_heartbeat(runner_id)
+    metadata = data.get("metadata") or {}
+    for key in ["ip_address", "os", "runner_version", "atomic_mode", "remote_addr"]:
+        if data.get(key) is not None:
+            metadata[key] = data.get(key)
+
+    update_heartbeat(runner_id, metadata=metadata)
     return {"success": True, "runner_id": runner_id, "status": "online"}
 
+
+
+def list_runners_service(include_disabled: bool = False):
+    return {"success": True, "runners": list_runners(include_disabled=include_disabled)}
 
 def list_jobs_service(runner_id: str):
     if not runner_id:

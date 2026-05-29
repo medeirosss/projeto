@@ -1,19 +1,29 @@
-"""Runner de referência para Magi Atomic Red Team - Etapa 3B.
+"""Runner de referência para Magi Atomic Red Team - Etapa 3C.
 
-Modo padrão: dry-run.
-Ele valida o fluxo Magi -> Runner -> Resultado sem executar testes reais.
+Objetivo:
+  Validar o fluxo Magi -> Runner -> PowerShell Atomic preview -> Resultado -> Magi.
+
+Segurança:
+  - O modo padrão continua sendo dry_run, sem executar PowerShell.
+  - O modo execute_preview executa apenas ShowDetailsBrief ou CheckPrereqs.
+  - Este runner NÃO executa o Atomic real sem alteração explícita futura.
 
 Variáveis:
   MAGI_API_URL=http://localhost:8000
   MAGI_RUNNER_ID=runner-lab-01
   MAGI_RUNNER_NAME=Atomic Lab Runner
   MAGI_RUNNER_POLL_SECONDS=5
-  MAGI_ATOMIC_RUNNER_MODE=dry_run
+  MAGI_ATOMIC_RUNNER_MODE=dry_run            # dry_run | execute_preview
+  MAGI_ATOMIC_PREVIEW_ACTION=show_details    # show_details | check_prereqs
+  MAGI_POWERSHELL_EXE=powershell             # powershell | pwsh
 """
 from __future__ import annotations
 
 import os
+import platform
+import re
 import socket
+import subprocess
 import time
 from typing import Any
 
@@ -24,6 +34,33 @@ RUNNER_ID = os.getenv("MAGI_RUNNER_ID", "runner-lab-01")
 RUNNER_NAME = os.getenv("MAGI_RUNNER_NAME", "Atomic Lab Runner")
 POLL_SECONDS = int(os.getenv("MAGI_RUNNER_POLL_SECONDS", "5"))
 RUNNER_MODE = os.getenv("MAGI_ATOMIC_RUNNER_MODE", "dry_run").lower()
+PREVIEW_ACTION = os.getenv("MAGI_ATOMIC_PREVIEW_ACTION", "show_details").lower()
+POWERSHELL_EXE = os.getenv("MAGI_POWERSHELL_EXE", "powershell")
+RUNNER_VERSION = "3C-preview-20260528"
+
+TECHNIQUE_RE = re.compile(r"^T\d{4}(?:\.\d{3})?$")
+
+
+def local_ip() -> str | None:
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(("8.8.8.8", 80))
+        ip = sock.getsockname()[0]
+        sock.close()
+        return ip
+    except Exception:
+        return None
+
+
+def runner_metadata() -> dict[str, Any]:
+    return {
+        "ip_address": local_ip(),
+        "os": platform.platform(),
+        "python_version": platform.python_version(),
+        "runner_version": RUNNER_VERSION,
+        "atomic_mode": RUNNER_MODE,
+        "preview_action": PREVIEW_ACTION,
+    }
 
 
 def post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -43,11 +80,15 @@ def register() -> None:
         "runner_id": RUNNER_ID,
         "name": RUNNER_NAME,
         "hostname": socket.gethostname(),
+        "metadata": runner_metadata(),
     })
 
 
 def heartbeat() -> None:
-    post("/api/runner/heartbeat", {"runner_id": RUNNER_ID})
+    post("/api/runner/heartbeat", {
+        "runner_id": RUNNER_ID,
+        "metadata": runner_metadata(),
+    })
 
 
 def finish_job(job_id: int, status: str, result: dict[str, Any], error: str | None = None) -> None:
@@ -59,35 +100,82 @@ def finish_job(job_id: int, status: str, result: dict[str, Any], error: str | No
     })
 
 
+def build_atomic_preview_command(payload: dict[str, Any]) -> str:
+    technique_id = str(payload.get("technique_id") or "").strip()
+    test_number = int(payload.get("atomic_test_number") or 1)
+
+    if not TECHNIQUE_RE.match(technique_id):
+        raise ValueError(f"Invalid MITRE technique id: {technique_id}")
+    if test_number < 1 or test_number > 999:
+        raise ValueError(f"Invalid Atomic test number: {test_number}")
+
+    if PREVIEW_ACTION == "check_prereqs":
+        return f"Invoke-AtomicTest {technique_id} -TestNumbers {test_number} -CheckPrereqs"
+
+    return f"Invoke-AtomicTest {technique_id} -TestNumbers {test_number} -ShowDetailsBrief"
+
+
+def run_powershell(command: str) -> dict[str, Any]:
+    wrapped = (
+        "$ErrorActionPreference = 'Continue'; "
+        "Import-Module Invoke-AtomicRedTeam -ErrorAction Stop; "
+        f"{command}"
+    )
+    completed = subprocess.run(
+        [POWERSHELL_EXE, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", wrapped],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    return {
+        "exit_code": completed.returncode,
+        "stdout": completed.stdout[-12000:],
+        "stderr": completed.stderr[-12000:],
+        "command": command,
+        "powershell": POWERSHELL_EXE,
+    }
+
+
 def handle_atomic_validation(job: dict[str, Any]) -> None:
     payload = job.get("payload") or {}
     command_preview = payload.get("command_preview") or ""
 
-    # Segurança: por padrão, esta referência não executa o Atomic.
-    # Ela apenas confirma que o job chegou ao Runner e retorna evidência operacional.
     if RUNNER_MODE != "execute_preview":
         finish_job(job["id"], "success", {
             "mode": "dry_run",
+            "runner_version": RUNNER_VERSION,
             "exit_code": 0,
             "stdout": (
-                "DRY-RUN OK. Job recebido pelo Runner.\n"
+                "DRY-RUN OK. Job recebido pelo Runner. Nenhum comando foi executado.\n"
+                f"Runner: {RUNNER_ID}\n"
                 f"Technique: {payload.get('technique_id')}\n"
                 f"Test number: {payload.get('atomic_test_number')}\n"
                 f"Command preview: {command_preview}\n"
             ),
             "stderr": "",
+            "metadata": runner_metadata(),
         })
         return
 
-    # Modo execute_preview reservado para laboratório. Mesmo aqui a referência
-    # deve executar apenas comandos de preview/detalhes, nunca teste real.
-    # Implementação real deve ser feita com allowlist local e controle de identidade.
-    finish_job(job["id"], "success", {
-        "mode": "execute_preview_placeholder",
-        "exit_code": 0,
-        "stdout": "Preview execution placeholder. Implementar allowlist local antes de executar PowerShell.",
-        "stderr": "",
-    })
+    try:
+        safe_command = build_atomic_preview_command(payload)
+        result = run_powershell(safe_command)
+        result.update({
+            "mode": "execute_preview",
+            "preview_action": PREVIEW_ACTION,
+            "runner_version": RUNNER_VERSION,
+            "metadata": runner_metadata(),
+        })
+        finish_job(job["id"], "success" if result["exit_code"] == 0 else "failed", result)
+    except Exception as exc:
+        finish_job(job["id"], "error", {
+            "mode": "execute_preview",
+            "runner_version": RUNNER_VERSION,
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": str(exc),
+            "metadata": runner_metadata(),
+        }, error=str(exc))
 
 
 def poll_once() -> None:
@@ -100,7 +188,7 @@ def poll_once() -> None:
 
 
 def main() -> None:
-    print(f"Magi Atomic Runner iniciado: {RUNNER_ID} -> {MAGI_API_URL} | mode={RUNNER_MODE}")
+    print(f"Magi Atomic Runner iniciado: {RUNNER_ID} -> {MAGI_API_URL} | mode={RUNNER_MODE} | preview={PREVIEW_ACTION}")
     register()
     while True:
         try:

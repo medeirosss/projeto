@@ -13,33 +13,41 @@ def _json(value: Any) -> str:
     return json.dumps(value or {}, ensure_ascii=False)
 
 
-def register_runner(runner_id: str, name: str | None, hostname: str | None):
+def register_runner(runner_id: str, name: str | None, hostname: str | None, metadata: dict | None = None):
+    metadata = metadata or {}
     with SessionLocal() as db:
         db.execute(text("""
-            INSERT INTO runners (runner_id, name, hostname, status, last_heartbeat, enabled, created_at)
-            VALUES (:runner_id, :name, :hostname, 'online', :now, TRUE, :now)
+            INSERT INTO runners (runner_id, name, hostname, status, last_heartbeat, enabled, metadata, created_at, updated_at)
+            VALUES (:runner_id, :name, :hostname, 'online', :now, TRUE, CAST(:metadata AS JSONB), :now, :now)
             ON CONFLICT (runner_id)
             DO UPDATE SET
-                name = EXCLUDED.name,
-                hostname = EXCLUDED.hostname,
+                name = COALESCE(EXCLUDED.name, runners.name),
+                hostname = COALESCE(EXCLUDED.hostname, runners.hostname),
                 status = 'online',
-                last_heartbeat = EXCLUDED.last_heartbeat
+                last_heartbeat = EXCLUDED.last_heartbeat,
+                metadata = COALESCE(runners.metadata, '{}'::jsonb) || EXCLUDED.metadata,
+                updated_at = EXCLUDED.updated_at
         """), {
             "runner_id": runner_id,
             "name": name,
             "hostname": hostname,
+            "metadata": _json(metadata),
             "now": datetime.utcnow()
         })
         db.commit()
 
 
-def update_heartbeat(runner_id: str):
+def update_heartbeat(runner_id: str, metadata: dict | None = None):
+    metadata = metadata or {}
     with SessionLocal() as db:
         db.execute(text("""
             UPDATE runners
-            SET status = 'online', last_heartbeat = :now
+            SET status = 'online',
+                last_heartbeat = :now,
+                metadata = COALESCE(metadata, '{}'::jsonb) || CAST(:metadata AS JSONB),
+                updated_at = :now
             WHERE runner_id = :runner_id AND enabled = TRUE
-        """), {"runner_id": runner_id, "now": datetime.utcnow()})
+        """), {"runner_id": runner_id, "metadata": _json(metadata), "now": datetime.utcnow()})
         db.commit()
 
 
@@ -183,3 +191,34 @@ def update_validation_from_runner_job(runner_job_id: int, status: str, result: d
         }).mappings().first()
         db.commit()
         return dict(row) if row else None
+
+
+def list_runners(include_disabled: bool = False) -> list[dict[str, Any]]:
+    with SessionLocal() as db:
+        rows = db.execute(text("""
+            SELECT
+                runner_id,
+                name,
+                hostname,
+                CASE
+                  WHEN enabled IS NOT TRUE THEN 'disabled'
+                  WHEN last_heartbeat IS NULL THEN 'offline'
+                  WHEN last_heartbeat < (now() AT TIME ZONE 'UTC') - interval '2 minutes' THEN 'offline'
+                  ELSE status
+                END AS status,
+                last_heartbeat,
+                enabled,
+                metadata,
+                metadata->>'ip_address' AS ip_address,
+                metadata->>'os' AS os,
+                metadata->>'runner_version' AS runner_version,
+                metadata->>'atomic_mode' AS atomic_mode,
+                (SELECT COUNT(*) FROM runner_jobs j WHERE j.runner_id = runners.runner_id AND j.status IN ('pending','running')) AS open_jobs,
+                (SELECT COUNT(*) FROM runner_jobs j WHERE j.runner_id = runners.runner_id) AS total_jobs,
+                created_at,
+                updated_at
+            FROM runners
+            WHERE (:include_disabled = TRUE OR enabled = TRUE)
+            ORDER BY last_heartbeat DESC NULLS LAST, runner_id ASC
+        """), {"include_disabled": include_disabled}).mappings().all()
+        return [dict(row) for row in rows]

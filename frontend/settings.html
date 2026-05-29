@@ -164,6 +164,40 @@
     </section>
 
     <section id="settingsFeedbackSection" class="report-section hidden-section"><div class="card"><div class="card-header">Status</div><div class="form-body"><div class="notice" id="statusBox">As configurações do UEM ficam centralizadas nesta área.</div></div></div></section>
+
+
+    <section id="settingsRunnersSection" class="hidden-section report-section">
+      <div class="toolbar">
+        <div class="title">Runners</div>
+        <button class="btn secondary" id="refreshRunnersBtn" type="button">Atualizar</button>
+      </div>
+      <div class="card">
+        <div class="card-header">Runners reportando para o Magi</div>
+        <div class="form-body">
+          <div class="notice" id="runnersStatusBox">Use esta visão para confirmar quais runners estão online, onde estão rodando e quantos jobs estão abertos.</div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Runner ID</th>
+                  <th>Status</th>
+                  <th>Máquina</th>
+                  <th>IP</th>
+                  <th>Sistema</th>
+                  <th>Modo Atomic</th>
+                  <th>Jobs abertos</th>
+                  <th>Último heartbeat</th>
+                </tr>
+              </thead>
+              <tbody id="runnersTableBody">
+                <tr><td colspan="8">Carregando runners...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
   </main>
 </div>
 <script src="/assets/common.js"></script><script src="/assets/settings.js"></script></body></html>

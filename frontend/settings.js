@@ -316,4 +316,74 @@ bootSettings = async function(){
   await loadSettings();
 };
 
+
+function runnerStatusBadge(status){
+  const normalized = String(status || 'offline').toLowerCase();
+  const cls = normalized === 'online' ? 'badge-low' : (normalized === 'disabled' ? 'badge-critical' : 'badge-medium');
+  return `<span class="risk-badge ${cls}">${normalized}</span>`;
+}
+
+function formatRunnerDate(value){
+  if(!value) return '-';
+  try{ return new Date(value).toLocaleString('pt-BR'); }catch(e){ return String(value); }
+}
+
+async function loadRunners(){
+  const body = document.getElementById('runnersTableBody');
+  if(!body) return;
+  body.innerHTML = '<tr><td colspan="8">Carregando runners...</td></tr>';
+  try{
+    const res = await fetch('/api/runner/runners');
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.detail || 'Falha ao carregar runners.');
+    const runners = data.runners || [];
+    if(!runners.length){
+      body.innerHTML = '<tr><td colspan="8">Nenhum runner registrado ainda.</td></tr>';
+      setMessage('runnersStatusBox', 'Nenhum runner reportando para o Magi.');
+      return;
+    }
+    body.innerHTML = runners.map(r => `
+      <tr>
+        <td>${r.runner_id || '-'}</td>
+        <td>${runnerStatusBadge(r.status)}</td>
+        <td>${r.hostname || r.name || '-'}</td>
+        <td>${r.ip_address || r?.metadata?.remote_addr || '-'}</td>
+        <td>${r.os || '-'}</td>
+        <td>${r.atomic_mode || '-'}</td>
+        <td>${r.open_jobs ?? 0}</td>
+        <td>${formatRunnerDate(r.last_heartbeat)}</td>
+      </tr>
+    `).join('');
+    setMessage('runnersStatusBox', `${runners.length} runner(s) encontrados.`);
+  }catch(e){
+    body.innerHTML = `<tr><td colspan="8">${e.message || 'Falha ao carregar runners.'}</td></tr>`;
+    setMessage('runnersStatusBox', e.message || 'Falha ao carregar runners.');
+  }
+}
+
+const previousBindFixedActionsForRunners = bindFixedActions;
+bindFixedActions = function(){
+  previousBindFixedActionsForRunners();
+  document.getElementById('refreshRunnersBtn')?.addEventListener('click', loadRunners);
+};
+
+const previousBootSettingsForRunners = bootSettings;
+bootSettings = async function(){
+  buildHeader('settings');
+  settingsModules = await fetchModuleStatus();
+  const groups = [
+    { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }, { key:'settingsWebhookSection', label:'Webhook' }, { key:'settingsUsersSection', label:'Usuários' }, { key:'settingsStatusSection', label:'Status' }, { key:'settingsRunnersSection', label:'Runners' }] },
+    { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }, { key:'settingsIpScopeSection', label:'IP Scope' }] }
+  ];
+  renderModuleSidebar('settingsSidebar', groups, async (key)=> {
+    showSettingsSection(key);
+    if(key === 'settingsUsersSection') await loadAuthAccess();
+    if(key === 'settingsRunnersSection') await loadRunners();
+  });
+  showSettingsSection('settingsMailSection');
+  bindFixedActions();
+  await loadSettings();
+};
+
+
 bootSettings();
