@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -183,6 +185,24 @@ def _build_preview_command(test: dict[str, Any]) -> str:
     return f"Invoke-AtomicTest {technique_id} -TestNumbers {int(test_number)} -ShowDetailsBrief"
 
 
+def _build_execute_lab_command(test: dict[str, Any]) -> str:
+    technique_id = test.get("technique_id")
+    test_number = test.get("atomic_test_number") or test.get("computed_test_number") or 1
+    return (
+        f"Invoke-AtomicTest {technique_id} -TestNumbers {int(test_number)} "
+        f"-PathToAtomicsFolder \"C:\\Program Files\\Magi Runner\\atomic-red-team\\atomics\""
+    )
+
+
+def _current_user_from_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
+    payload = payload or {}
+    user = payload.get("current_user") or {}
+    return {
+        "username": user.get("username") or payload.get("requested_by") or payload.get("approved_by") or "ui",
+        "role": str(user.get("role") or payload.get("role") or "viewer").lower(),
+    }
+
+
 def prepare_atomic_execution_preview(test_id: int, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     payload = payload or {}
     test = get_atomic_test_by_id(test_id)
@@ -221,6 +241,106 @@ def prepare_atomic_execution_preview(test_id: int, payload: dict[str, Any] | Non
     )
 
     return {"success": True, "execution": execution, "test": test, "blocked": bool(block_reasons), "block_reasons": block_reasons}
+
+
+
+
+def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Cria execução real controlada de Atomic em LAB.
+
+    Esta função NÃO executa localmente no backend. Ela cria um runner_job com
+    payload.mode=execute_lab para o Runner executar localmente nele.
+    """
+    payload = payload or {}
+    user = _current_user_from_payload(payload)
+    if user.get("role") != "admin":
+        raise ValueError("Somente usuários com role admin podem executar Atomic LAB.")
+
+    runner_id = payload.get("runner_id")
+    if not runner_id:
+        raise ValueError("runner_id é obrigatório para execução LAB.")
+
+    test = get_atomic_test_by_id(test_id)
+    if not test:
+        raise ValueError("Atomic test not found")
+
+    block_reasons: list[str] = []
+    if not bool(test.get("approved_for_execution")):
+        block_reasons.append("Teste não aprovado para execução.")
+    if not bool(test.get("approved_for_lab")):
+        block_reasons.append("Teste não aprovado para LAB.")
+    if str(test.get("risk_level") or "").lower() != "low":
+        block_reasons.append(f"Risco precisa ser LOW para 3E. Atual: {test.get('risk_level')}")
+    if str(test.get("executor_name") or "").lower() != "powershell":
+        block_reasons.append(f"Executor precisa ser powershell. Atual: {test.get('executor_name')}")
+    if bool(test.get("requires_reboot")):
+        block_reasons.append("Teste marcado como requires_reboot.")
+    if bool(test.get("executor_elevation_required")):
+        block_reasons.append("Teste exige privilégio elevado. Bloqueado na primeira 3E.")
+    if bool(test.get("has_dependencies")) or int(test.get("dependency_count") or 0) > 0:
+        block_reasons.append("Teste possui dependências. Use primeiro testes sem dependências.")
+
+    if block_reasons:
+        return {"success": False, "blocked": True, "block_reasons": block_reasons, "test": test}
+
+    command_preview = _build_execute_lab_command(test)
+    atomic_test_number = test.get("atomic_test_number") or test.get("computed_test_number") or 1
+    now = datetime.utcnow().isoformat()
+    runner_payload = {
+        "validation_type": "atomic_red_team",
+        "mode": "execute_lab",
+        "atomic_test_id": test_id,
+        "technique_id": test.get("technique_id"),
+        "atomic_test_number": int(atomic_test_number),
+        "atomic_name": test.get("atomic_name"),
+        "executor_name": test.get("executor_name"),
+        "risk_level": str(test.get("risk_level") or "low").lower(),
+        "command_preview": command_preview,
+        "target_host": None,
+        "approved_for_execution": True,
+        "approved_for_lab": True,
+        "allow_real_execution": True,
+        "requires_reboot": False,
+        "requires_admin": False,
+        "approved_by": user.get("username"),
+        "approved_at": now,
+    }
+
+    execution = create_atomic_execution_preview(
+        atomic_test_id=test_id,
+        technique_id=test.get("technique_id"),
+        atomic_test_number=int(atomic_test_number),
+        runner_id=runner_id,
+        target_host=None,
+        requested_by=user.get("username"),
+        command_preview=command_preview,
+        status="queued",
+        block_reason=None,
+        payload=runner_payload,
+    )
+
+    runner_payload["atomic_execution_id"] = execution["id"]
+    runner_job = create_runner_job(
+        runner_id=runner_id,
+        job_type="atomic_validation",
+        target=None,
+        payload=runner_payload,
+    )
+    dispatched = dispatch_atomic_execution_job(
+        execution_id=int(execution["id"]),
+        runner_id=runner_id,
+        runner_job_id=int(runner_job["id"]),
+        approved_by=user.get("username"),
+    )
+
+    return {
+        "success": True,
+        "blocked": False,
+        "execution": dispatched,
+        "runner_job": runner_job,
+        "command_preview": command_preview,
+        "target_note": "Nesta etapa a execução é local no Runner; target/IP ainda não é usado.",
+    }
 
 
 def get_atomic_execution_previews(limit: int = 100, offset: int = 0) -> dict[str, Any]:

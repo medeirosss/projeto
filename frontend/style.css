@@ -718,3 +718,32 @@ th{color:#475467;background:#fbfcfe}
 .badge.risk-high{background:rgba(239,68,68,.18)!important;color:#ff8a8a!important;border:1px solid rgba(239,68,68,.34)!important}
 .badge.risk-critical{background:rgba(127,29,29,.35)!important;color:#fecaca!important;border:1px solid rgba(239,68,68,.45)!important}
 .action-cell{white-space:nowrap}.action-cell .btn{margin-right:6px}code{white-space:pre-wrap;color:#bfdbfe}
+
+/* Atomic 3E.1 evidence */
+.atomic-evidence {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(120, 140, 180, 0.35);
+  border-radius: 8px;
+  background: rgba(4, 10, 20, 0.45);
+}
+.atomic-evidence summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.atomic-evidence pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.atomic-target-warning {
+  margin: 8px 0 12px;
+  padding: 8px;
+  border-left: 4px solid #ffd37a;
+  border-radius: 6px;
+  background: rgba(255, 211, 122, 0.12);
+}

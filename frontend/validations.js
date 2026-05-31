@@ -11,6 +11,50 @@ function boolBadge(value, yes='Sim', no='Não'){
   return value ? `<span class="badge badge-ok">${yes}</span>` : `<span class="badge badge-muted">${no}</span>`;
 }
 
+function escapeHtml(value){
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function canExecuteLab(row){
+  return !!row.approved_for_execution
+    && !!row.approved_for_lab
+    && String(row.risk_level || '').toLowerCase() === 'low'
+    && String(row.executor_name || '').toLowerCase() === 'powershell'
+    && !row.executor_elevation_required
+    && !row.requires_reboot
+    && !row.has_dependencies
+    && Number(row.dependency_count || 0) === 0;
+}
+
+function renderExecutionEvidence(row){
+  const evidence = row.evidence || {};
+  const payload = row.payload || {};
+  const command = evidence.command || row.command_preview || payload.command_preview || '';
+  const stdout = row.stdout || evidence.stdout || '';
+  const stderr = row.stderr || evidence.stderr || '';
+  const exitCode = row.exit_code ?? evidence.exit_code ?? '';
+  const executedReal = row.executed_real_test === true || evidence.executed_real_test === true;
+  if(!command && !stdout && !stderr && exitCode === '') return '';
+  return `
+    <details class="atomic-evidence">
+      <summary>Evidência</summary>
+      <div><strong>Execução real:</strong> ${executedReal ? 'SIM' : 'NÃO'}</div>
+      <div><strong>Exit code:</strong> ${safeText(exitCode)}</div>
+      <div><strong>Comando:</strong></div>
+      <pre>${escapeHtml(command)}</pre>
+      <div><strong>STDOUT:</strong></div>
+      <pre>${escapeHtml(stdout)}</pre>
+      <div><strong>STDERR:</strong></div>
+      <pre>${escapeHtml(stderr)}</pre>
+    </details>`;
+}
+
+
 async function fetchJson(url, options){
   const res = await fetch(url, options || {});
   const data = await res.json().catch(()=>({}));
@@ -75,10 +119,31 @@ async function selectTechnique(techniqueId){
       <td class="action-cell">
         <button class="btn secondary btn-sm approve-test" data-id="${row.id}">Aprovar</button>
         <button class="btn primary btn-sm prepare-test" data-id="${row.id}">Preparar</button>
+        ${canExecuteLab(row) ? `<button class="btn danger btn-sm execute-lab-test" data-id="${row.id}">Executar LAB</button>` : `<button class="btn secondary btn-sm" disabled title="Exige: aprovado, lab, low, powershell, sem admin, sem reboot e sem dependências">Executar LAB</button>`}
       </td>
     </tr>`).join('');
   document.querySelectorAll('.approve-test').forEach(btn => btn.addEventListener('click', () => approveAtomicTest(btn.dataset.id)));
   document.querySelectorAll('.prepare-test').forEach(btn => btn.addEventListener('click', () => prepareAtomicExecution(btn.dataset.id)));
+  document.querySelectorAll('.execute-lab-test').forEach(btn => btn.addEventListener('click', () => executeAtomicLab(btn.dataset.id)));
+}
+
+
+async function executeAtomicLab(testId){
+  const result = document.getElementById('atomicExecutionResult');
+  const runnerId = document.getElementById('atomicRunnerId').value.trim();
+  if(!runnerId){ result.textContent = 'Informe o Runner ID antes de executar em LAB.'; return; }
+  const ok = confirm('Executar teste Atomic REAL em LAB no Runner selecionado?\n\nA execução ocorre LOCALMENTE no Runner. O campo Target ainda não é usado nesta etapa.');
+  if(!ok) return;
+  result.textContent = `Enviando execução REAL LAB do teste ${testId} para ${runnerId}...`;
+  try{
+    const data = await fetchJson(`/api/validations/atomic/tests/${testId}/execute-lab`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({runner_id: runnerId, requested_by: 'ui'})
+    });
+    result.textContent = jsonPretty(data);
+    await loadAtomicExecutions();
+  }catch(err){ result.textContent = err.message; }
 }
 
 async function approveAtomicTest(testId){
@@ -114,7 +179,7 @@ async function loadAtomicExecutions(){
   const data = await fetchJson('/api/validations/atomic/executions?limit=20');
   const tbody = document.getElementById('atomicExecutionsTable');
   const rows = data.executions || [];
-  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="8">Nenhum preview criado.</td></tr>'; return; }
+  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="8">Nenhuma execução criada.</td></tr>'; return; }
   tbody.innerHTML = rows.map(row => `
     <tr>
       <td>${row.id}</td>
@@ -122,8 +187,8 @@ async function loadAtomicExecutions(){
       <td>${safeText(row.atomic_name)}</td>
       <td>${safeText(row.runner_id)}</td>
       <td>${safeText(row.target_host)}</td>
-      <td>${safeText(row.status)}${row.block_reason ? `<br><small>${safeText(row.block_reason)}</small>` : ''}${row.error_message ? `<br><small>${safeText(row.error_message)}</small>` : ''}</td>
-      <td><code>${safeText(row.command_preview)}</code></td>
+      <td>${safeText(row.status)}${row.executed_real_test ? '<br><span class="badge badge-ok">REAL</span>' : ''}${row.block_reason ? `<br><small>${safeText(row.block_reason)}</small>` : ''}${row.error_message ? `<br><small>${safeText(row.error_message)}</small>` : ''}</td>
+      <td><code>${safeText(row.command_preview)}</code>${renderExecutionEvidence(row)}</td>
       <td>${row.status === 'pending_review' ? `<button class="btn primary btn-sm dispatch-execution" data-id="${row.id}">Enviar ao Runner</button>` : safeText(row.runner_job_id)}</td>
     </tr>`).join('');
   document.querySelectorAll('.dispatch-execution').forEach(btn => btn.addEventListener('click', () => dispatchAtomicExecution(btn.dataset.id)));

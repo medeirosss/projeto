@@ -5,20 +5,20 @@
   <main class="report-content settings-content alerts-content">
     <section id="atomicCatalogSection" class="report-section">
       <div class="toolbar"><div><div class="title">Catálogo Atomic Red Team</div><p class="section-subtitle">Importação e consulta de testes atômicos mapeados ao MITRE ATT&CK. Esta etapa não executa testes.</p></div></div>
-      <div class="alert info-banner">Etapa 3B: despacho controlado para Runner. O backend não executa comandos; ele apenas cria fila e recebe resultado do Runner.</div>
+      <div class="alert info-banner">Etapa 3E.1: execução LAB controlada via Runner. O backend não executa comandos; ele cria fila e recebe evidências do Runner.</div>
       <div class="mini-stats alert-stats"><div class="mini-stat"><small>Técnicas</small><strong id="atomicTechniquesCount">0</strong></div><div class="mini-stat"><small>Testes</small><strong id="atomicTestsCount">0</strong></div><div class="mini-stat"><small>Aprovados lab</small><strong id="atomicApprovedCount">0</strong></div><div class="mini-stat"><small>Com dependências</small><strong id="atomicDependenciesCount">0</strong></div></div>
       <div class="card alerts-card"><div class="card-header">Importador</div><div class="card-body"><div class="form-grid"><label>Caminho do repositório Atomic/atomics<input id="atomicSourcePath" placeholder="/opt/atomic-red-team/atomics"></label></div><div class="detail-actions"><button class="btn primary btn-sm" id="atomicImportBtn" type="button">Importar catálogo</button><button class="btn secondary btn-sm" id="atomicRefreshBtn" type="button">Atualizar lista</button></div><pre id="atomicImportResult" class="result-box">Aguardando importação.</pre></div></div>
 
       <div class="card alerts-card">
-        <div class="card-header">Execução controlada via Runner — 3B Dispatch</div>
+        <div class="card-header">Execução controlada via Runner — 3E.1 LAB</div>
         <div class="card-body">
-          <p class="section-subtitle">Esta área prepara a execução e envia o job aprovado para um Runner autorizado. O Runner de referência opera em dry-run por padrão.</p>
+          <p class="section-subtitle">Esta área prepara previews, envia jobs ao Runner e permite execução real LAB apenas para testes aprovados, low-risk e sem dependências.</p>
           <div class="form-grid">
             <label>Runner ID opcional<input id="atomicRunnerId" placeholder="runner-lab-01"></label>
-            <label>Target host opcional<input id="atomicTargetHost" placeholder="host-lab-01"></label>
+            <label>Target host opcional <small>(não usado na 3E)</small><input id="atomicTargetHost" placeholder="Execução local no Runner selecionado"></label>
           </div>
           <div class="detail-actions"><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar previews</button></div>
-          <pre id="atomicExecutionResult" class="result-box">Aguardando preparação.</pre>
+          <div class="atomic-target-warning">Nesta etapa a execução Atomic ocorre localmente no Runner selecionado. O campo Target/IP ainda não executa remotamente.</div><pre id="atomicExecutionResult" class="result-box">Aguardando preparação.</pre>
           <div class="table-wrap"><table><thead><tr><th>ID</th><th>Técnica</th><th>Teste</th><th>Runner</th><th>Target</th><th>Status</th><th>Preview</th><th>Runner Job</th></tr></thead><tbody id="atomicExecutionsTable"></tbody></table></div>
         </div>
       </div>

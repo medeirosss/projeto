@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Request
 
 from app.services.atomic_service import (
     dispatch_atomic_execution_to_runner,
+    execute_atomic_lab_test,
     get_atomic_execution_previews,
     get_atomic_summary,
     get_atomic_techniques,
@@ -80,6 +81,22 @@ async def api_atomic_test_risk(test_id: int, payload: dict[str, Any] = Body(...)
 async def api_atomic_test_flags(test_id: int, payload: dict[str, Any] | None = Body(default=None)):
     try:
         return set_atomic_test_flags(test_id, payload or {})
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+
+
+@router.post("/atomic/tests/{test_id}/execute-lab")
+async def api_atomic_execute_lab(test_id: int, request: Request, payload: dict[str, Any] | None = Body(default=None)):
+    try:
+        payload = payload or {}
+        user_state = getattr(request.state, "user", {}) or {}
+        payload["current_user"] = {
+            "username": user_state.get("sub") or user_state.get("username") or payload.get("approved_by") or "ui",
+            "role": str(user_state.get("role") or payload.get("role") or "viewer").lower(),
+        }
+        return execute_atomic_lab_test(test_id, payload)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
