@@ -124,26 +124,84 @@ async function selectTechnique(techniqueId){
     </tr>`).join('');
   document.querySelectorAll('.approve-test').forEach(btn => btn.addEventListener('click', () => approveAtomicTest(btn.dataset.id)));
   document.querySelectorAll('.prepare-test').forEach(btn => btn.addEventListener('click', () => prepareAtomicExecution(btn.dataset.id)));
-  document.querySelectorAll('.execute-lab-test').forEach(btn => btn.addEventListener('click', () => executeAtomicLab(btn.dataset.id)));
 }
 
 
 async function executeAtomicLab(testId){
+
+  console.log('================================');
+  console.log('EXECUTE LAB');
+  console.log('TEST ID:', testId);
+  console.log('================================');
+
   const result = document.getElementById('atomicExecutionResult');
-  const runnerId = document.getElementById('atomicRunnerId').value.trim();
-  if(!runnerId){ result.textContent = 'Informe o Runner ID antes de executar em LAB.'; return; }
-  const ok = confirm('Executar teste Atomic REAL em LAB no Runner selecionado?\n\nA execução ocorre LOCALMENTE no Runner. O campo Target ainda não é usado nesta etapa.');
-  if(!ok) return;
-  result.textContent = `Enviando execução REAL LAB do teste ${testId} para ${runnerId}...`;
+
+  const runnerId =
+      document.getElementById('atomicRunnerId').value.trim();
+
+  console.log('RUNNER:', runnerId);
+
+  if(!runnerId){
+      result.textContent =
+          'Informe o Runner ID antes de executar em LAB.';
+      return;
+  }
+
+  const ok = confirm(
+      'Executar teste Atomic REAL em LAB no Runner selecionado?'
+  );
+
+  console.log('CONFIRM:', ok);
+
+  if(!ok){
+      console.log('EXECUÇÃO CANCELADA');
+      return;
+  }
+
+  const url =
+      `/api/validations/atomic/tests/${testId}/execute-lab`;
+
+  console.log('POST URL:', url);
+
+  result.textContent =
+      `Executando teste ${testId}...`;
+
   try{
-    const data = await fetchJson(`/api/validations/atomic/tests/${testId}/execute-lab`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({runner_id: runnerId, requested_by: 'ui'})
-    });
-    result.textContent = jsonPretty(data);
-    await loadAtomicExecutions();
-  }catch(err){ result.textContent = err.message; }
+
+      const payload = {
+          runner_id: runnerId,
+          requested_by: 'ui'
+      };
+
+      console.log('PAYLOAD:', payload);
+
+      const data = await fetchJson(
+          url,
+          {
+              method:'POST',
+              headers:{
+                  'Content-Type':'application/json'
+              },
+              body: JSON.stringify(payload)
+          }
+      );
+
+      console.log('RESPONSE:', data);
+
+      result.textContent =
+          JSON.stringify(data, null, 2);
+
+      await loadAtomicExecutions();
+
+  }
+  catch(err){
+
+      console.error('EXECUTE LAB ERROR:', err);
+
+      result.textContent =
+          err.message;
+
+  }
 }
 
 async function approveAtomicTest(testId){
@@ -225,6 +283,18 @@ async function importAtomicCatalog(){
     document.getElementById('atomicImportResult').textContent = err.message;
   }
 }
+
+document.addEventListener('click', async function(event){
+  const btn = event.target.closest('.execute-lab-test');
+  if(!btn) return;
+
+  event.preventDefault();
+
+  const testId = btn.dataset.id;
+  console.log('Execute LAB clicked:', testId);
+
+  await executeAtomicLab(testId);
+});
 
 function bindValidationsUi(){
   buildHeader('validations');
