@@ -47,7 +47,7 @@ def replace_catalog(techniques: list[dict[str, Any]], tests: list[dict[str, Any]
                     dependency_count, input_arguments, risk_flags, risk_level,
                     approved_for_lab, enabled, source_file, raw_yaml, created_at, updated_at
                 ) VALUES (
-                    :technique_id, :atomic_name, :description, CAST(:supported_platforms AS JSONB),
+                    :technique_id, :atomic_test_number, :atomic_name, :description, CAST(:supported_platforms AS JSONB),
                     :executor_name, :executor_elevation_required, :has_dependencies,
                     :dependency_count, CAST(:input_arguments AS JSONB), CAST(:risk_flags AS JSONB), :risk_level,
                     FALSE, TRUE, :source_file, CAST(:raw_yaml AS JSONB), :now, :now
@@ -142,7 +142,7 @@ def list_tests(technique_id: str | None = None, platform: str | None = None, exe
               AND (:executor IS NULL OR executor_name = :executor)
               AND (:risk_level IS NULL OR risk_level = :risk_level)
               AND (:platform IS NULL OR supported_platforms::text ILIKE :platform_like)
-            ORDER BY technique_id ASC, id ASC
+            ORDER BY technique_id ASC, atomic_test_number ASC NULLS LAST, id ASC
             LIMIT :limit OFFSET :offset
         """), {
             "technique_id": technique_id,

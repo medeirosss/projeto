@@ -13,8 +13,9 @@ Variáveis:
   MAGI_RUNNER_ID=runner-lab-01
   MAGI_RUNNER_NAME=Atomic Lab Runner
   MAGI_RUNNER_POLL_SECONDS=5
-  MAGI_ATOMIC_RUNNER_MODE=dry_run            # dry_run | execute_preview
+  MAGI_ATOMIC_RUNNER_MODE=dry_run            # dry_run | execute_preview | execute_lab
   MAGI_ATOMIC_PREVIEW_ACTION=show_details    # show_details | check_prereqs
+  MAGI_ATOMICS_FOLDER=C:\Program Files\Magi Runner\atomic-red-team\atomics
   MAGI_POWERSHELL_EXE=powershell             # powershell | pwsh
 """
 from __future__ import annotations
@@ -36,7 +37,8 @@ POLL_SECONDS = int(os.getenv("MAGI_RUNNER_POLL_SECONDS", "5"))
 RUNNER_MODE = os.getenv("MAGI_ATOMIC_RUNNER_MODE", "dry_run").lower()
 PREVIEW_ACTION = os.getenv("MAGI_ATOMIC_PREVIEW_ACTION", "show_details").lower()
 POWERSHELL_EXE = os.getenv("MAGI_POWERSHELL_EXE", "powershell")
-RUNNER_VERSION = "3C-preview-20260528"
+ATOMICS_FOLDER = os.getenv("MAGI_ATOMICS_FOLDER", r"C:\Program Files\Magi Runner\atomic-red-team\atomics")
+RUNNER_VERSION = "3E-lab-atomic-number-fix-20260601"
 
 TECHNIQUE_RE = re.compile(r"^T\d{4}(?:\.\d{3})?$")
 
@@ -115,6 +117,24 @@ def build_atomic_preview_command(payload: dict[str, Any]) -> str:
     return f"Invoke-AtomicTest {technique_id} -TestNumbers {test_number} -ShowDetailsBrief"
 
 
+
+def build_atomic_execute_lab_command(payload: dict[str, Any]) -> str:
+    technique_id = str(payload.get("technique_id") or "").strip()
+    test_number = int(payload.get("atomic_test_number") or 0)
+
+    if not TECHNIQUE_RE.match(technique_id):
+        raise ValueError(f"Invalid MITRE technique id: {technique_id}")
+    if test_number < 1 or test_number > 999:
+        raise ValueError(f"Invalid Atomic test number: {test_number}")
+    if payload.get("allow_real_execution") is not True:
+        raise ValueError("Real Atomic LAB execution was not explicitly allowed by backend payload.")
+
+    return (
+        f'Invoke-AtomicTest {technique_id} '
+        f'-TestNumbers {test_number} '
+        f'-PathToAtomicsFolder "{ATOMICS_FOLDER}"'
+    )
+
 def run_powershell(command: str) -> dict[str, Any]:
     wrapped = (
         "$ErrorActionPreference = 'Continue'; "
@@ -139,6 +159,30 @@ def run_powershell(command: str) -> dict[str, Any]:
 def handle_atomic_validation(job: dict[str, Any]) -> None:
     payload = job.get("payload") or {}
     command_preview = payload.get("command_preview") or ""
+
+    job_mode = str(payload.get("mode") or "").lower()
+
+    if RUNNER_MODE == "execute_lab" and job_mode == "execute_lab":
+        try:
+            safe_command = build_atomic_execute_lab_command(payload)
+            result = run_powershell(safe_command)
+            result.update({
+                "mode": "execute_lab",
+                "runner_version": RUNNER_VERSION,
+                "metadata": runner_metadata(),
+            })
+            finish_job(job["id"], "success" if result["exit_code"] == 0 else "failed", result)
+            return
+        except Exception as exc:
+            finish_job(job["id"], "error", {
+                "mode": "execute_lab",
+                "runner_version": RUNNER_VERSION,
+                "exit_code": 1,
+                "stdout": "",
+                "stderr": str(exc),
+                "metadata": runner_metadata(),
+            }, error=str(exc))
+            return
 
     if RUNNER_MODE != "execute_preview":
         finish_job(job["id"], "success", {

@@ -21,14 +21,8 @@ function escapeHtml(value){
 }
 
 function canExecuteLab(row){
-  return !!row.approved_for_execution
-    && !!row.approved_for_lab
-    && String(row.risk_level || '').toLowerCase() === 'low'
-    && String(row.executor_name || '').toLowerCase() === 'powershell'
-    && !row.executor_elevation_required
-    && !row.requires_reboot
-    && !row.has_dependencies
-    && Number(row.dependency_count || 0) === 0;
+  // Regra de produto: somente bloqueia se o teste estiver desabilitado ou não aprovado pelo admin.
+  return !!row.enabled && !!row.approved_for_execution && !!row.approved_for_lab;
 }
 
 function renderExecutionEvidence(row){
@@ -119,7 +113,7 @@ async function selectTechnique(techniqueId){
       <td class="action-cell">
         <button class="btn secondary btn-sm approve-test" data-id="${row.id}">Aprovar</button>
         <button class="btn primary btn-sm prepare-test" data-id="${row.id}">Preparar</button>
-        ${canExecuteLab(row) ? `<button class="btn danger btn-sm execute-lab-test" data-id="${row.id}">Executar LAB</button>` : `<button class="btn secondary btn-sm" disabled title="Exige: aprovado, lab, low, powershell, sem admin, sem reboot e sem dependências">Executar LAB</button>`}
+        ${canExecuteLab(row) ? `<button class="btn danger btn-sm execute-lab-test" data-id="${row.id}" data-technique-id="${safeText(row.technique_id)}" data-atomic-test-number="${safeText(row.atomic_test_number)}">Executar LAB</button>` : `<button class="btn secondary btn-sm" disabled title="Exige apenas aprovação do admin para execução/LAB">Executar LAB</button>`}
       </td>
     </tr>`).join('');
   document.querySelectorAll('.approve-test').forEach(btn => btn.addEventListener('click', () => approveAtomicTest(btn.dataset.id)));
@@ -291,9 +285,11 @@ document.addEventListener('click', async function(event){
   event.preventDefault();
 
   const testId = btn.dataset.id;
-  console.log('Execute LAB clicked:', testId);
+  const techniqueId = btn.dataset.techniqueId || null;
+  const atomicTestNumber = btn.dataset.atomicTestNumber || null;
+  console.log('Execute LAB clicked:', { testId, techniqueId, atomicTestNumber });
 
-  await executeAtomicLab(testId);
+  await executeAtomicLab(testId, techniqueId, atomicTestNumber);
 });
 
 function bindValidationsUi(){

@@ -177,19 +177,29 @@ def set_atomic_test_flags(test_id: int, flags: dict[str, Any]) -> dict[str, Any]
     }
 
 
+def _atomic_test_number_or_raise(test: dict[str, Any]) -> int:
+    """Retorna o número real do teste no YAML.
+
+    Importante: esse valor não é o id interno do banco.
+    Exemplo: T1087.001-8 => atomic_test_number = 8.
+    """
+    test_number = test.get("atomic_test_number") or test.get("computed_test_number")
+    if not test_number:
+        raise ValueError("atomic_test_number ausente. Reimporte o catálogo Atomic a partir dos YAMLs.")
+    return int(test_number)
+
+
 def _build_preview_command(test: dict[str, Any]) -> str:
     technique_id = test.get("technique_id")
-    test_number = test.get("atomic_test_number")
-    if not test_number:
-        test_number = test.get("computed_test_number") or 1
-    return f"Invoke-AtomicTest {technique_id} -TestNumbers {int(test_number)} -ShowDetailsBrief"
+    test_number = _atomic_test_number_or_raise(test)
+    return f"Invoke-AtomicTest {technique_id} -TestNumbers {test_number} -ShowDetailsBrief"
 
 
 def _build_execute_lab_command(test: dict[str, Any]) -> str:
     technique_id = test.get("technique_id")
-    test_number = test.get("atomic_test_number") or test.get("computed_test_number") or 1
+    test_number = _atomic_test_number_or_raise(test)
     return (
-        f"Invoke-AtomicTest {technique_id} -TestNumbers {int(test_number)} "
+        f"Invoke-AtomicTest {technique_id} -TestNumbers {test_number} "
         f"-PathToAtomicsFolder \"C:\\Program Files\\Magi Runner\\atomic-red-team\\atomics\""
     )
 
@@ -253,8 +263,6 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
     """
     payload = payload or {}
     user = _current_user_from_payload(payload)
-    if user.get("role") != "admin":
-        raise ValueError("Somente usuários com role admin podem executar Atomic LAB.")
 
     runner_id = payload.get("runner_id")
     if not runner_id:
@@ -265,26 +273,18 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
         raise ValueError("Atomic test not found")
 
     block_reasons: list[str] = []
+    if not bool(test.get("enabled")):
+        block_reasons.append("Teste desabilitado no catálogo.")
     if not bool(test.get("approved_for_execution")):
-        block_reasons.append("Teste não aprovado para execução.")
+        block_reasons.append("Teste não aprovado para execução pelo admin.")
     if not bool(test.get("approved_for_lab")):
-        block_reasons.append("Teste não aprovado para LAB.")
-    if str(test.get("risk_level") or "").lower() != "low":
-        block_reasons.append(f"Risco precisa ser LOW para 3E. Atual: {test.get('risk_level')}")
-    if str(test.get("executor_name") or "").lower() != "powershell":
-        block_reasons.append(f"Executor precisa ser powershell. Atual: {test.get('executor_name')}")
-    if bool(test.get("requires_reboot")):
-        block_reasons.append("Teste marcado como requires_reboot.")
-    if bool(test.get("executor_elevation_required")):
-        block_reasons.append("Teste exige privilégio elevado. Bloqueado na primeira 3E.")
-    if bool(test.get("has_dependencies")) or int(test.get("dependency_count") or 0) > 0:
-        block_reasons.append("Teste possui dependências. Use primeiro testes sem dependências.")
+        block_reasons.append("Teste não aprovado para LAB pelo admin.")
 
     if block_reasons:
         return {"success": False, "blocked": True, "block_reasons": block_reasons, "test": test}
 
     command_preview = _build_execute_lab_command(test)
-    atomic_test_number = test.get("atomic_test_number") or test.get("computed_test_number") or 1
+    atomic_test_number = _atomic_test_number_or_raise(test)
     now = datetime.utcnow().isoformat()
     runner_payload = {
         "validation_type": "atomic_red_team",
@@ -300,8 +300,8 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
         "approved_for_execution": True,
         "approved_for_lab": True,
         "allow_real_execution": True,
-        "requires_reboot": False,
-        "requires_admin": False,
+        "requires_reboot": bool(test.get("requires_reboot")),
+        "requires_admin": bool(test.get("executor_elevation_required")),
         "approved_by": user.get("username"),
         "approved_at": now,
     }
