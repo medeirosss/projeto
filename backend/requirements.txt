@@ -10,5 +10,6 @@ ldap3
 PyJWT
 pywinrm
 alembic
+openai>=1.0.0
 
 PyYAML
