@@ -15,6 +15,7 @@ from app.routers.actions import router as actions_router
 from app.routers.alerts import router as alerts_router
 from app.routers.cve_intelligence import router as cve_intelligence_router
 from app.routers.validations import router as validations_router
+from app.routers.ai_chat import router as ai_chat_router
 from app.license.license_middleware import LicenseMiddleware
 from app.security.auth_middleware import AuthMiddleware
 from app.auth.auth_router import router as auth_router
@@ -50,6 +51,7 @@ app.include_router(actions_router)
 app.include_router(alerts_router)
 app.include_router(cve_intelligence_router)
 app.include_router(validations_router)
+app.include_router(ai_chat_router)
 
 if __name__ == "__main__":
     import uvicorn
