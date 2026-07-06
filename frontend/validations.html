@@ -12,14 +12,25 @@
       <div class="card alerts-card">
         <div class="card-header">Execução controlada via Runner — 3E.1 LAB</div>
         <div class="card-body">
-          <p class="section-subtitle">Esta área prepara previews, envia jobs ao Runner e permite execução real LAB apenas para testes aprovados, low-risk e sem dependências.</p>
+          <p class="section-subtitle">Esta área prepara previews, envia jobs ao Runner e permite execução real LAB apenas para testes aprovados pelo admin. Risco, dependências, sistema operacional e reboot ficam como metadados de decisão, sem bloqueio de produto.</p>
           <div class="form-grid">
             <label>Runner ID opcional<input id="atomicRunnerId" placeholder="runner-lab-01"></label>
             <label>Target host opcional <small>(não usado na 3E)</small><input id="atomicTargetHost" placeholder="Execução local no Runner selecionado"></label>
           </div>
-          <div class="detail-actions"><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar previews</button></div>
+          <div class="detail-actions"><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar histórico</button></div>
           <div class="atomic-target-warning">Nesta etapa a execução Atomic ocorre localmente no Runner selecionado. O campo Target/IP ainda não executa remotamente.</div><pre id="atomicExecutionResult" class="result-box">Aguardando preparação.</pre>
-          <div class="table-wrap"><table><thead><tr><th>ID</th><th>Técnica</th><th>Teste</th><th>Runner</th><th>Target</th><th>Status</th><th>Preview</th><th>Runner Job</th></tr></thead><tbody id="atomicExecutionsTable"></tbody></table></div>
+          <div class="history-filters">
+            <input id="historySearch" placeholder="Buscar por UUID, técnica, teste, runner, host ou solicitante">
+            <input id="historyTechnique" placeholder="Técnica ex: T1059">
+            <input id="historyRunner" placeholder="Runner ID">
+            <select id="historyStatus"><option value="">Todos os status</option><option value="queued">queued</option><option value="success">success</option><option value="failed">failed</option><option value="error">error</option><option value="timeout">timeout</option><option value="blocked">blocked</option><option value="pending_review">pending_review</option></select>
+            <input id="historyRequestedBy" placeholder="Solicitante">
+            <input id="historyDateFrom" type="date" title="Data inicial">
+            <input id="historyDateTo" type="date" title="Data final">
+            <button class="btn secondary btn-sm" id="historyClearBtn" type="button">Limpar filtros</button>
+          </div>
+          <div class="history-meta" id="atomicHistoryMeta">Histórico de validações: 0 registros.</div>
+          <div class="table-wrap"><table><thead><tr><th>ID</th><th>Técnica</th><th>Teste</th><th>Runner</th><th>Target</th><th>Status</th><th>Duração</th><th>Solicitante</th><th>Data</th><th>Ações</th></tr></thead><tbody id="atomicExecutionsTable"></tbody></table></div>
         </div>
       </div>
       <div class="alerts-workspace">

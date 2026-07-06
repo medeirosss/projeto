@@ -149,8 +149,8 @@ def job_result_service(job_id: int, data: dict):
     if not runner_id:
         raise ValueError("runner_id is required")
 
-    if status not in ["success", "failed", "error"]:
-        raise ValueError("status must be success, failed or error")
+    if status not in ["success", "failed", "error", "timeout"]:
+        raise ValueError("status must be success, failed, error or timeout")
 
     result_payload = data.get("result") or {}
 

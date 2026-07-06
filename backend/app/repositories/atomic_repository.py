@@ -191,16 +191,18 @@ def get_atomic_test_by_id(test_id: int) -> dict[str, Any] | None:
         return dict(row) if row else None
 
 
-def approve_atomic_test(test_id: int, approved: bool = True) -> dict[str, Any]:
+def approve_atomic_test(test_id: int, approved: bool = True, approved_by: str | None = None) -> dict[str, Any]:
     with SessionLocal() as db:
         row = db.execute(text("""
             UPDATE atomic_tests
             SET approved_for_execution = :approved,
                 approved_for_lab = :approved,
+                approved_by = CASE WHEN :approved THEN :approved_by ELSE NULL END,
+                approved_at = CASE WHEN :approved THEN :now ELSE NULL END,
                 updated_at = :now
             WHERE id = :test_id
-            RETURNING id, technique_id, atomic_name, approved_for_lab, approved_for_execution, risk_level
-        """), {"test_id": test_id, "approved": approved, "now": datetime.utcnow()}).mappings().first()
+            RETURNING id, technique_id, atomic_name, approved_for_lab, approved_for_execution, approved_by, approved_at, risk_level
+        """), {"test_id": test_id, "approved": approved, "approved_by": approved_by, "now": datetime.utcnow()}).mappings().first()
         db.commit()
         if not row:
             raise ValueError("Atomic test not found")
@@ -285,22 +287,93 @@ def create_atomic_execution_preview(
         return dict(row)
 
 
-def list_atomic_executions(limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+def _atomic_execution_filters_sql(filters: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    clauses = []
+    params: dict[str, Any] = {}
+
+    search = (filters.get("search") or "").strip()
+    if search:
+        clauses.append("""(
+            lower(COALESCE(e.execution_uuid::text, '')) LIKE :search_like OR
+            lower(COALESCE(e.technique_id, '')) LIKE :search_like OR
+            lower(COALESCE(t.atomic_name, '')) LIKE :search_like OR
+            lower(COALESCE(e.runner_id, '')) LIKE :search_like OR
+            lower(COALESCE(e.target_host, '')) LIKE :search_like OR
+            lower(COALESCE(e.requested_by, '')) LIKE :search_like
+        )""")
+        params["search_like"] = f"%{search.lower()}%"
+
+    for field in ["technique_id", "runner_id", "status", "requested_by"]:
+        value = (filters.get(field) or "").strip()
+        if value:
+            clauses.append(f"e.{field} = :{field}")
+            params[field] = value
+
+    date_from = (filters.get("date_from") or "").strip()
+    if date_from:
+        clauses.append("e.created_at >= CAST(:date_from AS timestamp)")
+        params["date_from"] = date_from
+
+    date_to = (filters.get("date_to") or "").strip()
+    if date_to:
+        clauses.append("e.created_at < (CAST(:date_to AS date) + INTERVAL '1 day')")
+        params["date_to"] = date_to
+
+    where_sql = " AND ".join(clauses) if clauses else "TRUE"
+    return where_sql, params
+
+
+def list_atomic_executions(
+    limit: int = 100,
+    offset: int = 0,
+    search: str | None = None,
+    technique_id: str | None = None,
+    runner_id: str | None = None,
+    status: str | None = None,
+    requested_by: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, Any]:
+    filters = {
+        "search": search,
+        "technique_id": technique_id,
+        "runner_id": runner_id,
+        "status": status,
+        "requested_by": requested_by,
+        "date_from": date_from,
+        "date_to": date_to,
+    }
+    where_sql, params = _atomic_execution_filters_sql(filters)
+    params.update({"limit": limit, "offset": offset})
+
     with SessionLocal() as db:
-        rows = db.execute(text("""
+        total_row = db.execute(text(f"""
+            SELECT COUNT(*) AS total
+            FROM atomic_execution_jobs e
+            LEFT JOIN atomic_tests t ON t.id = e.atomic_test_id
+            WHERE {where_sql}
+        """), params).mappings().first()
+
+        rows = db.execute(text(f"""
             SELECT e.id, e.execution_uuid, e.atomic_test_id, e.technique_id, e.atomic_test_number,
-                   e.runner_id, e.runner_job_id, e.target_host, e.status, e.requested_by, e.command_preview,
-                   e.block_reason, e.payload, e.created_at, e.started_at, e.finished_at, e.exit_code,
-                   e.stdout, e.stderr, e.error_message,
+                   e.runner_id, e.runner_job_id, e.target_host, e.status, e.requested_by, e.approved_by,
+                   e.command_preview, e.block_reason, e.payload, e.created_at, e.started_at, e.finished_at,
+                   CASE
+                     WHEN e.started_at IS NOT NULL AND e.finished_at IS NOT NULL
+                     THEN EXTRACT(EPOCH FROM (e.finished_at - e.started_at))::INT
+                     ELSE NULL
+                   END AS duration_seconds,
+                   e.exit_code, e.stdout, e.stderr, e.error_message,
                    COALESCE(e.executed_real_test, FALSE) AS executed_real_test,
-                   COALESCE(e.evidence, '{}'::jsonb) AS evidence,
+                   COALESCE(e.evidence, '{{}}'::jsonb) AS evidence,
                    t.atomic_name, t.risk_level, t.executor_name
             FROM atomic_execution_jobs e
             LEFT JOIN atomic_tests t ON t.id = e.atomic_test_id
+            WHERE {where_sql}
             ORDER BY e.id DESC
             LIMIT :limit OFFSET :offset
-        """), {"limit": limit, "offset": offset}).mappings().all()
-        return [dict(row) for row in rows]
+        """), params).mappings().all()
+        return {"total": int(total_row["total"] if total_row else 0), "items": [dict(row) for row in rows]}
 
 
 
@@ -310,7 +383,13 @@ def get_atomic_execution_by_id(execution_id: int) -> dict[str, Any] | None:
             SELECT e.id, e.execution_uuid, e.atomic_test_id, e.technique_id, e.atomic_test_number,
                    e.runner_id, e.runner_job_id, e.target_host, e.status, e.requested_by,
                    e.approved_by, e.command_preview, e.block_reason, e.payload,
-                   e.created_at, e.started_at, e.finished_at, e.exit_code, e.stdout, e.stderr, e.error_message,
+                   e.created_at, e.started_at, e.finished_at,
+                   CASE
+                     WHEN e.started_at IS NOT NULL AND e.finished_at IS NOT NULL
+                     THEN EXTRACT(EPOCH FROM (e.finished_at - e.started_at))::INT
+                     ELSE NULL
+                   END AS duration_seconds,
+                   e.exit_code, e.stdout, e.stderr, e.error_message,
                    COALESCE(e.executed_real_test, FALSE) AS executed_real_test,
                    COALESCE(e.evidence, '{}'::jsonb) AS evidence,
                    t.atomic_name, t.risk_level, t.executor_name, t.executor_elevation_required, t.has_dependencies, t.dependency_count,
@@ -368,6 +447,7 @@ def update_atomic_execution_from_runner_job(runner_job_id: int, runner_id: str, 
         "success": "success",
         "failed": "failed",
         "error": "error",
+        "timeout": "timeout",
     }.get(status, status)
     with SessionLocal() as db:
         row = db.execute(text("""
@@ -394,7 +474,7 @@ def update_atomic_execution_from_runner_job(runner_job_id: int, runner_id: str, 
             "stdout": result.get("stdout"),
             "stderr": result.get("stderr"),
             "error_message": error or result.get("error_message"),
-            "executed_real_test": bool(result.get("executed_real_test")),
+            "executed_real_test": bool(result.get("executed_real_test") or result.get("mode") == "execute_lab" or result.get("allow_real_execution")),
             "evidence": _json(result),
             "now": datetime.utcnow(),
         }).mappings().first()

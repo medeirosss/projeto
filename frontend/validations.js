@@ -48,6 +48,26 @@ function renderExecutionEvidence(row){
     </details>`;
 }
 
+function formatDateTime(value){
+  if(!value) return '--';
+  try{ return new Date(value).toLocaleString('pt-BR'); }catch(_e){ return String(value); }
+}
+
+function formatDuration(seconds){
+  if(seconds === null || seconds === undefined || seconds === '') return '--';
+  const n = Number(seconds);
+  if(Number.isNaN(n)) return '--';
+  if(n < 60) return `${n}s`;
+  const minutes = Math.floor(n / 60);
+  const rest = n % 60;
+  return `${minutes}m ${rest}s`;
+}
+
+function statusBadge(status){
+  const st = String(status || 'unknown').toLowerCase();
+  const cls = ['success'].includes(st) ? 'badge-ok' : ['failed','error','timeout','blocked'].includes(st) ? 'badge-danger' : 'badge-muted';
+  return `<span class="badge ${cls}">${escapeHtml(st)}</span>`;
+}
 
 async function fetchJson(url, options){
   const res = await fetch(url, options || {});
@@ -227,23 +247,84 @@ async function prepareAtomicExecution(testId){
   }catch(err){ result.textContent = err.message; }
 }
 
+function buildHistoryUrl(){
+  const url = new URL('/api/validations/atomic/executions', window.location.origin);
+  url.searchParams.set('limit', '50');
+  const fields = [
+    ['historySearch', 'search'],
+    ['historyTechnique', 'technique_id'],
+    ['historyRunner', 'runner_id'],
+    ['historyStatus', 'status'],
+    ['historyRequestedBy', 'requested_by'],
+    ['historyDateFrom', 'date_from'],
+    ['historyDateTo', 'date_to'],
+  ];
+  fields.forEach(([id, param]) => {
+    const el = document.getElementById(id);
+    const value = el ? el.value.trim() : '';
+    if(value) url.searchParams.set(param, value);
+  });
+  return url;
+}
+
 async function loadAtomicExecutions(){
-  const data = await fetchJson('/api/validations/atomic/executions?limit=20');
+  const data = await fetchJson(buildHistoryUrl().toString());
   const tbody = document.getElementById('atomicExecutionsTable');
   const rows = data.executions || [];
-  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="8">Nenhuma execução criada.</td></tr>'; return; }
+  const meta = document.getElementById('atomicHistoryMeta');
+  if(meta) meta.textContent = `Histórico de validações: ${data.total || rows.length || 0} registro(s). Exibindo ${rows.length}.`;
+  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="10">Nenhuma execução encontrada para os filtros atuais.</td></tr>'; return; }
   tbody.innerHTML = rows.map(row => `
     <tr>
-      <td>${row.id}</td>
+      <td><strong>${row.id}</strong><br><small>${safeText(row.execution_uuid)}</small></td>
       <td>${safeText(row.technique_id)} #${safeText(row.atomic_test_number)}</td>
-      <td>${safeText(row.atomic_name)}</td>
-      <td>${safeText(row.runner_id)}</td>
+      <td><strong>${safeText(row.atomic_name)}</strong><br><small>${safeText(row.executor_name)}</small></td>
+      <td>${safeText(row.runner_id)}${row.runner_job_id ? `<br><small>Job ${safeText(row.runner_job_id)}</small>` : ''}</td>
       <td>${safeText(row.target_host)}</td>
-      <td>${safeText(row.status)}${row.executed_real_test ? '<br><span class="badge badge-ok">REAL</span>' : ''}${row.block_reason ? `<br><small>${safeText(row.block_reason)}</small>` : ''}${row.error_message ? `<br><small>${safeText(row.error_message)}</small>` : ''}</td>
-      <td><code>${safeText(row.command_preview)}</code>${renderExecutionEvidence(row)}</td>
-      <td>${row.status === 'pending_review' ? `<button class="btn primary btn-sm dispatch-execution" data-id="${row.id}">Enviar ao Runner</button>` : safeText(row.runner_job_id)}</td>
+      <td>${statusBadge(row.status)}${row.executed_real_test ? '<br><span class="badge badge-ok">REAL</span>' : ''}${row.block_reason ? `<br><small>${escapeHtml(row.block_reason)}</small>` : ''}${row.error_message ? `<br><small>${escapeHtml(row.error_message)}</small>` : ''}</td>
+      <td>${formatDuration(row.duration_seconds)}</td>
+      <td>${safeText(row.requested_by)}${row.approved_by ? `<br><small>Aprovado por ${safeText(row.approved_by)}</small>` : ''}</td>
+      <td>${formatDateTime(row.created_at)}</td>
+      <td class="action-cell">
+        ${row.status === 'pending_review' ? `<button class="btn primary btn-sm dispatch-execution" data-id="${row.id}">Enviar ao Runner</button>` : ''}
+        <button class="btn secondary btn-sm execution-detail" data-id="${row.id}">Detalhes</button>
+      </td>
     </tr>`).join('');
   document.querySelectorAll('.dispatch-execution').forEach(btn => btn.addEventListener('click', () => dispatchAtomicExecution(btn.dataset.id)));
+  document.querySelectorAll('.execution-detail').forEach(btn => btn.addEventListener('click', () => showExecutionDetail(btn.dataset.id)));
+}
+
+async function showExecutionDetail(executionId){
+  const result = document.getElementById('atomicExecutionResult');
+  result.textContent = `Carregando detalhes da execução ${executionId}...`;
+  try{
+    const data = await fetchJson(`/api/validations/atomic/executions/${executionId}`);
+    const row = data.execution || {};
+    const evidence = row.evidence || {};
+    result.textContent = jsonPretty({
+      id: row.id,
+      execution_uuid: row.execution_uuid,
+      technique: `${row.technique_id} #${row.atomic_test_number}`,
+      atomic_name: row.atomic_name,
+      status: row.status,
+      runner_id: row.runner_id,
+      runner_job_id: row.runner_job_id,
+      requested_by: row.requested_by,
+      approved_by: row.approved_by,
+      created_at: row.created_at,
+      started_at: row.started_at,
+      finished_at: row.finished_at,
+      duration_seconds: row.duration_seconds,
+      exit_code: row.exit_code,
+      command_preview: row.command_preview,
+      stdout: row.stdout,
+      stderr: row.stderr,
+      error_message: row.error_message,
+      executed_real_test: row.executed_real_test,
+      evidence,
+      payload: row.payload
+    });
+  }catch(err){ result.textContent = err.message; }
 }
 
 async function dispatchAtomicExecution(executionId){
@@ -299,6 +380,13 @@ function bindValidationsUi(){
   document.getElementById('atomicImportBtn').addEventListener('click', importAtomicCatalog);
   document.getElementById('atomicRefreshBtn').addEventListener('click', async ()=>{ await loadAtomicSummary(); await loadAtomicTechniques(); await loadAtomicExecutions(); if(selectedTechniqueId) await selectTechnique(selectedTechniqueId); });
   document.getElementById('atomicExecutionsRefreshBtn').addEventListener('click', loadAtomicExecutions);
+  ['historySearch','historyTechnique','historyRunner','historyStatus','historyRequestedBy','historyDateFrom','historyDateTo'].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('input', ()=>{ clearTimeout(window.__atomicHistoryTimer); window.__atomicHistoryTimer = setTimeout(loadAtomicExecutions, 350); });
+    el.addEventListener('change', loadAtomicExecutions);
+  });
+  document.getElementById('historyClearBtn').addEventListener('click', ()=>{ ['historySearch','historyTechnique','historyRunner','historyStatus','historyRequestedBy','historyDateFrom','historyDateTo'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; }); loadAtomicExecutions(); });
   document.getElementById('atomicSearch').addEventListener('input', ()=>{ clearTimeout(window.__atomicSearchTimer); window.__atomicSearchTimer = setTimeout(loadAtomicTechniques, 250); });
   loadAtomicSummary().catch(()=>{});
   loadAtomicTechniques().catch(()=>{});

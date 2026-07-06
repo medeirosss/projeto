@@ -38,7 +38,7 @@ RUNNER_MODE = os.getenv("MAGI_ATOMIC_RUNNER_MODE", "dry_run").lower()
 PREVIEW_ACTION = os.getenv("MAGI_ATOMIC_PREVIEW_ACTION", "show_details").lower()
 POWERSHELL_EXE = os.getenv("MAGI_POWERSHELL_EXE", "powershell")
 ATOMICS_FOLDER = os.getenv("MAGI_ATOMICS_FOLDER", r"C:\Program Files\Magi Runner\atomic-red-team\atomics")
-RUNNER_VERSION = "3E-lab-atomic-number-fix-20260601"
+RUNNER_VERSION = "validation-engine-final-20260706"
 
 TECHNIQUE_RE = re.compile(r"^T\d{4}(?:\.\d{3})?$")
 
@@ -153,6 +153,7 @@ def run_powershell(command: str) -> dict[str, Any]:
         "stderr": completed.stderr[-12000:],
         "command": command,
         "powershell": POWERSHELL_EXE,
+        "executed_real_test": False,
     }
 
 
@@ -168,10 +169,23 @@ def handle_atomic_validation(job: dict[str, Any]) -> None:
             result = run_powershell(safe_command)
             result.update({
                 "mode": "execute_lab",
+                "executed_real_test": True,
+                "allow_real_execution": True,
                 "runner_version": RUNNER_VERSION,
                 "metadata": runner_metadata(),
             })
             finish_job(job["id"], "success" if result["exit_code"] == 0 else "failed", result)
+            return
+        except subprocess.TimeoutExpired as exc:
+            finish_job(job["id"], "timeout", {
+                "mode": "execute_lab",
+                "executed_real_test": True,
+                "exit_code": 124,
+                "stdout": (exc.stdout or "")[-12000:] if isinstance(exc.stdout, str) else "",
+                "stderr": "Timeout ao executar Atomic LAB.",
+                "runner_version": RUNNER_VERSION,
+                "metadata": runner_metadata(),
+            }, error="Timeout ao executar Atomic LAB.")
             return
         except Exception as exc:
             finish_job(job["id"], "error", {
@@ -211,6 +225,15 @@ def handle_atomic_validation(job: dict[str, Any]) -> None:
             "metadata": runner_metadata(),
         })
         finish_job(job["id"], "success" if result["exit_code"] == 0 else "failed", result)
+    except subprocess.TimeoutExpired as exc:
+        finish_job(job["id"], "timeout", {
+            "mode": "execute_preview",
+            "runner_version": RUNNER_VERSION,
+            "exit_code": 124,
+            "stdout": (exc.stdout or "")[-12000:] if isinstance(exc.stdout, str) else "",
+            "stderr": "Timeout ao executar preview Atomic.",
+            "metadata": runner_metadata(),
+        }, error="Timeout ao executar preview Atomic.")
     except Exception as exc:
         finish_job(job["id"], "error", {
             "mode": "execute_preview",

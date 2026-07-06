@@ -8,6 +8,7 @@ from app.services.atomic_service import (
     dispatch_atomic_execution_to_runner,
     execute_atomic_lab_test,
     get_atomic_execution_previews,
+    get_atomic_execution_detail,
     get_atomic_summary,
     get_atomic_techniques,
     get_atomic_tests,
@@ -61,10 +62,12 @@ async def api_atomic_tests(
 
 
 @router.post("/atomic/tests/{test_id}/approve")
-async def api_atomic_test_approve(test_id: int, payload: dict[str, Any] | None = Body(default=None)):
+async def api_atomic_test_approve(test_id: int, request: Request, payload: dict[str, Any] | None = Body(default=None)):
     try:
         payload = payload or {}
-        return set_atomic_test_approval(test_id, bool(payload.get("approved", True)))
+        user_state = getattr(request.state, "user", {}) or {}
+        approved_by = user_state.get("sub") or user_state.get("username") or payload.get("approved_by") or "ui"
+        return set_atomic_test_approval(test_id, bool(payload.get("approved", True)), approved_by=approved_by)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -110,8 +113,36 @@ async def api_atomic_prepare_execution(test_id: int, payload: dict[str, Any] | N
 
 
 @router.get("/atomic/executions")
-async def api_atomic_executions(limit: int = 100, offset: int = 0):
-    return get_atomic_execution_previews(limit=limit, offset=offset)
+async def api_atomic_executions(
+    limit: int = 100,
+    offset: int = 0,
+    search: str | None = None,
+    technique_id: str | None = None,
+    runner_id: str | None = None,
+    status: str | None = None,
+    requested_by: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+):
+    return get_atomic_execution_previews(
+        limit=limit,
+        offset=offset,
+        search=search,
+        technique_id=technique_id,
+        runner_id=runner_id,
+        status=status,
+        requested_by=requested_by,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@router.get("/atomic/executions/{execution_id}")
+async def api_atomic_execution_detail(execution_id: int):
+    try:
+        return get_atomic_execution_detail(execution_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 

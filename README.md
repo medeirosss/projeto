@@ -537,3 +537,21 @@ A próxima build deve focar em maturidade operacional:
 3. Garantir `APP_SECRET_KEY` no `.env.example`.
 4. Garantir primeira instalação sem SQL manual.
 5. Continuar enriquecimento de alertas.
+
+---
+
+## Release 0.8.0-validation-history
+
+Esta release entrega a Sprint 1 do roadmap fechado até a Golden Image 1.0: **Validation History**.
+
+Principais pontos:
+- Histórico pesquisável das execuções Atomic.
+- Filtros por técnica, runner, status, solicitante e período.
+- Detalhe de execução com evidência, payload, stdout/stderr e timestamps.
+- Sem migration nova obrigatória.
+
+Consulte:
+- `CHANGELOG.md`
+- `UPGRADE.md`
+- `TEST_PLAN.md`
+- `ROADMAP.md`

@@ -151,8 +151,8 @@ def get_atomic_tests(technique_id: str | None = None, platform: str | None = Non
     return {"tests": list_tests(technique_id=technique_id, platform=platform, executor=executor, risk_level=risk_level, limit=limit, offset=offset)}
 
 
-def set_atomic_test_approval(test_id: int, approved: bool = True) -> dict[str, Any]:
-    return {"success": True, "test": approve_atomic_test(test_id, approved)}
+def set_atomic_test_approval(test_id: int, approved: bool = True, approved_by: str | None = None) -> dict[str, Any]:
+    return {"success": True, "test": approve_atomic_test(test_id, approved, approved_by=approved_by)}
 
 
 def set_atomic_test_risk(test_id: int, risk_level: str) -> dict[str, Any]:
@@ -224,10 +224,8 @@ def prepare_atomic_execution_preview(test_id: int, payload: dict[str, Any] | Non
 
     if not bool(test.get("approved_for_execution")):
         block_reasons.append("Teste ainda não aprovado para execução.")
-    if str(test.get("risk_level") or "").lower() == "critical":
-        block_reasons.append("Risco CRITICAL bloqueado para execução automática.")
-    if bool(test.get("requires_reboot")):
-        block_reasons.append("Teste marcado como requires_reboot.")
+    # Regra de produto: o Magi não bloqueia por risco, SO, dependência ou reboot.
+    # O único bloqueio real para execução é aprovação/desabilitação pelo admin.
 
     status = "blocked" if block_reasons else "pending_review"
 
@@ -279,6 +277,9 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
         block_reasons.append("Teste não aprovado para execução pelo admin.")
     if not bool(test.get("approved_for_lab")):
         block_reasons.append("Teste não aprovado para LAB pelo admin.")
+
+    # Sem bloqueio de produto por risk_level/requires_reboot/supported_platforms.
+    # Esses campos seguem como metadados e evidência para decisão do admin.
 
     if block_reasons:
         return {"success": False, "blocked": True, "block_reasons": block_reasons, "test": test}
@@ -343,8 +344,36 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
     }
 
 
-def get_atomic_execution_previews(limit: int = 100, offset: int = 0) -> dict[str, Any]:
-    return {"executions": list_atomic_executions(limit=limit, offset=offset)}
+def get_atomic_execution_previews(
+    limit: int = 100,
+    offset: int = 0,
+    search: str | None = None,
+    technique_id: str | None = None,
+    runner_id: str | None = None,
+    status: str | None = None,
+    requested_by: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, Any]:
+    result = list_atomic_executions(
+        limit=limit,
+        offset=offset,
+        search=search,
+        technique_id=technique_id,
+        runner_id=runner_id,
+        status=status,
+        requested_by=requested_by,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return {"executions": result.get("items", []), "total": result.get("total", 0), "limit": limit, "offset": offset}
+
+
+def get_atomic_execution_detail(execution_id: int) -> dict[str, Any]:
+    execution = get_atomic_execution_by_id(execution_id)
+    if not execution:
+        raise ValueError("Atomic execution job not found")
+    return {"success": True, "execution": execution}
 
 
 
@@ -366,10 +395,7 @@ def dispatch_atomic_execution_to_runner(execution_id: int, payload: dict[str, An
     block_reasons: list[str] = []
     if not bool(execution.get("approved_for_execution")):
         block_reasons.append("Teste não aprovado para execução.")
-    if str(execution.get("risk_level") or "").lower() == "critical":
-        block_reasons.append("Risco CRITICAL bloqueado.")
-    if bool(execution.get("requires_reboot")):
-        block_reasons.append("Teste marcado como requires_reboot.")
+    # Sem bloqueio de produto por risk_level/requires_reboot; apenas aprovação/admin e runner.
 
     runner_id = payload.get("runner_id") or execution.get("runner_id")
     if not runner_id:
