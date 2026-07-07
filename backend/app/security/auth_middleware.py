@@ -23,6 +23,7 @@ PUBLIC_AUTH_PREFIXES = (
     "/license/",
     "/api/alerts/inbound",
     "/api/runner",
+    "/api/runners",
 )
 
 ROLE_ACCESS = {

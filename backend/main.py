@@ -23,16 +23,20 @@ from app.license.license_router import router as license_router
 from app.license.license_scheduler import run_license_scheduler
 from app.license.license_service import license_service
 from app.repositories.auth_repository import ensure_local_auth_schema
+from app.repositories.runner_repository import ensure_runner_schema
 
 app = FastAPI(title="Centric - UEM Backend")
 app.add_middleware(AuthMiddleware)
 app.add_middleware(LicenseMiddleware)
-app.include_router(runner_router, prefix="/api/runner", tags=["Runner"])
+app.include_router(runner_router, prefix="/api/runners", tags=["Runner v2"])
+# Legacy compatibility for older internal calls.
+app.include_router(runner_router, prefix="/api/runner", tags=["Runner legacy"])
 
 
 @app.on_event("startup")
 async def startup_event():
     ensure_local_auth_schema()
+    ensure_runner_schema()
     license_service.validate()
     asyncio.create_task(run_license_scheduler())
 

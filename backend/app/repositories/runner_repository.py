@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import secrets
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -13,18 +16,76 @@ def _json(value: Any) -> str:
     return json.dumps(value or {}, ensure_ascii=False)
 
 
-def register_runner(runner_id: str, name: str | None, hostname: str | None, metadata: dict | None = None):
-    metadata = metadata or {}
+def _hash_secret(secret: str) -> str:
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+
+def ensure_runner_schema() -> None:
+    """Creates/normalizes the Runner v2 tables.
+
+    This is intentionally idempotent because some Magi environments are being
+    upgraded from previous validation-engine builds with slightly different
+    runner table definitions.
+    """
     with SessionLocal() as db:
         db.execute(text("""
-            INSERT INTO runners (runner_id, name, hostname, status, last_heartbeat, enabled, metadata, created_at, updated_at)
-            VALUES (:runner_id, :name, :hostname, 'online', :now, TRUE, CAST(:metadata AS JSONB), :now, :now)
+        CREATE TABLE IF NOT EXISTS runners (
+            id SERIAL PRIMARY KEY,
+            runner_id VARCHAR(100) UNIQUE NOT NULL,
+            name VARCHAR(150),
+            hostname VARCHAR(255),
+            status VARCHAR(50) NOT NULL DEFAULT 'offline',
+            last_heartbeat TIMESTAMP,
+            token_hash TEXT,
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """))
+        db.execute(text("""
+        CREATE TABLE IF NOT EXISTS runner_jobs (
+            id SERIAL PRIMARY KEY,
+            runner_id VARCHAR(100) REFERENCES runners(runner_id) ON DELETE SET NULL,
+            job_type VARCHAR(100) NOT NULL,
+            target VARCHAR(255),
+            payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+            status VARCHAR(50) NOT NULL DEFAULT 'pending',
+            result JSONB,
+            error TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            started_at TIMESTAMP,
+            finished_at TIMESTAMP
+        );
+        """))
+        db.execute(text("ALTER TABLE runners ALTER COLUMN name DROP NOT NULL;"))
+        db.execute(text("ALTER TABLE runners ADD COLUMN IF NOT EXISTS token_hash TEXT;"))
+        db.execute(text("ALTER TABLE runners ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;"))
+        db.execute(text("ALTER TABLE runners ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;"))
+        db.execute(text("ALTER TABLE runners ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;"))
+        db.execute(text("ALTER TABLE runner_jobs ADD COLUMN IF NOT EXISTS result JSONB;"))
+        db.execute(text("ALTER TABLE runner_jobs ADD COLUMN IF NOT EXISTS error TEXT;"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_runners_status ON runners(status);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_runner_jobs_status ON runner_jobs(status);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_runner_jobs_runner_status ON runner_jobs(runner_id, status);"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_runner_jobs_created_at ON runner_jobs(created_at DESC);"))
+        db.commit()
+
+
+def register_runner(runner_id: str, name: str | None, hostname: str | None, metadata: dict | None = None, runner_secret: str | None = None):
+    metadata = metadata or {}
+    token_hash = _hash_secret(runner_secret) if runner_secret else None
+    with SessionLocal() as db:
+        db.execute(text("""
+            INSERT INTO runners (runner_id, name, hostname, status, last_heartbeat, enabled, token_hash, metadata, created_at, updated_at)
+            VALUES (:runner_id, :name, :hostname, 'online', :now, TRUE, :token_hash, CAST(:metadata AS JSONB), :now, :now)
             ON CONFLICT (runner_id)
             DO UPDATE SET
                 name = COALESCE(EXCLUDED.name, runners.name),
                 hostname = COALESCE(EXCLUDED.hostname, runners.hostname),
                 status = 'online',
                 last_heartbeat = EXCLUDED.last_heartbeat,
+                token_hash = COALESCE(EXCLUDED.token_hash, runners.token_hash),
                 metadata = COALESCE(runners.metadata, '{}'::jsonb) || EXCLUDED.metadata,
                 updated_at = EXCLUDED.updated_at
         """), {
@@ -32,42 +93,88 @@ def register_runner(runner_id: str, name: str | None, hostname: str | None, meta
             "name": name,
             "hostname": hostname,
             "metadata": _json(metadata),
+            "token_hash": token_hash,
             "now": datetime.utcnow()
         })
         db.commit()
 
 
+def create_runner_registration(runner_name: str | None, hostname: str | None, metadata: dict | None = None) -> dict[str, str]:
+    runner_id = f"runner-{uuid.uuid4().hex[:12]}"
+    runner_secret = secrets.token_urlsafe(32)
+    register_runner(runner_id=runner_id, name=runner_name or hostname or runner_id, hostname=hostname, metadata=metadata, runner_secret=runner_secret)
+    return {"runner_id": runner_id, "runner_secret": runner_secret}
+
+
+def validate_runner_secret(runner_id: str, runner_secret: str | None) -> bool:
+    if not runner_id or not runner_secret:
+        return False
+    with SessionLocal() as db:
+        row = db.execute(text("""
+            SELECT token_hash, enabled
+            FROM runners
+            WHERE runner_id = :runner_id
+            LIMIT 1
+        """), {"runner_id": runner_id}).mappings().first()
+        if not row or not row.get("enabled") or not row.get("token_hash"):
+            return False
+        return secrets.compare_digest(str(row["token_hash"]), _hash_secret(runner_secret))
+
+
 def update_heartbeat(runner_id: str, metadata: dict | None = None):
     metadata = metadata or {}
     with SessionLocal() as db:
-        db.execute(text("""
+        row = db.execute(text("""
             UPDATE runners
             SET status = 'online',
                 last_heartbeat = :now,
                 metadata = COALESCE(metadata, '{}'::jsonb) || CAST(:metadata AS JSONB),
                 updated_at = :now
             WHERE runner_id = :runner_id AND enabled = TRUE
-        """), {"runner_id": runner_id, "metadata": _json(metadata), "now": datetime.utcnow()})
+            RETURNING runner_id, status, last_heartbeat
+        """), {"runner_id": runner_id, "metadata": _json(metadata), "now": datetime.utcnow()}).mappings().first()
         db.commit()
+        return dict(row) if row else None
 
 
-def get_pending_jobs(runner_id: str):
+def get_next_job(runner_id: str):
     with SessionLocal() as db:
-        rows = db.execute(text("""
+        row = db.execute(text("""
             UPDATE runner_jobs
             SET status = 'running', started_at = :now, runner_id = COALESCE(runner_id, :runner_id)
-            WHERE id IN (
+            WHERE id = (
                 SELECT id
                 FROM runner_jobs
                 WHERE status = 'pending'
                   AND (runner_id = :runner_id OR runner_id IS NULL)
                 ORDER BY created_at ASC
-                LIMIT 5
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
             )
             RETURNING id, runner_id, job_type, target, payload, status
-        """), {"runner_id": runner_id, "now": datetime.utcnow()}).mappings().all()
+        """), {"runner_id": runner_id, "now": datetime.utcnow()}).mappings().first()
         db.commit()
-        return [dict(row) for row in rows]
+        if not row:
+            return None
+        job = dict(row)
+        payload = job.get("payload") or {}
+        executor = payload.get("executor") or payload.get("type") or job.get("job_type")
+        # Runner v2 expects job_id and executor.
+        return {
+            "job_id": str(job["id"]),
+            "id": job["id"],
+            "runner_id": job.get("runner_id"),
+            "job_type": job.get("job_type"),
+            "executor": executor,
+            "type": executor,
+            "target": job.get("target"),
+            "payload": payload,
+        }
+
+
+def get_pending_jobs(runner_id: str):
+    job = get_next_job(runner_id)
+    return [job] if job else []
 
 
 def create_runner_job(runner_id: str | None, job_type: str, target: str | None, payload: dict | None):
@@ -75,7 +182,7 @@ def create_runner_job(runner_id: str | None, job_type: str, target: str | None, 
         row = db.execute(text("""
             INSERT INTO runner_jobs (runner_id, job_type, target, payload, status, created_at)
             VALUES (:runner_id, :job_type, :target, CAST(:payload AS JSONB), 'pending', :now)
-            RETURNING id, status, job_type, payload
+            RETURNING id, runner_id, status, job_type, target, payload, created_at
         """), {
             "runner_id": runner_id,
             "job_type": job_type,
@@ -97,9 +204,9 @@ def save_job_result(job_id: int, runner_id: str, status: str, result: dict | Non
                 finished_at = :now
             WHERE id = :job_id
               AND (runner_id = :runner_id OR runner_id IS NULL)
-            RETURNING id, status, job_type, payload
+            RETURNING id, status, job_type, payload, result, error, finished_at
         """), {
-            "job_id": job_id,
+            "job_id": int(job_id),
             "runner_id": runner_id,
             "status": status,
             "result": _json(result),
@@ -209,9 +316,9 @@ def list_runners(include_disabled: bool = False) -> list[dict[str, Any]]:
                 last_heartbeat,
                 enabled,
                 metadata,
-                metadata->>'ip_address' AS ip_address,
-                metadata->>'os' AS os,
-                metadata->>'runner_version' AS runner_version,
+                COALESCE(metadata->>'ip_address', metadata->>'primary_ip', metadata->>'remote_addr') AS ip_address,
+                COALESCE(metadata->>'os', metadata->>'platform') AS os,
+                COALESCE(metadata->>'runner_version', metadata->>'version') AS runner_version,
                 metadata->>'atomic_mode' AS atomic_mode,
                 (SELECT COUNT(*) FROM runner_jobs j WHERE j.runner_id = runners.runner_id AND j.status IN ('pending','running')) AS open_jobs,
                 (SELECT COUNT(*) FROM runner_jobs j WHERE j.runner_id = runners.runner_id) AS total_jobs,

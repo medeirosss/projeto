@@ -1,22 +1,118 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from sqlalchemy import text
 
 from app.database.connection import SessionLocal
 from app.repositories.atomic_repository import update_atomic_execution_from_runner_job
 from app.repositories.runner_repository import (
     create_runner_job,
+    create_runner_registration,
     create_validation_job,
+    get_next_job,
     get_pending_jobs,
     list_runners,
     register_runner,
     save_job_result,
     update_heartbeat,
     update_validation_from_runner_job,
+    validate_runner_secret,
 )
 
 
+def _flatten_host_info(host_info: dict[str, Any] | None) -> dict[str, Any]:
+    host_info = host_info or {}
+    metadata = dict(host_info)
+    # Common Runner v2 keys are preserved, but also normalized for existing UI.
+    if host_info.get("platform") and not metadata.get("os"):
+        metadata["os"] = host_info.get("platform")
+    if host_info.get("hostname") and not metadata.get("hostname"):
+        metadata["hostname"] = host_info.get("hostname")
+    if host_info.get("primary_ip") and not metadata.get("ip_address"):
+        metadata["ip_address"] = host_info.get("primary_ip")
+    return metadata
+
+
+def _auth_runner_from_headers(headers) -> str:
+    runner_id = headers.get("x-runner-id") or headers.get("X-Runner-ID")
+    runner_secret = headers.get("x-runner-secret") or headers.get("X-Runner-Secret")
+    if not runner_id:
+        raise ValueError("X-Runner-ID header is required")
+    if not validate_runner_secret(runner_id, runner_secret):
+        raise PermissionError("invalid runner credentials")
+    return runner_id
+
+
+def register_runner_v2_service(data: dict, remote_addr: str | None = None):
+    host_info = data.get("host_info") or {}
+    metadata = _flatten_host_info(host_info)
+    if remote_addr:
+        metadata["remote_addr"] = remote_addr
+    if data.get("registration_token"):
+        # Kept only for traceability in the first v1.0 registration model.
+        metadata["registration_token_present"] = True
+
+    runner_name = data.get("runner_name") or data.get("name") or host_info.get("hostname")
+    hostname = host_info.get("hostname") or data.get("hostname")
+    created = create_runner_registration(runner_name=runner_name, hostname=hostname, metadata=metadata)
+    return {
+        "success": True,
+        "status": "registered",
+        "runner_id": created["runner_id"],
+        "runner_secret": created["runner_secret"],
+    }
+
+
+def heartbeat_v2_service(data: dict, headers, remote_addr: str | None = None):
+    runner_id = _auth_runner_from_headers(headers)
+    metadata = _flatten_host_info(data.get("host_info") or {})
+    if data.get("runner_version"):
+        metadata["runner_version"] = data.get("runner_version")
+    if data.get("status"):
+        metadata["reported_status"] = data.get("status")
+    if remote_addr:
+        metadata["remote_addr"] = remote_addr
+    row = update_heartbeat(runner_id, metadata=metadata)
+    if not row:
+        raise ValueError("runner not found or disabled")
+    return {"success": True, "runner_id": runner_id, "status": "online"}
+
+
+def get_next_job_v2_service(headers):
+    runner_id = _auth_runner_from_headers(headers)
+    job = get_next_job(runner_id)
+    return {"success": True, "runner_id": runner_id, "job": job}
+
+
+def job_result_v2_service(job_id: int, data: dict, headers):
+    runner_id = _auth_runner_from_headers(headers)
+    status = data.get("status")
+    if status not in ["success", "failed", "error", "timeout"]:
+        raise ValueError("status must be success, failed, error or timeout")
+    result = save_job_result(
+        job_id=int(job_id),
+        runner_id=runner_id,
+        status=status,
+        result=data,
+        error=data.get("error") or data.get("stderr"),
+    )
+    if not result:
+        raise ValueError("job not found or not assigned to this runner")
+    validation = update_validation_from_runner_job(int(job_id), status=status, result=data, error=data.get("error"))
+    atomic_execution = None
+    if result and result.get("job_type") == "atomic_validation":
+        atomic_execution = update_atomic_execution_from_runner_job(
+            runner_job_id=int(job_id),
+            runner_id=runner_id,
+            status=status,
+            result=data,
+            error=data.get("error"),
+        )
+    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution}
+
+
+# Legacy /api/runner compatibility used by previous Magi builds.
 def register_runner_service(data: dict):
     runner_id = data.get("runner_id")
     if not runner_id:
@@ -51,9 +147,9 @@ def heartbeat_service(data: dict):
     return {"success": True, "runner_id": runner_id, "status": "online"}
 
 
-
 def list_runners_service(include_disabled: bool = False):
     return {"success": True, "runners": list_runners(include_disabled=include_disabled)}
+
 
 def list_jobs_service(runner_id: str):
     if not runner_id:
@@ -64,11 +160,16 @@ def list_jobs_service(runner_id: str):
 
 
 def create_job_service(data: dict):
-    job_type = data.get("job_type")
+    job_type = data.get("job_type") or data.get("executor") or data.get("type")
     if not job_type:
         raise ValueError("job_type is required")
 
     payload = data.get("payload") or {}
+    if data.get("executor") and not payload.get("executor"):
+        payload["executor"] = data.get("executor")
+    if data.get("command") and not payload.get("command"):
+        payload["command"] = data.get("command")
+
     job = create_runner_job(
         runner_id=data.get("runner_id"),
         job_type=job_type,
@@ -112,13 +213,6 @@ def _update_alert_connectivity_status_by_db_id(
     connectivity_status: str,
     connectivity_message: str,
 ):
-    """Atualiza somente os campos de conectividade.
-
-    Importante:
-    - Não atualiza automation_status.
-    - Não recalcula recommended_actions aqui para evitar quebrar o retorno do Runner.
-    - Contexto e recomendações podem ser recalculados em uma etapa posterior, de forma controlada.
-    """
     with SessionLocal() as db:
         row = db.execute(
             text(
@@ -152,7 +246,7 @@ def job_result_service(job_id: int, data: dict):
     if status not in ["success", "failed", "error", "timeout"]:
         raise ValueError("status must be success, failed, error or timeout")
 
-    result_payload = data.get("result") or {}
+    result_payload = data.get("result") or data
 
     result = save_job_result(
         job_id=job_id,
