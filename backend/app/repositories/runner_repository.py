@@ -158,7 +158,28 @@ def get_next_job(runner_id: str):
             return None
         job = dict(row)
         payload = job.get("payload") or {}
-        executor = payload.get("executor") or payload.get("type") or job.get("job_type")
+
+        # Keep the execution view synchronized with the actual queue state.
+        if job.get("job_type") == "atomic_validation":
+            db.execute(text("""
+                UPDATE atomic_execution_jobs
+                SET status = 'running',
+                    started_at = COALESCE(started_at, :now)
+                WHERE runner_job_id = :runner_job_id
+                  AND status = 'queued'
+            """), {"runner_job_id": int(job["id"]), "now": datetime.utcnow()})
+            db.commit()
+
+        executor = payload.get("executor") or payload.get("type")
+        if not executor:
+            executor = "atomic" if job.get("job_type") == "atomic_validation" else job.get("job_type")
+
+        # Normalize the Atomic payload expected by Runner v2.
+        if executor == "atomic":
+            payload = dict(payload)
+            if payload.get("atomic_test_number") is not None and payload.get("test_number") is None:
+                payload["test_number"] = payload.get("atomic_test_number")
+
         # Runner v2 expects job_id and executor.
         return {
             "job_id": str(job["id"]),
