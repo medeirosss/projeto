@@ -1,47 +1,41 @@
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: centric_app
+  db:
+    image: postgres:15
+    container_name: magi_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-magi}
+      POSTGRES_USER: ${POSTGRES_USER:-magi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - magi_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-magi} -d ${POSTGRES_DB:-magi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/medeirosss/magi-backend:v000.8.2
+    container_name: magi_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     env_file:
       - .env
     ports:
-      - "${APP_PORT:-8443}:8443"
-    depends_on:
-      - db
-    environment:
-      ATOMIC_RED_TEAM_PATH: /opt/atomic-red-team/atomics
+      - "${APP_PORT:-8000}:8443"
+    cap_add:
+      - NET_RAW
     volumes:
-      - ./license:/app/license
-      - ./backend/logs:/app/backend/logs
+      - magi_license:/app/license
+      - magi_logs:/app/logs
+      - magi_scripts:/app/scripts
       - ./atomic-red-team:/opt/atomic-red-team:ro
-    networks:
-      - public_net
-      - backend_net
-    restart: unless-stopped
-
-  db:
-    image: postgres:16
-    container_name: centric_db
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-centric_db}
-      POSTGRES_USER: ${POSTGRES_USER:-centric_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-    expose:
-      - "5432"
-    volumes:
-      - centric_pgdata:/var/lib/postgresql/data
-    networks:
-      - backend_net
-    restart: unless-stopped
 
 volumes:
-  centric_pgdata:
-
-networks:
-  public_net:
-    driver: bridge
-  backend_net:
-    driver: bridge
-    internal: true
+  magi_pgdata:
+  magi_license:
+  magi_logs:
+  magi_scripts:

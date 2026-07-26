@@ -137,6 +137,22 @@ def update_heartbeat(runner_id: str, metadata: dict | None = None):
         return dict(row) if row else None
 
 
+
+def get_single_online_runner() -> dict[str, Any] | None:
+    """Returns the most recently active enabled Runner. Golden Image 1.0 uses one Runner."""
+    with SessionLocal() as db:
+        row = db.execute(text("""
+            SELECT runner_id, name, hostname, last_heartbeat, metadata
+            FROM runners
+            WHERE enabled = TRUE
+              AND last_heartbeat IS NOT NULL
+              AND last_heartbeat >= (now() AT TIME ZONE 'UTC') - interval '2 minutes'
+              AND status = 'online'
+            ORDER BY last_heartbeat DESC
+            LIMIT 1
+        """)).mappings().first()
+        return dict(row) if row else None
+
 def get_next_job(runner_id: str):
     with SessionLocal() as db:
         row = db.execute(text("""

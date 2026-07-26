@@ -19,3 +19,22 @@
 ### Notas
 - Não há migration obrigatória nesta sprint.
 - A regra de produto permanece: o Magi não bloqueia por risco, reboot, dependência ou plataforma; o bloqueio real é aprovação/admin ou teste desabilitado.
+
+## UI Tasks / History patch (2026-07-24)
+- Renamed main navigation "Validações" to "Tarefas".
+- Renamed home navigation item "Centric" to "MAGI".
+- Split task catalog and job history into separate sidebar views.
+- Removed Runner selection from task execution.
+- Backend automatically selects the most recently active online Runner (2-minute heartbeat window).
+- Added mandatory dynamic target (IP or hostname) to execution jobs.
+- Replaced Approve/Prepare/Execute LAB controls with a single Execute action.
+- Kept Runner status/listing under Settings unchanged.
+
+## Sprint 1 — Alvos e descoberta Nmap (2026-07-24)
+
+- Adicionada a aba **Alvos** com nome, IP, MAC e última detecção.
+- Adicionada descoberta local por IPv4 ou CIDR usando Nmap no backend.
+- Adicionadas correlação por MAC, hostname e IP e preservação do histórico de endereços.
+- Adicionadas as tabelas `targets`, `target_addresses` e `discovery_runs`.
+- Adicionados endpoints `/api/targets`, `/api/targets/discover` e `/api/targets/discovery-runs`.
+- Nmap incorporado ao Dockerfile e capability `NET_RAW` adicionada ao Compose.

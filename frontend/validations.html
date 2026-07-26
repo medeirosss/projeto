@@ -1,42 +1,37 @@
-<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Validações</title><link rel="stylesheet" href="/assets/style.css"></head><body class="centric-page" data-theme="dark">
-<div class="topbar modern-topbar"><div class="top-left"><div class="brand"><img id="brandLogo" src="/assets/logo.png" alt="Logo"><span>Centric</span></div><nav class="menu" id="mainMenu"></nav></div><div class="top-right"><span>Detection Testing / Atomic Red Team</span></div></div>
+<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tarefas</title><link rel="stylesheet" href="/assets/style.css"></head><body class="centric-page" data-theme="dark">
+<div class="topbar modern-topbar"><div class="top-left"><div class="brand"><img id="brandLogo" src="/assets/logo.png" alt="Logo"><span>Centric</span></div><nav class="menu" id="mainMenu"></nav></div><div class="top-right"><span>Execução de técnicas</span></div></div>
 <div class="report-layout">
   <aside class="report-sidebar" id="validationsSidebar"></aside>
   <main class="report-content settings-content alerts-content">
-    <section id="atomicCatalogSection" class="report-section">
-      <div class="toolbar"><div><div class="title">Catálogo Atomic Red Team</div><p class="section-subtitle">Importação e consulta de testes atômicos mapeados ao MITRE ATT&CK. Esta etapa não executa testes.</p></div></div>
-      <div class="alert info-banner">Etapa 3E.1: execução LAB controlada via Runner. O backend não executa comandos; ele cria fila e recebe evidências do Runner.</div>
-      <div class="mini-stats alert-stats"><div class="mini-stat"><small>Técnicas</small><strong id="atomicTechniquesCount">0</strong></div><div class="mini-stat"><small>Testes</small><strong id="atomicTestsCount">0</strong></div><div class="mini-stat"><small>Aprovados lab</small><strong id="atomicApprovedCount">0</strong></div><div class="mini-stat"><small>Com dependências</small><strong id="atomicDependenciesCount">0</strong></div></div>
-      <div class="card alerts-card"><div class="card-header">Importador</div><div class="card-body"><div class="form-grid"><label>Caminho do repositório Atomic/atomics<input id="atomicSourcePath" placeholder="/opt/atomic-red-team/atomics"></label></div><div class="detail-actions"><button class="btn primary btn-sm" id="atomicImportBtn" type="button">Importar catálogo</button><button class="btn secondary btn-sm" id="atomicRefreshBtn" type="button">Atualizar lista</button></div><pre id="atomicImportResult" class="result-box">Aguardando importação.</pre></div></div>
-
-      <div class="card alerts-card">
-        <div class="card-header">Execução controlada via Runner — 3E.1 LAB</div>
-        <div class="card-body">
-          <p class="section-subtitle">Esta área prepara previews, envia jobs ao Runner e permite execução real LAB apenas para testes aprovados pelo admin. Risco, dependências, sistema operacional e reboot ficam como metadados de decisão, sem bloqueio de produto.</p>
-          <div class="form-grid">
-            <label>Runner ID opcional<input id="atomicRunnerId" placeholder="runner-lab-01"></label>
-            <label>Target host opcional <small>(não usado na 3E)</small><input id="atomicTargetHost" placeholder="Execução local no Runner selecionado"></label>
-          </div>
-          <div class="detail-actions"><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar histórico</button></div>
-          <div class="atomic-target-warning">Nesta etapa a execução Atomic ocorre localmente no Runner selecionado. O campo Target/IP ainda não executa remotamente.</div><pre id="atomicExecutionResult" class="result-box">Aguardando preparação.</pre>
-          <div class="history-filters">
-            <input id="historySearch" placeholder="Buscar por UUID, técnica, teste, runner, host ou solicitante">
-            <input id="historyTechnique" placeholder="Técnica ex: T1059">
-            <input id="historyRunner" placeholder="Runner ID">
-            <select id="historyStatus"><option value="">Todos os status</option><option value="queued">queued</option><option value="success">success</option><option value="failed">failed</option><option value="error">error</option><option value="timeout">timeout</option><option value="blocked">blocked</option><option value="pending_review">pending_review</option></select>
-            <input id="historyRequestedBy" placeholder="Solicitante">
-            <input id="historyDateFrom" type="date" title="Data inicial">
-            <input id="historyDateTo" type="date" title="Data final">
-            <button class="btn secondary btn-sm" id="historyClearBtn" type="button">Limpar filtros</button>
-          </div>
-          <div class="history-meta" id="atomicHistoryMeta">Histórico de validações: 0 registros.</div>
-          <div class="table-wrap"><table><thead><tr><th>ID</th><th>Técnica</th><th>Teste</th><th>Runner</th><th>Target</th><th>Status</th><th>Duração</th><th>Solicitante</th><th>Data</th><th>Ações</th></tr></thead><tbody id="atomicExecutionsTable"></tbody></table></div>
-        </div>
-      </div>
+    <section id="tasksSection" class="report-section">
+      <div class="toolbar"><div><div class="title">Tarefas</div><p class="section-subtitle">Selecione uma técnica, informe o alvo e envie a execução ao Runner online.</p></div></div>
+      <div class="mini-stats alert-stats"><div class="mini-stat"><small>Técnicas</small><strong id="atomicTechniquesCount">0</strong></div><div class="mini-stat"><small>Testes</small><strong id="atomicTestsCount">0</strong></div><div class="mini-stat"><small>Disponíveis</small><strong id="atomicApprovedCount">0</strong></div><div class="mini-stat"><small>Com dependências</small><strong id="atomicDependenciesCount">0</strong></div></div>
+      <div class="card alerts-card"><div class="card-header">Alvo da execução</div><div class="card-body">
+        <div class="form-grid"><label>Target <small>(IP ou hostname)</small><input id="atomicTargetHost" placeholder="Ex.: 192.168.0.100 ou HOST01"></label></div>
+        <div class="atomic-target-warning">O target é obrigatório. Suporte a CIDR e intervalos de IP será adicionado em uma etapa futura.</div>
+        <pre id="atomicExecutionResult" class="result-box">Aguardando execução.</pre>
+      </div></div>
       <div class="alerts-workspace">
         <div class="card alerts-card alerts-list-card"><div class="card-header">Técnicas MITRE</div><div class="card-body"><input id="atomicSearch" placeholder="Buscar técnica, nome ou tática"><div class="table-wrap"><table><thead><tr><th>Técnica</th><th>Nome</th><th>Tática</th><th>Testes</th><th>Plataformas</th><th>Executores</th></tr></thead><tbody id="atomicTechniquesTable"></tbody></table></div></div></div>
-        <aside class="card alerts-card alert-detail-card"><div class="card-header">Testes da técnica</div><div class="card-body"><div id="atomicSelectedTitle" class="section-subtitle">Selecione uma técnica para visualizar os testes.</div><div class="table-wrap"><table><thead><tr><th>Teste</th><th>Plataformas</th><th>Executor</th><th>Admin</th><th>Dependências</th><th>Risco</th><th>Aprovação</th><th>Uso</th><th>Reboot</th><th>Ação</th></tr></thead><tbody id="atomicTestsTable"></tbody></table></div></div></aside>
+        <aside class="card alerts-card alert-detail-card"><div class="card-header">Tarefas da técnica</div><div class="card-body"><div id="atomicSelectedTitle" class="section-subtitle">Selecione uma técnica para visualizar as tarefas.</div><div class="table-wrap"><table><thead><tr><th>Tarefa</th><th>Plataformas</th><th>Executor</th><th>Admin</th><th>Dependências</th><th>Risco</th><th>Uso</th><th>Reboot</th><th>Ação</th></tr></thead><tbody id="atomicTestsTable"></tbody></table></div></div></aside>
       </div>
+      <details class="card alerts-card" style="margin-top:16px"><summary class="card-header">Manutenção do catálogo</summary><div class="card-body"><div class="form-grid"><label>Caminho do repositório atual<input id="atomicSourcePath" placeholder="/opt/atomic-red-team/atomics"></label></div><div class="detail-actions"><button class="btn primary btn-sm" id="atomicImportBtn" type="button">Importar catálogo</button><button class="btn secondary btn-sm" id="atomicRefreshBtn" type="button">Atualizar lista</button></div><pre id="atomicImportResult" class="result-box">Aguardando importação.</pre></div></details>
+    </section>
+
+    <section id="historySection" class="report-section" hidden>
+      <div class="toolbar"><div><div class="title">Histórico</div><p class="section-subtitle">Histórico separado dos jobs enviados ao Runner.</p></div><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar histórico</button></div>
+      <div class="card alerts-card"><div class="card-body">
+        <div class="history-filters">
+          <input id="historySearch" placeholder="Buscar por UUID, técnica, tarefa, runner, host ou solicitante">
+          <input id="historyTechnique" placeholder="Técnica ex: T1059">
+          <input id="historyRunner" placeholder="Runner ID">
+          <select id="historyStatus"><option value="">Todos os status</option><option value="queued">queued</option><option value="running">running</option><option value="success">success</option><option value="failed">failed</option><option value="error">error</option><option value="timeout">timeout</option><option value="blocked">blocked</option></select>
+          <input id="historyRequestedBy" placeholder="Solicitante"><input id="historyDateFrom" type="date" title="Data inicial"><input id="historyDateTo" type="date" title="Data final"><button class="btn secondary btn-sm" id="historyClearBtn" type="button">Limpar filtros</button>
+        </div>
+        <div class="history-meta" id="atomicHistoryMeta">Histórico de tarefas: 0 registros.</div>
+        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Técnica</th><th>Tarefa</th><th>Runner</th><th>Target</th><th>Status</th><th>Duração</th><th>Solicitante</th><th>Data</th><th>Ações</th></tr></thead><tbody id="atomicExecutionsTable"></tbody></table></div>
+        <pre id="historyExecutionResult" class="result-box">Selecione um job para visualizar os detalhes.</pre>
+      </div></div>
     </section>
   </main>
 </div>

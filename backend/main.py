@@ -16,6 +16,7 @@ from app.routers.alerts import router as alerts_router
 from app.routers.cve_intelligence import router as cve_intelligence_router
 from app.routers.validations import router as validations_router
 from app.routers.ai_chat import router as ai_chat_router
+from app.routers.targets import router as targets_router
 from app.license.license_middleware import LicenseMiddleware
 from app.security.auth_middleware import AuthMiddleware
 from app.auth.auth_router import router as auth_router
@@ -24,6 +25,7 @@ from app.license.license_scheduler import run_license_scheduler
 from app.license.license_service import license_service
 from app.repositories.auth_repository import ensure_local_auth_schema
 from app.repositories.runner_repository import ensure_runner_schema
+from app.repositories.target_repository import ensure_target_schema
 
 app = FastAPI(title="Centric - UEM Backend")
 app.add_middleware(AuthMiddleware)
@@ -37,6 +39,7 @@ app.include_router(runner_router, prefix="/api/runner", tags=["Runner legacy"])
 async def startup_event():
     ensure_local_auth_schema()
     ensure_runner_schema()
+    ensure_target_schema()
     license_service.validate()
     asyncio.create_task(run_license_scheduler())
 
@@ -56,6 +59,7 @@ app.include_router(alerts_router)
 app.include_router(cve_intelligence_router)
 app.include_router(validations_router)
 app.include_router(ai_chat_router)
+app.include_router(targets_router)
 
 if __name__ == "__main__":
     import uvicorn

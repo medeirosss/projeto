@@ -24,7 +24,7 @@ from app.repositories.atomic_repository import (
     update_atomic_test_risk,
     mark_atomic_execution_blocked,
 )
-from app.repositories.runner_repository import create_runner_job
+from app.repositories.runner_repository import create_runner_job, get_single_online_runner
 
 SENSITIVE_KEYWORDS = (
     "credential", "password", "hash", "lsass", "mimikatz", "dump", "exfil", "ransom",
@@ -262,9 +262,14 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
     payload = payload or {}
     user = _current_user_from_payload(payload)
 
-    runner_id = payload.get("runner_id")
-    if not runner_id:
-        raise ValueError("runner_id é obrigatório para execução LAB.")
+    target_host = str(payload.get("target_host") or "").strip()
+    if not target_host:
+        raise ValueError("Target não preenchido. Informe um IP ou hostname.")
+
+    online_runner = get_single_online_runner()
+    if not online_runner:
+        raise ValueError("Nenhum Runner online disponível.")
+    runner_id = online_runner["runner_id"]
 
     test = get_atomic_test_by_id(test_id)
     if not test:
@@ -273,10 +278,6 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
     block_reasons: list[str] = []
     if not bool(test.get("enabled")):
         block_reasons.append("Teste desabilitado no catálogo.")
-    if not bool(test.get("approved_for_execution")):
-        block_reasons.append("Teste não aprovado para execução pelo admin.")
-    if not bool(test.get("approved_for_lab")):
-        block_reasons.append("Teste não aprovado para LAB pelo admin.")
 
     # Sem bloqueio de produto por risk_level/requires_reboot/supported_platforms.
     # Esses campos seguem como metadados e evidência para decisão do admin.
@@ -297,7 +298,7 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
         "executor_name": test.get("executor_name"),
         "risk_level": str(test.get("risk_level") or "low").lower(),
         "command_preview": command_preview,
-        "target_host": None,
+        "target_host": target_host,
         "approved_for_execution": True,
         "approved_for_lab": True,
         "allow_real_execution": True,
@@ -312,7 +313,7 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
         technique_id=test.get("technique_id"),
         atomic_test_number=int(atomic_test_number),
         runner_id=runner_id,
-        target_host=None,
+        target_host=target_host,
         requested_by=user.get("username"),
         command_preview=command_preview,
         status="queued",
@@ -324,7 +325,7 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
     runner_job = create_runner_job(
         runner_id=runner_id,
         job_type="atomic_validation",
-        target=None,
+        target=target_host,
         payload=runner_payload,
     )
     dispatched = dispatch_atomic_execution_job(
@@ -340,7 +341,8 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
         "execution": dispatched,
         "runner_job": runner_job,
         "command_preview": command_preview,
-        "target_note": "Nesta etapa a execução é local no Runner; target/IP ainda não é usado.",
+        "selected_runner": runner_id,
+        "target": target_host,
     }
 
 

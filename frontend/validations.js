@@ -118,7 +118,7 @@ async function selectTechnique(techniqueId){
   const data = await fetchJson(url.toString());
   const rows = data.tests || [];
   const tbody = document.getElementById('atomicTestsTable');
-  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="10">Nenhum teste encontrado.</td></tr>'; return; }
+  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="9">Nenhuma tarefa encontrada.</td></tr>'; return; }
   tbody.innerHTML = rows.map(row => `
     <tr>
       <td><strong>#${safeText(row.atomic_test_number || row.id)} - ${safeText(row.atomic_name)}</strong><br><small>${safeText(row.description).slice(0, 160)}</small></td>
@@ -127,123 +127,30 @@ async function selectTechnique(techniqueId){
       <td>${boolBadge(row.executor_elevation_required)}</td>
       <td>${row.has_dependencies ? `Sim (${row.dependency_count || 0})` : 'Não'}</td>
       <td>${riskBadge(row.risk_level)}</td>
-      <td>${boolBadge(row.approved_for_execution || row.approved_for_lab, 'Aprovado', 'Pendente')}</td>
-      <td>${boolBadge(row.safe_for_production, 'Safe', 'Lab')}</td>
+      <td>${boolBadge(row.safe_for_production, 'Produção', 'Controlado')}</td>
       <td>${boolBadge(row.requires_reboot, 'Reboot', 'Não')}</td>
-      <td class="action-cell">
-        <button class="btn secondary btn-sm approve-test" data-id="${row.id}">Aprovar</button>
-        <button class="btn primary btn-sm prepare-test" data-id="${row.id}">Preparar</button>
-        ${canExecuteLab(row) ? `<button class="btn danger btn-sm execute-lab-test" data-id="${row.id}" data-technique-id="${safeText(row.technique_id)}" data-atomic-test-number="${safeText(row.atomic_test_number)}">Executar LAB</button>` : `<button class="btn secondary btn-sm" disabled title="Exige apenas aprovação do admin para execução/LAB">Executar LAB</button>`}
-      </td>
+      <td class="action-cell"><button class="btn primary btn-sm execute-task" data-id="${row.id}">Executar</button></td>
     </tr>`).join('');
-  document.querySelectorAll('.approve-test').forEach(btn => btn.addEventListener('click', () => approveAtomicTest(btn.dataset.id)));
-  document.querySelectorAll('.prepare-test').forEach(btn => btn.addEventListener('click', () => prepareAtomicExecution(btn.dataset.id)));
+  document.querySelectorAll('.execute-task').forEach(btn => btn.addEventListener('click', () => executeTask(btn.dataset.id)));
 }
 
-
-async function executeAtomicLab(testId){
-
-  console.log('================================');
-  console.log('EXECUTE LAB');
-  console.log('TEST ID:', testId);
-  console.log('================================');
-
+async function executeTask(testId){
   const result = document.getElementById('atomicExecutionResult');
-
-  const runnerId =
-      document.getElementById('atomicRunnerId').value.trim();
-
-  console.log('RUNNER:', runnerId);
-
-  if(!runnerId){
-      result.textContent =
-          'Informe o Runner ID antes de executar em LAB.';
-      return;
-  }
-
-  const ok = confirm(
-      'Executar teste Atomic REAL em LAB no Runner selecionado?'
-  );
-
-  console.log('CONFIRM:', ok);
-
-  if(!ok){
-      console.log('EXECUÇÃO CANCELADA');
-      return;
-  }
-
-  const url =
-      `/api/validations/atomic/tests/${testId}/execute-lab`;
-
-  console.log('POST URL:', url);
-
-  result.textContent =
-      `Executando teste ${testId}...`;
-
-  try{
-
-      const payload = {
-          runner_id: runnerId,
-          requested_by: 'ui'
-      };
-
-      console.log('PAYLOAD:', payload);
-
-      const data = await fetchJson(
-          url,
-          {
-              method:'POST',
-              headers:{
-                  'Content-Type':'application/json'
-              },
-              body: JSON.stringify(payload)
-          }
-      );
-
-      console.log('RESPONSE:', data);
-
-      result.textContent =
-          JSON.stringify(data, null, 2);
-
-      await loadAtomicExecutions();
-
-  }
-  catch(err){
-
-      console.error('EXECUTE LAB ERROR:', err);
-
-      result.textContent =
-          err.message;
-
-  }
-}
-
-async function approveAtomicTest(testId){
-  const result = document.getElementById('atomicExecutionResult');
-  result.textContent = `Aprovando teste ${testId}...`;
-  try{
-    const data = await fetchJson(`/api/validations/atomic/tests/${testId}/approve`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({approved: true})
-    });
-    result.textContent = jsonPretty(data);
-    await loadAtomicSummary();
-    if(selectedTechniqueId) await selectTechnique(selectedTechniqueId);
-  }catch(err){ result.textContent = err.message; }
-}
-
-async function prepareAtomicExecution(testId){
-  const result = document.getElementById('atomicExecutionResult');
-  const runnerId = document.getElementById('atomicRunnerId').value.trim();
   const targetHost = document.getElementById('atomicTargetHost').value.trim();
-  result.textContent = `Preparando preview do teste ${testId}...`;
+  if(!targetHost){
+    result.textContent = 'Target não preenchido. Informe um IP ou hostname antes de executar.';
+    alert('Target não preenchido.');
+    document.getElementById('atomicTargetHost').focus();
+    return;
+  }
+  if(!confirm(`Executar a tarefa no target ${targetHost}?`)) return;
+  result.textContent = `Enviando tarefa ${testId} para o Runner online...`;
   try{
-    const data = await fetchJson(`/api/validations/atomic/tests/${testId}/prepare-execution`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({runner_id: runnerId || null, target_host: targetHost || null, requested_by: 'ui'})
+    const data = await fetchJson(`/api/validations/atomic/tests/${testId}/execute-lab`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({target_host: targetHost, requested_by:'ui'})
     });
     result.textContent = jsonPretty(data);
-    await loadAtomicExecutions();
   }catch(err){ result.textContent = err.message; }
 }
 
@@ -286,16 +193,14 @@ async function loadAtomicExecutions(){
       <td>${safeText(row.requested_by)}${row.approved_by ? `<br><small>Aprovado por ${safeText(row.approved_by)}</small>` : ''}</td>
       <td>${formatDateTime(row.created_at)}</td>
       <td class="action-cell">
-        ${row.status === 'pending_review' ? `<button class="btn primary btn-sm dispatch-execution" data-id="${row.id}">Enviar ao Runner</button>` : ''}
         <button class="btn secondary btn-sm execution-detail" data-id="${row.id}">Detalhes</button>
       </td>
     </tr>`).join('');
-  document.querySelectorAll('.dispatch-execution').forEach(btn => btn.addEventListener('click', () => dispatchAtomicExecution(btn.dataset.id)));
   document.querySelectorAll('.execution-detail').forEach(btn => btn.addEventListener('click', () => showExecutionDetail(btn.dataset.id)));
 }
 
 async function showExecutionDetail(executionId){
-  const result = document.getElementById('atomicExecutionResult');
+  const result = document.getElementById('historyExecutionResult') || document.getElementById('atomicExecutionResult');
   result.textContent = `Carregando detalhes da execução ${executionId}...`;
   try{
     const data = await fetchJson(`/api/validations/atomic/executions/${executionId}`);
@@ -327,21 +232,6 @@ async function showExecutionDetail(executionId){
   }catch(err){ result.textContent = err.message; }
 }
 
-async function dispatchAtomicExecution(executionId){
-  const result = document.getElementById('atomicExecutionResult');
-  const runnerId = document.getElementById('atomicRunnerId').value.trim();
-  if(!runnerId){ result.textContent = 'Informe o Runner ID antes de enviar o job.'; return; }
-  result.textContent = `Enviando execução ${executionId} ao Runner ${runnerId}...`;
-  try{
-    const data = await fetchJson(`/api/validations/atomic/executions/${executionId}/dispatch`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({runner_id: runnerId, approved_by: 'ui', mode: 'dry_run'})
-    });
-    result.textContent = jsonPretty(data);
-    await loadAtomicExecutions();
-  }catch(err){ result.textContent = err.message; }
-}
 
 async function importAtomicCatalog(){
   const sourcePath = document.getElementById('atomicSourcePath').value.trim();
@@ -359,38 +249,31 @@ async function importAtomicCatalog(){
   }
 }
 
-document.addEventListener('click', async function(event){
-  const btn = event.target.closest('.execute-lab-test');
-  if(!btn) return;
 
-  event.preventDefault();
-
-  const testId = btn.dataset.id;
-  const techniqueId = btn.dataset.techniqueId || null;
-  const atomicTestNumber = btn.dataset.atomicTestNumber || null;
-  console.log('Execute LAB clicked:', { testId, techniqueId, atomicTestNumber });
-
-  await executeAtomicLab(testId, techniqueId, atomicTestNumber);
-});
+function showValidationSection(key){
+  const tasks = document.getElementById('tasksSection');
+  const history = document.getElementById('historySection');
+  if(tasks) tasks.hidden = key === 'history';
+  if(history) history.hidden = key !== 'history';
+  if(key === 'history') loadAtomicExecutions().catch(()=>{});
+}
 
 function bindValidationsUi(){
   buildHeader('validations');
   initializeBranding();
-  renderModuleSidebar('validationsSidebar', [{title:'Validações', items:[{key:'atomic', label:'Atomic Red Team'}]}], ()=>{});
-  document.getElementById('atomicImportBtn').addEventListener('click', importAtomicCatalog);
-  document.getElementById('atomicRefreshBtn').addEventListener('click', async ()=>{ await loadAtomicSummary(); await loadAtomicTechniques(); await loadAtomicExecutions(); if(selectedTechniqueId) await selectTechnique(selectedTechniqueId); });
-  document.getElementById('atomicExecutionsRefreshBtn').addEventListener('click', loadAtomicExecutions);
+  renderModuleSidebar('validationsSidebar', [{title:'Tarefas', items:[{key:'tasks', label:'Tarefas'},{key:'history', label:'Histórico'}]}], showValidationSection);
+  document.getElementById('atomicImportBtn')?.addEventListener('click', importAtomicCatalog);
+  document.getElementById('atomicRefreshBtn')?.addEventListener('click', async ()=>{ await loadAtomicSummary(); await loadAtomicTechniques(); if(selectedTechniqueId) await selectTechnique(selectedTechniqueId); });
+  document.getElementById('atomicExecutionsRefreshBtn')?.addEventListener('click', loadAtomicExecutions);
   ['historySearch','historyTechnique','historyRunner','historyStatus','historyRequestedBy','historyDateFrom','historyDateTo'].forEach(id => {
-    const el = document.getElementById(id);
-    if(!el) return;
+    const el = document.getElementById(id); if(!el) return;
     el.addEventListener('input', ()=>{ clearTimeout(window.__atomicHistoryTimer); window.__atomicHistoryTimer = setTimeout(loadAtomicExecutions, 350); });
     el.addEventListener('change', loadAtomicExecutions);
   });
-  document.getElementById('historyClearBtn').addEventListener('click', ()=>{ ['historySearch','historyTechnique','historyRunner','historyStatus','historyRequestedBy','historyDateFrom','historyDateTo'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; }); loadAtomicExecutions(); });
-  document.getElementById('atomicSearch').addEventListener('input', ()=>{ clearTimeout(window.__atomicSearchTimer); window.__atomicSearchTimer = setTimeout(loadAtomicTechniques, 250); });
+  document.getElementById('historyClearBtn')?.addEventListener('click', ()=>{ ['historySearch','historyTechnique','historyRunner','historyStatus','historyRequestedBy','historyDateFrom','historyDateTo'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; }); loadAtomicExecutions(); });
+  document.getElementById('atomicSearch')?.addEventListener('input', ()=>{ clearTimeout(window.__atomicSearchTimer); window.__atomicSearchTimer = setTimeout(loadAtomicTechniques, 250); });
+  showValidationSection('tasks');
   loadAtomicSummary().catch(()=>{});
   loadAtomicTechniques().catch(()=>{});
-  loadAtomicExecutions().catch(()=>{});
 }
-
 document.addEventListener('DOMContentLoaded', bindValidationsUi);
