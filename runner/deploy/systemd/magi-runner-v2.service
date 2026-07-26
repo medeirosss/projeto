@@ -1,0 +1,17 @@
+[Unit]
+Description=Magi Runner v2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/magi-runner-v2
+Environment=MAGI_RUNNER_HOME=/opt/magi-runner-v2
+ExecStart=/opt/magi-runner-v2/.venv/bin/python -m magi_runner --config /opt/magi-runner-v2/settings.json
+Restart=always
+RestartSec=10
+User=magi-runner
+Group=magi-runner
+
+[Install]
+WantedBy=multi-user.target

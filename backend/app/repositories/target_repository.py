@@ -55,6 +55,10 @@ def ensure_target_schema() -> None:
         ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS scan_id INTEGER REFERENCES discovery_scans(id) ON DELETE SET NULL;
         ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS trigger_type VARCHAR(20) NOT NULL DEFAULT 'manual';
         ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS addresses_checked INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS runner_job_id INTEGER REFERENCES runner_jobs(id) ON DELETE SET NULL;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS runner_id VARCHAR(80);
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS provider VARCHAR(20) NOT NULL DEFAULT 'runner';
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS raw_output TEXT;
         CREATE INDEX IF NOT EXISTS idx_targets_last_seen_at ON targets(last_seen_at DESC);
         CREATE INDEX IF NOT EXISTS idx_discovery_scans_next_run ON discovery_scans(next_run_at) WHERE is_enabled = TRUE;
         CREATE INDEX IF NOT EXISTS idx_discovery_runs_started_at ON discovery_runs(started_at DESC);
@@ -210,3 +214,29 @@ def list_discovery_runs(limit=50):
 
 def clear_discovery_runs():
     with SessionLocal() as db: db.execute(text("DELETE FROM discovery_runs")); db.commit()
+
+
+def create_queued_discovery_run(target_spec: str, scan_id: int | None, trigger_type: str, addresses_checked: int, runner_id: str, runner_job_id: int, provider: str = "runner") -> dict:
+    with SessionLocal() as db:
+        row = db.execute(text("""
+            INSERT INTO discovery_runs(run_uuid,scan_id,target_spec,execution_mode,trigger_type,status,addresses_checked,runner_id,runner_job_id,provider,started_at)
+            VALUES(:u,:sid,:spec,:provider,:trigger,'queued',:checked,:runner_id,:job_id,:provider,:now) RETURNING *
+        """), {"u":_uuid("DSC"),"sid":scan_id,"spec":target_spec,"provider":provider,"trigger":trigger_type,"checked":addresses_checked,"runner_id":runner_id,"job_id":runner_job_id,"now":_now()}).mappings().first()
+        db.commit(); return _serialize(dict(row))
+
+def get_discovery_run_by_job(job_id: int) -> dict | None:
+    with SessionLocal() as db:
+        row=db.execute(text("SELECT * FROM discovery_runs WHERE runner_job_id=:id"),{"id":job_id}).mappings().first()
+        return _serialize(dict(row)) if row else None
+
+def update_discovery_run_from_runner(job_id:int, status:str, count:int, error:str|None=None, raw_output:str|None=None, runner_id:str|None=None):
+    with SessionLocal() as db:
+        row=db.execute(text("""UPDATE discovery_runs SET status=:status,discovered_count=:count,error=:error,raw_output=:raw,runner_id=COALESCE(:runner_id,runner_id),finished_at=:now WHERE runner_job_id=:job_id RETURNING *"""),
+            {"status":status,"count":count,"error":error,"raw":raw_output,"runner_id":runner_id,"now":_now(),"job_id":job_id}).mappings().first()
+        db.commit(); return _serialize(dict(row)) if row else None
+
+def release_scan_by_run(run:dict):
+    if not run or not run.get("scan_id"): return
+    with SessionLocal() as db:
+        scan=db.execute(text("SELECT interval_minutes,is_enabled FROM discovery_scans WHERE id=:id"),{"id":run["scan_id"]}).mappings().first()
+    release_scan(int(run["scan_id"]), int(scan["interval_minutes"]) if scan and scan["is_enabled"] and scan["interval_minutes"] else None)

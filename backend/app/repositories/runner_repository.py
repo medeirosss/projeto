@@ -206,6 +206,7 @@ def get_next_job(runner_id: str):
             "type": executor,
             "target": job.get("target"),
             "payload": payload,
+            "timeout_seconds": payload.get("timeout_seconds"),
         }
 
 
@@ -366,3 +367,18 @@ def list_runners(include_disabled: bool = False) -> list[dict[str, Any]]:
             ORDER BY last_heartbeat DESC NULLS LAST, runner_id ASC
         """), {"include_disabled": include_disabled}).mappings().all()
         return [dict(row) for row in rows]
+
+
+def get_online_runner_with_capability(capability: str) -> dict[str, Any] | None:
+    with SessionLocal() as db:
+        row = db.execute(text("""
+            SELECT runner_id, name, hostname, last_heartbeat, metadata
+            FROM runners
+            WHERE enabled = TRUE
+              AND status = 'online'
+              AND last_heartbeat >= (now() AT TIME ZONE 'UTC') - interval '2 minutes'
+              AND COALESCE((metadata->'capabilities'->'nmap_discovery'->>'available')::boolean, FALSE) = TRUE
+            ORDER BY COALESCE((metadata->>'active_jobs')::int,0) ASC, last_heartbeat DESC
+            LIMIT 1
+        """), {"capability": capability}).mappings().first()
+        return dict(row) if row else None
