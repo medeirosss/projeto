@@ -15,11 +15,18 @@ class DiscoveryExecutionError(RuntimeError):
     pass
 
 
+DIRECT_UP_REASONS = {
+    "arp-response", "echo-reply", "timestamp-reply", "address-mask-reply",
+    "syn-ack", "reset", "conn-refused", "udp-response", "proto-response",
+}
+
+
 @dataclass(frozen=True)
 class DiscoveredHost:
     ip_address: str
     hostname: str | None = None
     mac_address: str | None = None
+    reason: str | None = None
 
 
 def validate_target_spec(value: str) -> str:
@@ -37,6 +44,14 @@ def validate_target_spec(value: str) -> str:
     return str(parsed)
 
 
+def target_type(value: str) -> str:
+    return "network" if "/" in value else "host"
+
+
+def target_address_count(value: str) -> int:
+    return ipaddress.ip_network(value, strict=False).num_addresses if "/" in value else 1
+
+
 def _parse_nmap_xml(xml_output: str) -> list[DiscoveredHost]:
     try:
         root = ET.fromstring(xml_output)
@@ -46,7 +61,11 @@ def _parse_nmap_xml(xml_output: str) -> list[DiscoveredHost]:
     hosts: list[DiscoveredHost] = []
     for host in root.findall("host"):
         status = host.find("status")
-        if status is not None and status.get("state") != "up":
+        if status is None or status.get("state") != "up":
+            continue
+        reason = (status.get("reason") or "").lower()
+        # Never persist hosts merely assumed up (for example -Pn/user-set).
+        if reason not in DIRECT_UP_REASONS:
             continue
         ip_address = None
         mac_address = None
@@ -61,7 +80,7 @@ def _parse_nmap_xml(xml_output: str) -> list[DiscoveredHost]:
         hostname_node = host.find("hostnames/hostname")
         if hostname_node is not None:
             hostname = hostname_node.get("name") or None
-        hosts.append(DiscoveredHost(ip_address=ip_address, hostname=hostname, mac_address=mac_address))
+        hosts.append(DiscoveredHost(ip_address=ip_address, hostname=hostname, mac_address=mac_address, reason=reason))
     return hosts
 
 
@@ -73,14 +92,15 @@ class LocalNmapProvider:
         validated = validate_target_spec(target_spec)
         if not shutil.which("nmap"):
             raise DiscoveryExecutionError("Nmap não encontrado na imagem do backend.")
+        command = [
+            "nmap", "-sn", "-T4", "--max-retries", "1", "--reason",
+            "-PE", "-PS80,135,139,443,445,3389", "-PA80,443,445",
+            "--host-timeout", "12s", "-oX", "-", validated,
+        ]
         try:
             result = subprocess.run(
-                ["nmap", "-sn", "-oX", "-", validated],
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_seconds,
-                check=False,
-                shell=False,
+                command, capture_output=True, text=True,
+                timeout=self.timeout_seconds, check=False, shell=False,
             )
         except subprocess.TimeoutExpired as exc:
             raise DiscoveryExecutionError(f"A descoberta excedeu {self.timeout_seconds} segundos.") from exc

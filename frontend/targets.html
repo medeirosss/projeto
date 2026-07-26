@@ -1,22 +1,21 @@
 <!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Alvos</title><link rel="stylesheet" href="/assets/style.css"></head><body class="centric-page" data-theme="dark">
 <div class="topbar modern-topbar"><div class="top-left"><div class="brand"><img id="brandLogo" src="/assets/logo.png" alt="Logo"><span>Centric</span></div><nav class="menu" id="mainMenu"></nav></div><div class="top-right"><span>Descoberta e identificação de ativos</span></div></div>
 <div class="report-layout">
-  <aside class="report-sidebar"><div class="sidebar-group"><div class="report-group-title">Alvos</div><nav class="report-nav"><a class="active" href="#">Máquinas descobertas</a></nav></div><div class="sidebar-user"></div></aside>
-  <main class="report-content settings-content alerts-content">
-    <section class="report-section">
-      <div class="toolbar"><div><div class="title">Alvos</div><p class="section-subtitle">Máquinas identificadas pelo Magi por nome, endereço IP e endereço MAC.</p></div><button class="btn secondary btn-sm" id="targetsRefreshBtn" type="button">Atualizar</button></div>
-      <div class="mini-stats alert-stats"><div class="mini-stat"><small>Total de alvos</small><strong id="targetsTotal">0</strong></div><div class="mini-stat"><small>Última descoberta</small><strong id="lastDiscoveryStatus">—</strong></div></div>
-      <div class="card alerts-card"><div class="card-header">Nova descoberta</div><div class="card-body">
-        <div class="form-grid"><label>IPv4 ou rede CIDR<input id="discoveryTargetSpec" placeholder="Ex.: 192.168.0.10 ou 192.168.0.0/24"></label></div>
-        <div class="detail-actions"><button class="btn primary btn-sm" id="discoveryStartBtn" type="button">Iniciar descoberta</button></div>
-        <pre id="discoveryResult" class="result-box">Aguardando descoberta.</pre>
-      </div></div>
-      <div class="card alerts-card" style="margin-top:16px"><div class="card-header">Máquinas</div><div class="card-body">
-        <input id="targetsSearch" placeholder="Buscar por nome, IP ou MAC">
-        <div class="table-wrap"><table><thead><tr><th>Nome</th><th>IP</th><th>MAC</th><th>Última detecção</th></tr></thead><tbody id="targetsTable"></tbody></table></div>
-      </div></div>
-    </section>
-  </main>
-</div>
-<script src="/assets/common.js"></script><script src="/assets/targets.js"></script>
-</body></html>
+<aside class="report-sidebar"><div class="sidebar-group"><div class="report-group-title">Alvos</div><nav class="report-nav"><a id="navMachines" class="active" href="#machines">Máquinas descobertas</a><a id="navScans" href="#scans">Scan</a></nav></div><div class="sidebar-user"></div></aside>
+<main class="report-content settings-content alerts-content">
+<section class="report-section" id="machinesSection">
+<div class="toolbar"><div><div class="title">Máquinas descobertas</div><p class="section-subtitle">Somente hosts que responderam diretamente às sondagens do Nmap.</p></div><button class="btn secondary btn-sm" id="targetsRefreshBtn">Atualizar</button></div>
+<div class="mini-stats alert-stats"><div class="mini-stat"><small>Total de alvos</small><strong id="targetsTotal">0</strong></div><div class="mini-stat"><small>Última descoberta</small><strong id="lastDiscoveryStatus">—</strong></div></div>
+<div class="card alerts-card"><div class="card-header">Máquinas</div><div class="card-body"><input id="targetsSearch" placeholder="Buscar por nome, IP ou MAC"><div class="table-wrap"><table><thead><tr><th>Nome</th><th>IP</th><th>MAC</th><th>Última detecção</th><th>Ações</th></tr></thead><tbody id="targetsTable"></tbody></table></div></div></div>
+</section>
+<section class="report-section" id="scansSection" hidden>
+<div class="toolbar"><div><div class="title">Scan</div><p class="section-subtitle">Crie descobertas manuais ou recorrentes para um host ou rede CIDR.</p></div><button class="btn primary btn-sm" id="newScanBtn">Novo scan</button></div>
+<div class="card alerts-card" id="scanFormCard" hidden><div class="card-header">Configuração do scan</div><div class="card-body">
+<div class="form-grid"><label>Nome<input id="scanName" placeholder="Ex.: Rede escritório"></label><label>Tipo<select id="scanType"><option value="host">Host individual</option><option value="network">Rede CIDR</option></select></label><label>IPv4 ou CIDR<input id="scanTarget" placeholder="192.168.0.50 ou 192.168.0.0/24"></label><label>Execução<select id="scanSchedule"><option value="manual">Somente manual</option><option value="interval">Agendada</option></select></label><label id="intervalLabel" hidden>Intervalo<select id="scanInterval"><option value="30">30 minutos</option><option value="60">1 hora</option><option value="180">3 horas</option><option value="360">6 horas</option><option value="720">12 horas</option><option value="1440">Diariamente</option><option value="10080">Semanalmente</option></select></label></div>
+<label><input type="checkbox" id="scanEnabled"> Ativar agendamento</label><label><input type="checkbox" id="scanRunNow" checked> Executar imediatamente após salvar</label>
+<div class="detail-actions"><button class="btn primary btn-sm" id="saveScanBtn">Salvar</button><button class="btn secondary btn-sm" id="cancelScanBtn">Cancelar</button></div><pre id="scanResult" class="result-box">Aguardando.</pre>
+</div></div>
+<div class="card alerts-card"><div class="card-header">Scans configurados</div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Nome</th><th>Alvo</th><th>Agendamento</th><th>Última execução</th><th>Próxima</th><th>Status</th><th>Ações</th></tr></thead><tbody id="scansTable"></tbody></table></div></div></div>
+<div class="card alerts-card" style="margin-top:16px"><div class="card-header toolbar"><span>Histórico</span><button class="btn secondary btn-sm" id="clearHistoryBtn">Limpar histórico</button></div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Scan</th><th>Início</th><th>Duração</th><th>Tipo</th><th>Verificados</th><th>Confirmados</th><th>Resultado</th></tr></thead><tbody id="runsTable"></tbody></table></div></div></div>
+</section>
+</main></div><script src="/assets/common.js"></script><script src="/assets/targets.js"></script></body></html>

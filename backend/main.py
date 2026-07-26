@@ -22,6 +22,7 @@ from app.security.auth_middleware import AuthMiddleware
 from app.auth.auth_router import router as auth_router
 from app.license.license_router import router as license_router
 from app.license.license_scheduler import run_license_scheduler
+from app.services.discovery_scheduler import run_discovery_scheduler
 from app.license.license_service import license_service
 from app.repositories.auth_repository import ensure_local_auth_schema
 from app.repositories.runner_repository import ensure_runner_schema
@@ -42,6 +43,7 @@ async def startup_event():
     ensure_target_schema()
     license_service.validate()
     asyncio.create_task(run_license_scheduler())
+    asyncio.create_task(run_discovery_scheduler())
 
 
 if FRONTEND_DIR.exists():

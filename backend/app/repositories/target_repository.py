@@ -1,220 +1,212 @@
 from __future__ import annotations
 
-import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
-
 from sqlalchemy import text
-
 from app.database.connection import SessionLocal
 
 
+def _now(): return datetime.utcnow()
+def _uuid(prefix: str): return f"{prefix}-{uuid.uuid4().hex[:12].upper()}"
+
+
 def ensure_target_schema() -> None:
-    """Create the Sprint 1 target/discovery schema idempotently."""
     with SessionLocal() as db:
         db.execute(text("""
         CREATE TABLE IF NOT EXISTS targets (
-            id SERIAL PRIMARY KEY,
-            target_uuid VARCHAR(40) UNIQUE NOT NULL,
-            hostname VARCHAR(255),
-            hostname_normalized VARCHAR(255),
-            ip_address INET NOT NULL,
-            mac_address VARCHAR(17),
-            mac_normalized VARCHAR(12),
-            discovery_source VARCHAR(50) NOT NULL DEFAULT 'nmap',
-            first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            id SERIAL PRIMARY KEY, target_uuid VARCHAR(40) UNIQUE NOT NULL,
+            hostname VARCHAR(255), hostname_normalized VARCHAR(255), ip_address INET NOT NULL,
+            mac_address VARCHAR(17), mac_normalized VARCHAR(12), discovery_source VARCHAR(50) NOT NULL DEFAULT 'nmap',
+            first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            deleted_at TIMESTAMP, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
-        """))
-        db.execute(text("""
         CREATE TABLE IF NOT EXISTS target_addresses (
-            id SERIAL PRIMARY KEY,
-            target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
-            ip_address INET NOT NULL,
-            first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            is_current BOOLEAN NOT NULL DEFAULT TRUE,
+            id SERIAL PRIMARY KEY, target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+            ip_address INET NOT NULL, first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, is_current BOOLEAN NOT NULL DEFAULT TRUE,
             UNIQUE(target_id, ip_address)
         );
-        """))
-        db.execute(text("""
+        CREATE TABLE IF NOT EXISTS discovery_scans (
+            id SERIAL PRIMARY KEY, scan_uuid VARCHAR(40) UNIQUE NOT NULL, name VARCHAR(150) NOT NULL,
+            target_spec VARCHAR(255) NOT NULL, target_type VARCHAR(20) NOT NULL,
+            schedule_type VARCHAR(20) NOT NULL DEFAULT 'manual', interval_minutes INTEGER,
+            is_enabled BOOLEAN NOT NULL DEFAULT FALSE, is_running BOOLEAN NOT NULL DEFAULT FALSE,
+            last_run_at TIMESTAMP, next_run_at TIMESTAMP, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE TABLE IF NOT EXISTS discovery_runs (
-            id SERIAL PRIMARY KEY,
-            run_uuid VARCHAR(40) UNIQUE NOT NULL,
-            target_spec VARCHAR(255) NOT NULL,
-            execution_mode VARCHAR(30) NOT NULL DEFAULT 'local',
-            status VARCHAR(30) NOT NULL DEFAULT 'running',
-            discovered_count INTEGER NOT NULL DEFAULT 0,
-            error TEXT,
-            started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            finished_at TIMESTAMP,
+            id SERIAL PRIMARY KEY, run_uuid VARCHAR(40) UNIQUE NOT NULL,
+            scan_id INTEGER REFERENCES discovery_scans(id) ON DELETE SET NULL,
+            target_spec VARCHAR(255) NOT NULL, execution_mode VARCHAR(30) NOT NULL DEFAULT 'local',
+            trigger_type VARCHAR(20) NOT NULL DEFAULT 'manual', status VARCHAR(30) NOT NULL DEFAULT 'running',
+            addresses_checked INTEGER NOT NULL DEFAULT 0, discovered_count INTEGER NOT NULL DEFAULT 0,
+            error TEXT, started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, finished_at TIMESTAMP,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS discovery_scan_targets (
+            scan_id INTEGER NOT NULL REFERENCES discovery_scans(id) ON DELETE CASCADE,
+            target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+            first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(scan_id, target_id)
+        );
+        ALTER TABLE targets ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS scan_id INTEGER REFERENCES discovery_scans(id) ON DELETE SET NULL;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS trigger_type VARCHAR(20) NOT NULL DEFAULT 'manual';
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS addresses_checked INTEGER NOT NULL DEFAULT 0;
+        CREATE INDEX IF NOT EXISTS idx_targets_last_seen_at ON targets(last_seen_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_discovery_scans_next_run ON discovery_scans(next_run_at) WHERE is_enabled = TRUE;
+        CREATE INDEX IF NOT EXISTS idx_discovery_runs_started_at ON discovery_runs(started_at DESC);
         """))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_targets_hostname_normalized ON targets(hostname_normalized);"))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_targets_mac_normalized ON targets(mac_normalized) WHERE mac_normalized IS NOT NULL;"))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_targets_ip_address ON targets(ip_address);"))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_targets_last_seen_at ON targets(last_seen_at DESC);"))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_target_addresses_ip ON target_addresses(ip_address);"))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_discovery_runs_started_at ON discovery_runs(started_at DESC);"))
         db.commit()
 
 
-def create_discovery_run(target_spec: str) -> dict[str, Any]:
-    run_uuid = f"DSC-{uuid.uuid4().hex[:12].upper()}"
-    with SessionLocal() as db:
-        row = db.execute(text("""
-            INSERT INTO discovery_runs (run_uuid, target_spec, status, started_at)
-            VALUES (:run_uuid, :target_spec, 'running', :now)
-            RETURNING id, run_uuid, target_spec, status, started_at
-        """), {"run_uuid": run_uuid, "target_spec": target_spec, "now": datetime.utcnow()}).mappings().first()
-        db.commit()
-        return dict(row)
-
-
-def finish_discovery_run(run_uuid: str, status: str, discovered_count: int, error: str | None = None) -> None:
-    with SessionLocal() as db:
-        db.execute(text("""
-            UPDATE discovery_runs
-            SET status = :status,
-                discovered_count = :count,
-                error = :error,
-                finished_at = :now
-            WHERE run_uuid = :run_uuid
-        """), {"run_uuid": run_uuid, "status": status, "count": discovered_count, "error": error, "now": datetime.utcnow()})
-        db.commit()
-
-
-def _find_existing(db, hostname_normalized: str | None, ip_address: str, mac_normalized: str | None):
-    if mac_normalized:
-        row = db.execute(text("SELECT * FROM targets WHERE mac_normalized = :mac LIMIT 1"), {"mac": mac_normalized}).mappings().first()
-        if row:
-            return row
-    if hostname_normalized:
-        row = db.execute(text("""
-            SELECT * FROM targets
-            WHERE hostname_normalized = :hostname
-              AND (mac_normalized IS NULL OR :mac IS NULL OR mac_normalized = :mac)
-            ORDER BY last_seen_at DESC LIMIT 1
-        """), {"hostname": hostname_normalized, "mac": mac_normalized}).mappings().first()
-        if row:
-            return row
-    return db.execute(text("SELECT * FROM targets WHERE ip_address = CAST(:ip AS INET) ORDER BY last_seen_at DESC LIMIT 1"), {"ip": ip_address}).mappings().first()
-
-
-def upsert_discovered_target(*, hostname: str | None, hostname_normalized: str | None, ip_address: str,
-                             mac_address: str | None, mac_normalized: str | None, source: str = "nmap") -> dict[str, Any]:
-    now = datetime.utcnow()
-    with SessionLocal() as db:
-        existing = _find_existing(db, hostname_normalized, ip_address, mac_normalized)
-        if existing:
-            target_id = int(existing["id"])
-            previous_ip = str(existing["ip_address"])
-            if previous_ip != ip_address:
-                db.execute(text("UPDATE target_addresses SET is_current = FALSE WHERE target_id = :target_id"), {"target_id": target_id})
-            row = db.execute(text("""
-                UPDATE targets
-                SET hostname = COALESCE(:hostname, hostname),
-                    hostname_normalized = COALESCE(:hostname_normalized, hostname_normalized),
-                    ip_address = CAST(:ip AS INET),
-                    mac_address = COALESCE(:mac_address, mac_address),
-                    mac_normalized = COALESCE(:mac_normalized, mac_normalized),
-                    discovery_source = :source,
-                    last_seen_at = :now,
-                    updated_at = :now
-                WHERE id = :target_id
-                RETURNING *
-            """), {
-                "target_id": target_id, "hostname": hostname, "hostname_normalized": hostname_normalized,
-                "ip": ip_address, "mac_address": mac_address, "mac_normalized": mac_normalized,
-                "source": source, "now": now,
-            }).mappings().first()
-        else:
-            target_uuid = f"TGT-{uuid.uuid4().hex[:12].upper()}"
-            row = db.execute(text("""
-                INSERT INTO targets (
-                    target_uuid, hostname, hostname_normalized, ip_address,
-                    mac_address, mac_normalized, discovery_source,
-                    first_seen_at, last_seen_at, created_at, updated_at
-                ) VALUES (
-                    :target_uuid, :hostname, :hostname_normalized, CAST(:ip AS INET),
-                    :mac_address, :mac_normalized, :source,
-                    :now, :now, :now, :now
-                ) RETURNING *
-            """), {
-                "target_uuid": target_uuid, "hostname": hostname, "hostname_normalized": hostname_normalized,
-                "ip": ip_address, "mac_address": mac_address, "mac_normalized": mac_normalized,
-                "source": source, "now": now,
-            }).mappings().first()
-            target_id = int(row["id"])
-
-        db.execute(text("""
-            INSERT INTO target_addresses (target_id, ip_address, first_seen_at, last_seen_at, is_current)
-            VALUES (:target_id, CAST(:ip AS INET), :now, :now, TRUE)
-            ON CONFLICT (target_id, ip_address)
-            DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at, is_current = TRUE
-        """), {"target_id": target_id, "ip": ip_address, "now": now})
-        db.commit()
-        return _serialize_target(dict(row))
-
-
-def _serialize_target(row: dict[str, Any]) -> dict[str, Any]:
+def _serialize(row: dict[str, Any]) -> dict[str, Any]:
     for key in ("ip_address",):
-        if row.get(key) is not None:
-            row[key] = str(row[key])
-    for key in ("first_seen_at", "last_seen_at", "created_at", "updated_at"):
-        if row.get(key) is not None and hasattr(row[key], "isoformat"):
-            row[key] = row[key].isoformat()
+        if row.get(key) is not None: row[key] = str(row[key])
+    for key, value in list(row.items()):
+        if hasattr(value, "isoformat"): row[key] = value.isoformat()
     return row
 
 
-def list_targets(search: str | None = None, limit: int = 200, offset: int = 0) -> dict[str, Any]:
-    search_value = f"%{(search or '').strip().lower()}%"
+def create_scan(name: str, target_spec: str, target_type: str, schedule_type: str, interval_minutes: int | None, is_enabled: bool) -> dict:
+    now = _now(); next_run = now + timedelta(minutes=interval_minutes) if is_enabled and schedule_type == "interval" and interval_minutes else None
     with SessionLocal() as db:
-        params = {"search": search_value, "limit": limit, "offset": offset}
-        where = """WHERE (:search = '%%' OR lower(COALESCE(hostname, '')) LIKE :search OR host(ip_address) LIKE :search OR lower(COALESCE(mac_address, '')) LIKE :search)"""
-        rows = db.execute(text(f"""
-            SELECT id, target_uuid, hostname, ip_address, mac_address, discovery_source,
-                   first_seen_at, last_seen_at, created_at, updated_at
-            FROM targets {where}
-            ORDER BY last_seen_at DESC, hostname NULLS LAST
-            LIMIT :limit OFFSET :offset
-        """), params).mappings().all()
-        total = db.execute(text(f"SELECT COUNT(*) FROM targets {where}"), {"search": search_value}).scalar_one()
-        return {"items": [_serialize_target(dict(row)) for row in rows], "total": int(total), "limit": limit, "offset": offset}
+        row = db.execute(text("""INSERT INTO discovery_scans
+        (scan_uuid,name,target_spec,target_type,schedule_type,interval_minutes,is_enabled,next_run_at,created_at,updated_at)
+        VALUES(:uuid,:name,:spec,:type,:sched,:interval,:enabled,:next,:now,:now) RETURNING *"""),
+        {"uuid":_uuid("SCN"),"name":name,"spec":target_spec,"type":target_type,"sched":schedule_type,"interval":interval_minutes,"enabled":is_enabled,"next":next_run,"now":now}).mappings().first()
+        db.commit(); return _serialize(dict(row))
 
 
-def get_target(target_uuid: str) -> dict[str, Any] | None:
+def list_scans() -> list[dict]:
     with SessionLocal() as db:
-        row = db.execute(text("SELECT * FROM targets WHERE target_uuid = :uuid LIMIT 1"), {"uuid": target_uuid}).mappings().first()
-        if not row:
-            return None
-        result = _serialize_target(dict(row))
-        addresses = db.execute(text("""
-            SELECT host(ip_address) AS ip_address, first_seen_at, last_seen_at, is_current
-            FROM target_addresses WHERE target_id = :id ORDER BY last_seen_at DESC
-        """), {"id": row["id"]}).mappings().all()
-        result["addresses"] = [
-            {**dict(address), "first_seen_at": address["first_seen_at"].isoformat(), "last_seen_at": address["last_seen_at"].isoformat()}
-            for address in addresses
-        ]
-        return result
+        rows=db.execute(text("SELECT * FROM discovery_scans ORDER BY created_at DESC")).mappings().all()
+        return [_serialize(dict(x)) for x in rows]
 
 
-def list_discovery_runs(limit: int = 20) -> list[dict[str, Any]]:
+def get_scan(scan_uuid: str) -> dict | None:
     with SessionLocal() as db:
-        rows = db.execute(text("""
-            SELECT run_uuid, target_spec, execution_mode, status, discovered_count, error, started_at, finished_at
-            FROM discovery_runs ORDER BY started_at DESC LIMIT :limit
-        """), {"limit": limit}).mappings().all()
-        output = []
-        for row in rows:
-            item = dict(row)
-            for key in ("started_at", "finished_at"):
-                if item.get(key) is not None:
-                    item[key] = item[key].isoformat()
-            output.append(item)
-        return output
+        row=db.execute(text("SELECT * FROM discovery_scans WHERE scan_uuid=:u"),{"u":scan_uuid}).mappings().first()
+        return _serialize(dict(row)) if row else None
+
+
+def update_scan(scan_uuid: str, **fields) -> dict | None:
+    allowed={"name","target_spec","target_type","schedule_type","interval_minutes","is_enabled"}
+    values={k:v for k,v in fields.items() if k in allowed}
+    current=get_scan(scan_uuid)
+    if not current: return None
+    if not values: return current
+    effective={**current,**values}
+    interval=effective.get("interval_minutes")
+    next_run=_now()+timedelta(minutes=int(interval)) if effective.get("is_enabled") and effective.get("schedule_type")=="interval" and interval else None
+    values["next_run_at"]=next_run; values["u"]=scan_uuid; values["now"]=_now()
+    sets=", ".join(f"{k}=:{k}" for k in values if k in allowed or k=="next_run_at")
+    with SessionLocal() as db:
+        row=db.execute(text(f"UPDATE discovery_scans SET {sets}, updated_at=:now WHERE scan_uuid=:u RETURNING *"),values).mappings().first()
+        db.commit(); return _serialize(dict(row)) if row else None
+
+def delete_scan(scan_uuid: str, remove_exclusive_targets: bool=False) -> bool:
+    with SessionLocal() as db:
+        scan=db.execute(text("SELECT id FROM discovery_scans WHERE scan_uuid=:u"),{"u":scan_uuid}).mappings().first()
+        if not scan: return False
+        sid=scan["id"]
+        if remove_exclusive_targets:
+            db.execute(text("""UPDATE targets SET deleted_at=:now, updated_at=:now WHERE id IN (
+                SELECT dst.target_id FROM discovery_scan_targets dst WHERE dst.scan_id=:sid
+                AND NOT EXISTS (SELECT 1 FROM discovery_scan_targets other WHERE other.target_id=dst.target_id AND other.scan_id<>:sid)
+            )"""),{"sid":sid,"now":_now()})
+        db.execute(text("DELETE FROM discovery_scans WHERE id=:sid"),{"sid":sid}); db.commit(); return True
+
+
+def claim_due_scans(limit:int=2) -> list[dict]:
+    now=_now()
+    with SessionLocal() as db:
+        rows=db.execute(text("""SELECT * FROM discovery_scans WHERE is_enabled=TRUE AND is_running=FALSE
+        AND next_run_at IS NOT NULL AND next_run_at<=:now ORDER BY next_run_at LIMIT :limit FOR UPDATE SKIP LOCKED"""),{"now":now,"limit":limit}).mappings().all()
+        ids=[r["id"] for r in rows]
+        if ids: db.execute(text("UPDATE discovery_scans SET is_running=TRUE WHERE id = ANY(:ids)"),{"ids":ids})
+        db.commit(); return [_serialize(dict(r)) for r in rows]
+
+
+def mark_scan_running(scan_uuid:str) -> bool:
+    with SessionLocal() as db:
+        row=db.execute(text("UPDATE discovery_scans SET is_running=TRUE WHERE scan_uuid=:u AND is_running=FALSE RETURNING id"),{"u":scan_uuid}).first(); db.commit(); return bool(row)
+
+
+def release_scan(scan_id:int, interval_minutes:int|None):
+    now=_now(); nxt=now+timedelta(minutes=interval_minutes) if interval_minutes else None
+    with SessionLocal() as db:
+        db.execute(text("UPDATE discovery_scans SET is_running=FALSE,last_run_at=:now,next_run_at=:next,updated_at=:now WHERE id=:id"),{"id":scan_id,"now":now,"next":nxt}); db.commit()
+
+
+def create_discovery_run(target_spec: str, scan_id:int|None=None, trigger_type:str="manual", addresses_checked:int=0) -> dict:
+    with SessionLocal() as db:
+        row=db.execute(text("""INSERT INTO discovery_runs(run_uuid,scan_id,target_spec,trigger_type,status,addresses_checked,started_at)
+        VALUES(:u,:sid,:spec,:trigger,'running',:checked,:now) RETURNING *"""),{"u":_uuid("DSC"),"sid":scan_id,"spec":target_spec,"trigger":trigger_type,"checked":addresses_checked,"now":_now()}).mappings().first(); db.commit(); return _serialize(dict(row))
+
+
+def finish_discovery_run(run_uuid:str,status:str,count:int,error:str|None=None):
+    with SessionLocal() as db:
+        db.execute(text("UPDATE discovery_runs SET status=:s,discovered_count=:c,error=:e,finished_at=:n WHERE run_uuid=:u"),{"s":status,"c":count,"e":error,"n":_now(),"u":run_uuid}); db.commit()
+
+
+def _find_existing(db, hostname_normalized, ip_address, mac_normalized):
+    if mac_normalized:
+        r=db.execute(text("SELECT * FROM targets WHERE mac_normalized=:m LIMIT 1"),{"m":mac_normalized}).mappings().first()
+        if r:return r
+    if hostname_normalized:
+        r=db.execute(text("SELECT * FROM targets WHERE hostname_normalized=:h ORDER BY last_seen_at DESC LIMIT 1"),{"h":hostname_normalized}).mappings().first()
+        if r:return r
+    return db.execute(text("SELECT * FROM targets WHERE ip_address=CAST(:ip AS INET) ORDER BY last_seen_at DESC LIMIT 1"),{"ip":ip_address}).mappings().first()
+
+
+def upsert_discovered_target(*,hostname,hostname_normalized,ip_address,mac_address,mac_normalized,source="nmap",scan_id=None)->dict:
+    now=_now()
+    with SessionLocal() as db:
+        existing=_find_existing(db,hostname_normalized,ip_address,mac_normalized)
+        if existing:
+            tid=existing["id"]
+            if str(existing["ip_address"])!=ip_address: db.execute(text("UPDATE target_addresses SET is_current=FALSE WHERE target_id=:id"),{"id":tid})
+            row=db.execute(text("""UPDATE targets SET hostname=COALESCE(:h,hostname),hostname_normalized=COALESCE(:hn,hostname_normalized),
+            ip_address=CAST(:ip AS INET),mac_address=COALESCE(:m,mac_address),mac_normalized=COALESCE(:mn,mac_normalized),
+            discovery_source=:src,last_seen_at=:n,deleted_at=NULL,updated_at=:n WHERE id=:id RETURNING *"""),{"h":hostname,"hn":hostname_normalized,"ip":ip_address,"m":mac_address,"mn":mac_normalized,"src":source,"n":now,"id":tid}).mappings().first()
+        else:
+            row=db.execute(text("""INSERT INTO targets(target_uuid,hostname,hostname_normalized,ip_address,mac_address,mac_normalized,discovery_source,first_seen_at,last_seen_at,created_at,updated_at)
+            VALUES(:u,:h,:hn,CAST(:ip AS INET),:m,:mn,:src,:n,:n,:n,:n) RETURNING *"""),{"u":_uuid("TGT"),"h":hostname,"hn":hostname_normalized,"ip":ip_address,"m":mac_address,"mn":mac_normalized,"src":source,"n":now}).mappings().first(); tid=row["id"]
+        db.execute(text("""INSERT INTO target_addresses(target_id,ip_address,first_seen_at,last_seen_at,is_current) VALUES(:id,CAST(:ip AS INET),:n,:n,TRUE)
+        ON CONFLICT(target_id,ip_address) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at,is_current=TRUE"""),{"id":tid,"ip":ip_address,"n":now})
+        if scan_id:
+            db.execute(text("""INSERT INTO discovery_scan_targets(scan_id,target_id,first_seen_at,last_seen_at) VALUES(:sid,:tid,:n,:n)
+            ON CONFLICT(scan_id,target_id) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at"""),{"sid":scan_id,"tid":tid,"n":now})
+        db.commit(); return _serialize(dict(row))
+
+
+def list_targets(search=None,limit=200,offset=0):
+    s=f"%{(search or '').strip().lower()}%"
+    where="WHERE deleted_at IS NULL AND (:s='%%' OR lower(COALESCE(hostname,'')) LIKE :s OR host(ip_address) LIKE :s OR lower(COALESCE(mac_address,'')) LIKE :s)"
+    with SessionLocal() as db:
+        rows=db.execute(text(f"SELECT * FROM targets {where} ORDER BY last_seen_at DESC LIMIT :l OFFSET :o"),{"s":s,"l":limit,"o":offset}).mappings().all()
+        total=db.execute(text(f"SELECT COUNT(*) FROM targets {where}"),{"s":s}).scalar_one()
+        return {"items":[_serialize(dict(r)) for r in rows],"total":int(total),"limit":limit,"offset":offset}
+
+
+def get_target(target_uuid):
+    with SessionLocal() as db:
+        r=db.execute(text("SELECT * FROM targets WHERE target_uuid=:u"),{"u":target_uuid}).mappings().first(); return _serialize(dict(r)) if r else None
+
+
+def delete_target(target_uuid:str)->bool:
+    with SessionLocal() as db:
+        r=db.execute(text("UPDATE targets SET deleted_at=:n,updated_at=:n WHERE target_uuid=:u AND deleted_at IS NULL RETURNING id"),{"n":_now(),"u":target_uuid}).first(); db.commit(); return bool(r)
+
+
+def list_discovery_runs(limit=50):
+    with SessionLocal() as db:
+        rows=db.execute(text("""SELECT r.*,s.scan_uuid,s.name AS scan_name FROM discovery_runs r LEFT JOIN discovery_scans s ON s.id=r.scan_id
+        ORDER BY r.started_at DESC LIMIT :l"""),{"l":limit}).mappings().all(); return [_serialize(dict(r)) for r in rows]
+
+
+def clear_discovery_runs():
+    with SessionLocal() as db: db.execute(text("DELETE FROM discovery_runs")); db.commit()

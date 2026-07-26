@@ -38,3 +38,17 @@
 - Adicionadas as tabelas `targets`, `target_addresses` e `discovery_runs`.
 - Adicionados endpoints `/api/targets`, `/api/targets/discover` e `/api/targets/discovery-runs`.
 - Nmap incorporado ao Dockerfile e capability `NET_RAW` adicionada ao Compose.
+
+## Sprint 1 v2 — Discovery Engine gerenciado (2026-07-26)
+
+- Separada a área **Alvos** em **Máquinas descobertas** e **Scan**.
+- Removido o cadastro direto a partir do IP digitado; somente respostas diretas aceitas pelo parser são persistidas.
+- Nmap ajustado para descoberta rápida com `-sn`, `-T4`, `--max-retries 1`, `--reason` e sondagens ICMP/TCP.
+- Adicionadas configurações persistentes de scan para host individual ou CIDR.
+- Adicionados scans manuais e agendados, com intervalo mínimo de 15 minutos.
+- Adicionadas ações de executar agora, ativar, pausar e excluir scan.
+- Adicionada exclusão lógica de host; um host reaparece caso seja descoberto novamente.
+- Adicionada opção de remover alvos exclusivos ao excluir um scan.
+- Adicionado histórico com duração, origem manual/agendada, endereços verificados e hosts confirmados.
+- Adicionado scheduler interno com limite de duas execuções concorrentes por ciclo.
+- Nova migration Alembic: `20260726_0014`.
