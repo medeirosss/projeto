@@ -26,6 +26,8 @@ class DiscoveredHost:
     ip_address: str
     hostname: str | None = None
     mac_address: str | None = None
+    vendor: str | None = None
+    status: str = "up"
     reason: str | None = None
 
 
@@ -69,18 +71,20 @@ def _parse_nmap_xml(xml_output: str) -> list[DiscoveredHost]:
             continue
         ip_address = None
         mac_address = None
+        vendor = None
         for address in host.findall("address"):
             if address.get("addrtype") == "ipv4":
                 ip_address = address.get("addr")
             elif address.get("addrtype") == "mac":
                 mac_address = address.get("addr")
+                vendor = address.get("vendor") or None
         if not ip_address:
             continue
         hostname = None
         hostname_node = host.find("hostnames/hostname")
         if hostname_node is not None:
             hostname = hostname_node.get("name") or None
-        hosts.append(DiscoveredHost(ip_address=ip_address, hostname=hostname, mac_address=mac_address, reason=reason))
+        hosts.append(DiscoveredHost(ip_address=ip_address, hostname=hostname, mac_address=mac_address, vendor=vendor, status="up", reason=reason))
     return hosts
 
 

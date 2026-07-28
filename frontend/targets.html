@@ -6,7 +6,7 @@
 <section class="report-section" id="machinesSection">
 <div class="toolbar"><div><div class="title">Máquinas descobertas</div><p class="section-subtitle">Somente hosts que responderam diretamente às sondagens do Nmap.</p></div><button class="btn secondary btn-sm" id="targetsRefreshBtn">Atualizar</button></div>
 <div class="mini-stats alert-stats"><div class="mini-stat"><small>Total de alvos</small><strong id="targetsTotal">0</strong></div><div class="mini-stat"><small>Última descoberta</small><strong id="lastDiscoveryStatus">—</strong></div></div>
-<div class="card alerts-card"><div class="card-header">Máquinas</div><div class="card-body"><input id="targetsSearch" placeholder="Buscar por nome, IP ou MAC"><div class="table-wrap"><table><thead><tr><th>Nome</th><th>IP</th><th>MAC</th><th>Última detecção</th><th>Ações</th></tr></thead><tbody id="targetsTable"></tbody></table></div></div></div>
+<div class="card alerts-card"><div class="card-header">Máquinas</div><div class="card-body"><input id="targetsSearch" placeholder="Buscar por nome, IP ou MAC"><div class="table-wrap"><table><thead><tr><th>Status</th><th>Hostname</th><th>IP</th><th>MAC</th><th>Fabricante</th><th>Runner</th><th>Origem</th><th>Primeira detecção</th><th>Última detecção</th><th>Ações</th></tr></thead><tbody id="targetsTable"></tbody></table></div></div></div>
 </section>
 <section class="report-section" id="scansSection" hidden>
 <div class="toolbar"><div><div class="title">Scan</div><p class="section-subtitle">Crie descobertas manuais ou recorrentes para um host ou rede CIDR.</p></div><button class="btn primary btn-sm" id="newScanBtn">Novo scan</button></div>

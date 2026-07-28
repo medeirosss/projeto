@@ -74,11 +74,13 @@ def _parse_xml(xml_text: str) -> list[dict[str, Any]]:
             continue
         ipv4 = None
         mac = None
+        vendor = None
         for address in node.findall("address"):
             if address.get("addrtype") == "ipv4":
                 ipv4 = address.get("addr")
             elif address.get("addrtype") == "mac":
                 mac = address.get("addr")
+                vendor = address.get("vendor") or None
         if not ipv4:
             continue
         hostname = None
@@ -87,7 +89,7 @@ def _parse_xml(xml_text: str) -> list[dict[str, Any]]:
             preferred = names.find("hostname")
             if preferred is not None:
                 hostname = preferred.get("name")
-        hosts.append({"ip_address": ipv4, "mac_address": mac, "hostname": hostname, "status": "up", "reason": reason})
+        hosts.append({"ip_address": ipv4, "mac_address": mac, "hostname": hostname, "vendor": vendor, "status": "up", "reason": reason})
     return hosts
 
 
@@ -104,7 +106,7 @@ class NmapDiscoveryExecutor:
         nmap = find_nmap(payload.get("nmap_path") or self.nmap_path)
         if not nmap:
             raise RuntimeError("Nmap não encontrado. Instale o Nmap no Windows do Runner e reinicie o serviço.")
-        args = [nmap, "-sn", "-n", "-T4", "--max-retries", "1", "--reason", "-oX", "-", target]
+        args = [nmap, "-sn", "-T4", "--max-retries", "1", "--reason", "-oX", "-", target]
         try:
             proc = subprocess.run(args, cwd=workdir, capture_output=True, text=True, timeout=timeout_seconds, shell=False)
             finished = datetime.now(timezone.utc)

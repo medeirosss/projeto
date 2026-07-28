@@ -747,3 +747,8 @@ th{color:#475467;background:#fbfcfe}
   border-radius: 6px;
   background: rgba(255, 211, 122, 0.12);
 }
+
+/* Sprint 2.1 - Asset Intelligence */
+.asset-status{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.asset-status::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.asset-status.online{color:#35d07f;background:rgba(53,208,127,.12);border:1px solid rgba(53,208,127,.3)}
