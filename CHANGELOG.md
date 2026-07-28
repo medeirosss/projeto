@@ -1,3 +1,9 @@
+## 2.11.2 / Sprint 2.1.1
+- DNS enrichment opcional via Runner.
+- Consulta PTR em DNS primário/secundário configuráveis.
+- Fallback para DNS do sistema.
+- Persistência de dns_name e hostname_source.
+
 # Changelog
 
 ## 0.8.0-validation-history

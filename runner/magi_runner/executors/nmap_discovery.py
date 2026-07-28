@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import ExecutionResult
+from magi_runner.utils.dns_resolver import resolve_ptr
 
 _ALLOWED_REASONS = {"arp-response", "echo-reply", "timestamp-reply", "address-mask-reply", "syn-ack", "reset", "conn-refused", "udp-response", "proto-response"}
 
@@ -62,7 +63,7 @@ def _validate_target(value: str) -> tuple[str, int]:
         raise ValueError(f"Alvo de discovery inválido: {exc}") from exc
 
 
-def _parse_xml(xml_text: str) -> list[dict[str, Any]]:
+def _parse_xml(xml_text: str, dns_config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     root = ET.fromstring(xml_text)
     hosts: list[dict[str, Any]] = []
     for node in root.findall("host"):
@@ -89,7 +90,23 @@ def _parse_xml(xml_text: str) -> list[dict[str, Any]]:
             preferred = names.find("hostname")
             if preferred is not None:
                 hostname = preferred.get("name")
-        hosts.append({"ip_address": ipv4, "mac_address": mac, "hostname": hostname, "vendor": vendor, "status": "up", "reason": reason})
+        dns_result = resolve_ptr(ipv4, dns_config) if dns_config and dns_config.get("enabled") else {}
+        dns_name = dns_result.get("dns_name")
+        resolved_hostname = dns_result.get("hostname")
+        final_hostname = resolved_hostname or hostname
+        hostname_source = dns_result.get("hostname_source") or ("nmap" if hostname else None)
+        hosts.append({
+            "ip_address": ipv4,
+            "mac_address": mac,
+            "hostname": final_hostname,
+            "dns_name": dns_name or hostname,
+            "hostname_source": hostname_source,
+            "vendor": vendor,
+            "status": "up",
+            "reason": reason,
+            "dns_server": dns_result.get("dns_server"),
+            "dns_error": dns_result.get("dns_error"),
+        })
     return hosts
 
 
@@ -106,12 +123,16 @@ class NmapDiscoveryExecutor:
         nmap = find_nmap(payload.get("nmap_path") or self.nmap_path)
         if not nmap:
             raise RuntimeError("Nmap não encontrado. Instale o Nmap no Windows do Runner e reinicie o serviço.")
-        args = [nmap, "-sn", "-T4", "--max-retries", "1", "--reason", "-oX", "-", target]
+        dns_config = payload.get("dns") or {}
+        args = [nmap, "-sn", "-T4", "--max-retries", "1", "--reason"]
+        if dns_config.get("enabled"):
+            args.append("-n")
+        args += ["-oX", "-", target]
         try:
             proc = subprocess.run(args, cwd=workdir, capture_output=True, text=True, timeout=timeout_seconds, shell=False)
             finished = datetime.now(timezone.utc)
             xml_text = proc.stdout or ""
-            hosts = _parse_xml(xml_text) if proc.returncode == 0 and xml_text.strip() else []
+            hosts = _parse_xml(xml_text, dns_config) if proc.returncode == 0 and xml_text.strip() else []
             Path(workdir, "nmap.xml").write_text(xml_text, encoding="utf-8")
             Path(workdir, "hosts.json").write_text(json.dumps(hosts, indent=2, ensure_ascii=False), encoding="utf-8")
             return ExecutionResult(
@@ -121,7 +142,7 @@ class NmapDiscoveryExecutor:
                 stderr=proc.stderr or "",
                 started_at=started.isoformat(), finished_at=finished.isoformat(),
                 duration_seconds=(finished-started).total_seconds(),
-                metadata={"provider":"runner", "target":target, "addresses_checked":address_count, "hosts":hosts, "raw_xml":xml_text, "nmap_path":nmap, "args":args},
+                metadata={"provider":"runner", "target":target, "addresses_checked":address_count, "hosts":hosts, "raw_xml":xml_text, "nmap_path":nmap, "args":args, "dns": {"enabled": bool(dns_config.get("enabled")), "servers": dns_config.get("servers") or [], "suffix": dns_config.get("suffix") or "", "fallback_system": bool(dns_config.get("fallback_system", True))}},
             )
         except subprocess.TimeoutExpired as exc:
             finished = datetime.now(timezone.utc)

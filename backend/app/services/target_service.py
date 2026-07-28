@@ -54,7 +54,7 @@ def ingest_runner_discovery_result(job_id:int, runner_id:str, status:str, result
             ip=host.get("ip_address")
             if not ip or host.get("status")!="up": continue
             fm,nm=normalize_mac(host.get("mac_address"))
-            items.append(repo.upsert_discovered_target(hostname=host.get("hostname"),hostname_normalized=normalize_hostname(host.get("hostname")),dns_name=host.get("hostname"),ip_address=ip,mac_address=fm,mac_normalized=nm,vendor=host.get("vendor"),status="online",source="nmap-runner",scan_id=run.get("scan_id"),runner_id=runner_id))
+            items.append(repo.upsert_discovered_target(hostname=host.get("hostname"),hostname_normalized=normalize_hostname(host.get("hostname")),dns_name=host.get("dns_name") or host.get("hostname"),hostname_source=host.get("hostname_source"),ip_address=ip,mac_address=fm,mac_normalized=nm,vendor=host.get("vendor"),status="online",source="nmap-runner",scan_id=run.get("scan_id"),runner_id=runner_id))
         final_status="success"
     elif status=="timeout": final_status="timeout"
     else: final_status="failed"

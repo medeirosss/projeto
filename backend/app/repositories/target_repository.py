@@ -17,7 +17,7 @@ def ensure_target_schema() -> None:
         CREATE TABLE IF NOT EXISTS targets (
             id SERIAL PRIMARY KEY, target_uuid VARCHAR(40) UNIQUE NOT NULL,
             hostname VARCHAR(255), hostname_normalized VARCHAR(255), ip_address INET NOT NULL,
-            mac_address VARCHAR(17), mac_normalized VARCHAR(12), vendor VARCHAR(255), dns_name VARCHAR(255),
+            mac_address VARCHAR(17), mac_normalized VARCHAR(12), vendor VARCHAR(255), dns_name VARCHAR(255), hostname_source VARCHAR(30),
             status VARCHAR(20) NOT NULL DEFAULT 'online', discovery_source VARCHAR(50) NOT NULL DEFAULT 'nmap',
             last_scan_id INTEGER, runner_id VARCHAR(80),
             first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -56,6 +56,7 @@ def ensure_target_schema() -> None:
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS vendor VARCHAR(255);
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS dns_name VARCHAR(255);
+        ALTER TABLE targets ADD COLUMN IF NOT EXISTS hostname_source VARCHAR(30);
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'online';
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS last_scan_id INTEGER REFERENCES discovery_scans(id) ON DELETE SET NULL;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS runner_id VARCHAR(80);
@@ -173,7 +174,7 @@ def _find_existing(db, hostname_normalized, ip_address, mac_normalized):
     return db.execute(text("SELECT * FROM targets WHERE ip_address=CAST(:ip AS INET) ORDER BY last_seen_at DESC LIMIT 1"),{"ip":ip_address}).mappings().first()
 
 
-def upsert_discovered_target(*,hostname,hostname_normalized,ip_address,mac_address,mac_normalized,vendor=None,status="online",source="nmap",scan_id=None,runner_id=None,dns_name=None)->dict:
+def upsert_discovered_target(*,hostname,hostname_normalized,ip_address,mac_address,mac_normalized,vendor=None,status="online",source="nmap",scan_id=None,runner_id=None,dns_name=None,hostname_source=None)->dict:
     now=_now()
     with SessionLocal() as db:
         existing=_find_existing(db,hostname_normalized,ip_address,mac_normalized)
@@ -181,14 +182,14 @@ def upsert_discovered_target(*,hostname,hostname_normalized,ip_address,mac_addre
             tid=existing["id"]
             if str(existing["ip_address"])!=ip_address: db.execute(text("UPDATE target_addresses SET is_current=FALSE WHERE target_id=:id"),{"id":tid})
             row=db.execute(text("""UPDATE targets SET hostname=COALESCE(:h,hostname),hostname_normalized=COALESCE(:hn,hostname_normalized),
-            dns_name=COALESCE(:dns,dns_name),ip_address=CAST(:ip AS INET),mac_address=COALESCE(:m,mac_address),mac_normalized=COALESCE(:mn,mac_normalized),
+            dns_name=COALESCE(:dns,dns_name),hostname_source=COALESCE(:hostname_source,hostname_source),ip_address=CAST(:ip AS INET),mac_address=COALESCE(:m,mac_address),mac_normalized=COALESCE(:mn,mac_normalized),
             vendor=COALESCE(:vendor,vendor),status=:status,discovery_source=:src,last_scan_id=COALESCE(:sid,last_scan_id),
             runner_id=COALESCE(:runner_id,runner_id),last_seen_at=:n,deleted_at=NULL,updated_at=:n WHERE id=:id RETURNING *"""),
-            {"h":hostname,"hn":hostname_normalized,"dns":dns_name or hostname,"ip":ip_address,"m":mac_address,"mn":mac_normalized,"vendor":vendor,"status":status,"src":source,"sid":scan_id,"runner_id":runner_id,"n":now,"id":tid}).mappings().first()
+            {"h":hostname,"hn":hostname_normalized,"dns":dns_name or hostname,"hostname_source":hostname_source,"ip":ip_address,"m":mac_address,"mn":mac_normalized,"vendor":vendor,"status":status,"src":source,"sid":scan_id,"runner_id":runner_id,"n":now,"id":tid}).mappings().first()
         else:
-            row=db.execute(text("""INSERT INTO targets(target_uuid,hostname,hostname_normalized,dns_name,ip_address,mac_address,mac_normalized,vendor,status,discovery_source,last_scan_id,runner_id,first_seen_at,last_seen_at,created_at,updated_at)
-            VALUES(:u,:h,:hn,:dns,CAST(:ip AS INET),:m,:mn,:vendor,:status,:src,:sid,:runner_id,:n,:n,:n,:n) RETURNING *"""),
-            {"u":_uuid("TGT"),"h":hostname,"hn":hostname_normalized,"dns":dns_name or hostname,"ip":ip_address,"m":mac_address,"mn":mac_normalized,"vendor":vendor,"status":status,"src":source,"sid":scan_id,"runner_id":runner_id,"n":now}).mappings().first(); tid=row["id"]
+            row=db.execute(text("""INSERT INTO targets(target_uuid,hostname,hostname_normalized,dns_name,hostname_source,ip_address,mac_address,mac_normalized,vendor,status,discovery_source,last_scan_id,runner_id,first_seen_at,last_seen_at,created_at,updated_at)
+            VALUES(:u,:h,:hn,:dns,:hostname_source,CAST(:ip AS INET),:m,:mn,:vendor,:status,:src,:sid,:runner_id,:n,:n,:n,:n) RETURNING *"""),
+            {"u":_uuid("TGT"),"h":hostname,"hn":hostname_normalized,"dns":dns_name or hostname,"hostname_source":hostname_source,"ip":ip_address,"m":mac_address,"mn":mac_normalized,"vendor":vendor,"status":status,"src":source,"sid":scan_id,"runner_id":runner_id,"n":now}).mappings().first(); tid=row["id"]
         db.execute(text("""INSERT INTO target_addresses(target_id,ip_address,first_seen_at,last_seen_at,is_current) VALUES(:id,CAST(:ip AS INET),:n,:n,TRUE)
         ON CONFLICT(target_id,ip_address) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at,is_current=TRUE"""),{"id":tid,"ip":ip_address,"n":now})
         if scan_id:

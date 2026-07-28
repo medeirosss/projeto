@@ -24,6 +24,15 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
         "whatsapp_enabled": False,
         "n8n_webhook_url": "",
     },
+    "discovery": {
+        "dns": {
+            "enabled": False,
+            "servers": [],
+            "suffix": "",
+            "timeout_seconds": 2,
+            "fallback_system": True,
+        },
+    },
     "webhook": {
         "enabled": True,
         "token": "",
@@ -156,6 +165,7 @@ def _normalize_types(data: Dict[str, Any]) -> Dict[str, Any]:
     params = data.setdefault("uem", {}).setdefault("parameters", {})
     mail = data.setdefault("mail_server", {})
     webhook = data.setdefault("webhook", {})
+    dns = data.setdefault("discovery", {}).setdefault("dns", {})
     try:
         ad["ldap_port"] = int(ad.get("ldap_port") or 389)
     except Exception:
@@ -182,6 +192,19 @@ def _normalize_types(data: Dict[str, Any]) -> Dict[str, Any]:
     allowed_headers = {"X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP"}
     if webhook.get("real_ip_header") not in allowed_headers:
         webhook["real_ip_header"] = "X-Forwarded-For"
+    dns["enabled"] = bool(dns.get("enabled", False))
+    dns["fallback_system"] = bool(dns.get("fallback_system", True))
+    servers = dns.get("servers", [])
+    if isinstance(servers, str):
+        servers = [line.strip() for line in servers.replace(",", "\n").splitlines() if line.strip()]
+    if not isinstance(servers, list):
+        servers = []
+    dns["servers"] = [str(item).strip() for item in servers if str(item).strip()][:2]
+    dns["suffix"] = str(dns.get("suffix") or "").strip().strip(".")
+    try:
+        dns["timeout_seconds"] = max(1, min(10, int(dns.get("timeout_seconds") or 2)))
+    except Exception:
+        dns["timeout_seconds"] = 2
     for key, default in (("refresh_hours", 1), ("page_size", 25)):
         try:
             params[key] = int(params.get(key) or default)

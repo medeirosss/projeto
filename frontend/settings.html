@@ -96,6 +96,23 @@
       </div></div>
     </section>
 
+
+    <section id="settingsDiscoveryDnsSection" class="hidden-section report-section">
+      <div class="toolbar"><div class="title">Discovery · DNS</div></div>
+      <div class="card"><div class="card-header">Enriquecimento de hostname por consulta reversa</div><div class="form-body">
+        <div class="form-grid">
+          <div class="field inline-field"><label><input id="discovery_dns_enabled" type="checkbox"> Ativar resolução DNS no Runner</label></div>
+          <div class="field"><label>DNS primário</label><input id="discovery_dns_primary" type="text" placeholder="192.168.0.10"></div>
+          <div class="field"><label>DNS secundário</label><input id="discovery_dns_secondary" type="text" placeholder="192.168.0.11"></div>
+          <div class="field"><label>Sufixo DNS</label><input id="discovery_dns_suffix" type="text" placeholder="empresa.local"></div>
+          <div class="field"><label>Timeout por consulta (segundos)</label><input id="discovery_dns_timeout" type="number" min="1" max="10" value="2"></div>
+          <div class="field inline-field"><label><input id="discovery_dns_fallback" type="checkbox" checked> Usar DNS do sistema como fallback</label></div>
+        </div>
+        <div class="actions"><button class="btn primary" id="saveDiscoveryDnsBtn" type="button">Salvar DNS</button></div>
+        <div class="notice" id="discoveryDnsStatusBox">A consulta PTR é executada pelo Runner durante o scan. O DNS deve possuir zona reversa configurada.</div>
+      </div></div>
+    </section>
+
     <section id="settingsParametersSection" class="hidden-section report-section">
       <div class="toolbar"><div class="title">UEM · Parâmetros</div></div>
       <div class="card"><div class="card-header">Coleta, paginação e execução</div><div class="form-body">

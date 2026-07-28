@@ -37,6 +37,15 @@ function buildPayload(){
       whatsapp_enabled: document.getElementById('whatsapp_enabled').checked,
       n8n_webhook_url: document.getElementById('n8n_webhook_url').value.trim()
     },
+    discovery: {
+      dns: {
+        enabled: document.getElementById('discovery_dns_enabled')?.checked ?? false,
+        servers: [document.getElementById('discovery_dns_primary')?.value.trim(), document.getElementById('discovery_dns_secondary')?.value.trim()].filter(Boolean),
+        suffix: document.getElementById('discovery_dns_suffix')?.value.trim() || '',
+        timeout_seconds: Number(document.getElementById('discovery_dns_timeout')?.value || 2),
+        fallback_system: document.getElementById('discovery_dns_fallback')?.checked ?? true
+      }
+    },
     webhook: {
       enabled: document.getElementById('webhook_enabled')?.checked ?? true,
       token: document.getElementById('webhook_token')?.value || '',
@@ -127,6 +136,15 @@ async function loadSettings(){
   document.getElementById('whatsapp_enabled').checked = !!data?.mail_server?.whatsapp_enabled;
   document.getElementById('n8n_webhook_url').value = data?.mail_server?.n8n_webhook_url || '';
   document.getElementById('ip_scope').value = Array.isArray(data?.uem?.ip_scope?.cidrs) ? data.uem.ip_scope.cidrs.join('\n') : '';
+
+  const discoveryDns = data?.discovery?.dns || {};
+  if(document.getElementById('discovery_dns_enabled')) document.getElementById('discovery_dns_enabled').checked = !!discoveryDns.enabled;
+  if(document.getElementById('discovery_dns_primary')) document.getElementById('discovery_dns_primary').value = discoveryDns.servers?.[0] || '';
+  if(document.getElementById('discovery_dns_secondary')) document.getElementById('discovery_dns_secondary').value = discoveryDns.servers?.[1] || '';
+  if(document.getElementById('discovery_dns_suffix')) document.getElementById('discovery_dns_suffix').value = discoveryDns.suffix || '';
+  if(document.getElementById('discovery_dns_timeout')) document.getElementById('discovery_dns_timeout').value = String(discoveryDns.timeout_seconds || 2);
+  if(document.getElementById('discovery_dns_fallback')) document.getElementById('discovery_dns_fallback').checked = discoveryDns.fallback_system !== false;
+
   moduleState.uem = data?.modules?.uem?.enabled ?? true;
   moduleState.security = data?.modules?.security?.enabled ?? false;
   setModuleStatusVisual();
@@ -228,6 +246,7 @@ function bindFixedActions(){
   document.getElementById('saveApiSettingsBtn').addEventListener('click', ()=> saveSettings('apiStatusBox'));
   document.getElementById('saveAdSettingsBtn').addEventListener('click', ()=> saveSettings('adStatusBox'));
   document.getElementById('saveParametersBtn').addEventListener('click', ()=> saveSettings('scanStatus'));
+  document.getElementById('saveDiscoveryDnsBtn')?.addEventListener('click', ()=> saveSettings('discoveryDnsStatusBox'));
   document.getElementById('saveIpScopeBtn').addEventListener('click', ()=> saveSettings('statusBox'));
   document.getElementById('saveModuleStateBtn').addEventListener('click', ()=> saveSettings('statusBox'));
   document.getElementById('toggleUemBtn').addEventListener('click', ()=> { moduleState.uem = !moduleState.uem; setModuleStatusVisual(); });
@@ -251,6 +270,7 @@ async function bootSettings(){
   settingsModules = await fetchModuleStatus();
   const groups = [
     { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }, { key:'settingsStatusSection', label:'Status' }] },
+    { title:'Discovery', items:[{ key:'settingsDiscoveryDnsSection', label:'DNS' }] },
     { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }, { key:'settingsIpScopeSection', label:'IP Scope' }] }
   ];
   renderModuleSidebar('settingsSidebar', groups, (key)=> showSettingsSection(key));
@@ -308,6 +328,7 @@ bootSettings = async function(){
   settingsModules = await fetchModuleStatus();
   const groups = [
     { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }, { key:'settingsWebhookSection', label:'Webhook' }, { key:'settingsUsersSection', label:'Usuários' }, { key:'settingsStatusSection', label:'Status' }] },
+    { title:'Discovery', items:[{ key:'settingsDiscoveryDnsSection', label:'DNS' }] },
     { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }, { key:'settingsIpScopeSection', label:'IP Scope' }] }
   ];
   renderModuleSidebar('settingsSidebar', groups, async (key)=> { showSettingsSection(key); if(key === 'settingsUsersSection') await loadAuthAccess(); });
@@ -373,6 +394,7 @@ bootSettings = async function(){
   settingsModules = await fetchModuleStatus();
   const groups = [
     { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }, { key:'settingsWebhookSection', label:'Webhook' }, { key:'settingsUsersSection', label:'Usuários' }, { key:'settingsStatusSection', label:'Status' }, { key:'settingsRunnersSection', label:'Runners' }] },
+    { title:'Discovery', items:[{ key:'settingsDiscoveryDnsSection', label:'DNS' }] },
     { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }, { key:'settingsIpScopeSection', label:'IP Scope' }] }
   ];
   renderModuleSidebar('settingsSidebar', groups, async (key)=> {
