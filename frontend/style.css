@@ -752,3 +752,10 @@ th{color:#475467;background:#fbfcfe}
 .asset-status{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
 .asset-status::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
 .asset-status.online{color:#35d07f;background:rgba(53,208,127,.12);border:1px solid rgba(53,208,127,.3)}
+
+/* Sprint 2.2 - Asset Intelligence */
+.asset-status.detected{color:#35d07f;background:rgba(53,208,127,.12);border:1px solid rgba(53,208,127,.3)}
+.asset-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700;background:rgba(148,163,184,.12);color:#cbd5e1;border:1px solid rgba(148,163,184,.22);white-space:nowrap}
+.asset-badge.source{background:rgba(124,58,237,.14);color:#c4b5fd;border-color:rgba(124,58,237,.28)}
+.asset-name{font-weight:800;color:#f8fafc}.asset-name small{display:block;font-weight:500;color:#94a3b8;margin-top:2px}
+#machinesSection th[data-sort]{cursor:pointer;user-select:none}#machinesSection th[data-sort]::after{content:' ⇅';opacity:.42;font-size:10px}#machinesSection th.sort-asc::after{content:' ↑';opacity:1}#machinesSection th.sort-desc::after{content:' ↓';opacity:1}

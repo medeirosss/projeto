@@ -58,3 +58,10 @@
 - Adicionado histórico com duração, origem manual/agendada, endereços verificados e hosts confirmados.
 - Adicionado scheduler interno com limite de duas execuções concorrentes por ciclo.
 - Nova migration Alembic: `20260726_0014`.
+
+## Sprint 2.2 — Asset Intelligence
+- Renomeação funcional de Alvos para Ativos.
+- Rota `/ativos` com compatibilidade em `/alvos`.
+- Inventário com status Detectado, fabricante, origem, Runner e datas de descoberta.
+- Pesquisa local e ordenação de colunas.
+- Campos `display_name`, `asset_type` e `notes` na tabela `targets`.

@@ -56,6 +56,7 @@ async def validations_page():
     return serve_frontend_file("validations.html")
 
 
+@router.get("/ativos", response_class=HTMLResponse)
 @router.get("/alvos", response_class=HTMLResponse)
 async def targets_page():
     return serve_frontend_file("targets.html")
