@@ -36,7 +36,8 @@ def execute_scan(scan:dict,trigger_type="manual"):
         discovered=LocalNmapProvider().discover(spec); items=[]
         for host in discovered:
             fm,nm=normalize_mac(host.mac_address)
-            items.append(repo.upsert_discovered_target(hostname=host.hostname,hostname_normalized=normalize_hostname(host.hostname),dns_name=host.hostname,ip_address=host.ip_address,mac_address=fm,mac_normalized=nm,vendor=host.vendor,status="online",source="nmap-local",scan_id=sid,runner_id=None))
+            target=repo.upsert_discovered_target(hostname=host.hostname,hostname_normalized=normalize_hostname(host.hostname),dns_name=host.hostname,ip_address=host.ip_address,mac_address=fm,mac_normalized=nm,vendor=host.vendor,status="online",source="nmap-local",scan_id=sid,runner_id=None)
+            items.append(repo.enrich_target(target))
         repo.finish_discovery_run(run["run_uuid"],"success",len(items)); return {"success":True,"run_uuid":run["run_uuid"],"discovered_count":len(items),"items":items,"provider":"local"}
     except Exception as exc:
         repo.finish_discovery_run(run["run_uuid"],"failed",0,str(exc)[:2000]); raise
@@ -54,7 +55,8 @@ def ingest_runner_discovery_result(job_id:int, runner_id:str, status:str, result
             ip=host.get("ip_address")
             if not ip or host.get("status")!="up": continue
             fm,nm=normalize_mac(host.get("mac_address"))
-            items.append(repo.upsert_discovered_target(hostname=host.get("hostname"),hostname_normalized=normalize_hostname(host.get("hostname")),dns_name=host.get("dns_name") or host.get("hostname"),hostname_source=host.get("hostname_source"),ip_address=ip,mac_address=fm,mac_normalized=nm,vendor=host.get("vendor"),status="online",source="nmap-runner",scan_id=run.get("scan_id"),runner_id=runner_id))
+            target=repo.upsert_discovered_target(hostname=host.get("hostname"),hostname_normalized=normalize_hostname(host.get("hostname")),dns_name=host.get("dns_name") or host.get("hostname"),hostname_source=host.get("hostname_source"),ip_address=ip,mac_address=fm,mac_normalized=nm,vendor=host.get("vendor"),status="online",source="nmap-runner",scan_id=run.get("scan_id"),runner_id=runner_id)
+            items.append(repo.enrich_target(target))
         final_status="success"
     elif status=="timeout": final_status="timeout"
     else: final_status="failed"

@@ -18,7 +18,7 @@ def ensure_target_schema() -> None:
             id SERIAL PRIMARY KEY, target_uuid VARCHAR(40) UNIQUE NOT NULL,
             hostname VARCHAR(255), hostname_normalized VARCHAR(255), ip_address INET NOT NULL,
             mac_address VARCHAR(17), mac_normalized VARCHAR(12), vendor VARCHAR(255), dns_name VARCHAR(255), hostname_source VARCHAR(30),
-            display_name VARCHAR(255), asset_type VARCHAR(50) NOT NULL DEFAULT 'unknown', notes TEXT,
+            display_name VARCHAR(255), asset_type VARCHAR(50) NOT NULL DEFAULT 'unknown', fingerprint_confidence INTEGER NOT NULL DEFAULT 0, fingerprint_rule VARCHAR(100), fingerprint_reasons TEXT, fingerprinted_at TIMESTAMP, notes TEXT,
             status VARCHAR(20) NOT NULL DEFAULT 'online', discovery_source VARCHAR(50) NOT NULL DEFAULT 'nmap',
             last_scan_id INTEGER, runner_id VARCHAR(80),
             first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -60,6 +60,10 @@ def ensure_target_schema() -> None:
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS hostname_source VARCHAR(30);
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS asset_type VARCHAR(50) NOT NULL DEFAULT 'unknown';
+        ALTER TABLE targets ADD COLUMN IF NOT EXISTS fingerprint_confidence INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE targets ADD COLUMN IF NOT EXISTS fingerprint_rule VARCHAR(100);
+        ALTER TABLE targets ADD COLUMN IF NOT EXISTS fingerprint_reasons TEXT;
+        ALTER TABLE targets ADD COLUMN IF NOT EXISTS fingerprinted_at TIMESTAMP;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS notes TEXT;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'online';
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS last_scan_id INTEGER REFERENCES discovery_scans(id) ON DELETE SET NULL;
@@ -203,6 +207,19 @@ def upsert_discovered_target(*,hostname,hostname_normalized,ip_address,mac_addre
             ON CONFLICT(scan_id,target_id) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at"""),{"sid":scan_id,"tid":tid,"n":now})
         db.commit(); return _serialize(dict(row))
 
+
+
+def update_target_fingerprint(target_id:int, asset_type:str, confidence:int, rule_id:str|None, reasons:list[str], fingerprinted_at:datetime)->dict|None:
+    with SessionLocal() as db:
+        row=db.execute(text("""UPDATE targets SET asset_type=:asset_type,fingerprint_confidence=:confidence,fingerprint_rule=:rule_id,
+            fingerprint_reasons=:reasons,fingerprinted_at=:fingerprinted_at,updated_at=:fingerprinted_at WHERE id=:id RETURNING *"""),
+            {"asset_type":asset_type,"confidence":confidence,"rule_id":rule_id,"reasons":"; ".join(reasons),"fingerprinted_at":fingerprinted_at,"id":target_id}).mappings().first()
+        db.commit(); return _serialize(dict(row)) if row else None
+
+def enrich_target(target:dict)->dict:
+    from app.services.enrichment_engine import fingerprint_asset
+    result=fingerprint_asset(target)
+    return update_target_fingerprint(int(target["id"]),result.asset_type,result.confidence,result.rule_id,result.reasons,result.fingerprinted_at) or target
 
 def list_targets(search=None,limit=200,offset=0):
     s=f"%{(search or '').strip().lower()}%"
