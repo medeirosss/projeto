@@ -70,9 +70,13 @@ def ingest_runner_discovery_result(job_id:int, runner_id:str, status:str, result
     elif status=="timeout": final_status="timeout"
     else: final_status="failed"
     updated=repo.update_discovery_run_from_runner(job_id,final_status,len(items),error or result.get("error") or result.get("stderr"),metadata.get("raw_xml"),runner_id)
-    if final_status=="success": repo.update_run_pipeline_summary(int(run["id"]))
+    service_stage={"enabled":False,"queued":0}
+    if final_status=="success":
+        repo.update_run_pipeline_summary(int(run["id"]), finalize=False)
+        from app.services.service_discovery_service import enqueue_for_discovery_run
+        service_stage=enqueue_for_discovery_run(run,items,runner_id)
     repo.release_scan_by_run(run)
-    return {"run":repo.get_discovery_run(run["run_uuid"]) or updated,"items":items}
+    return {"run":repo.get_discovery_run(run["run_uuid"]) or updated,"items":items,"service_discovery":service_stage}
 
 
 def create_scan(payload):
@@ -87,7 +91,7 @@ def create_scan(payload):
     cleanup_enabled=bool(payload.get("cleanup_enabled",False))
     cleanup_missed=int(payload.get("cleanup_missed_scans") or 10)
     if cleanup_missed<3: raise ValueError("A política de cleanup deve aguardar pelo menos 3 scans ausentes.")
-    return repo.create_scan(name,spec,target_type(spec),sched,interval,bool(payload.get("is_enabled") and sched=="interval"),cleanup_enabled,cleanup_missed)
+    return repo.create_scan(name,spec,target_type(spec),sched,interval,bool(payload.get("is_enabled") and sched=="interval"),cleanup_enabled,cleanup_missed,bool(payload.get("service_discovery_enabled",False)))
 
 
 list_targets=repo.list_targets; get_target=repo.get_target; list_discovery_runs=repo.list_discovery_runs

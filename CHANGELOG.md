@@ -73,3 +73,11 @@
 - Inventário com status Detectado, fabricante, origem, Runner e datas de descoberta.
 - Pesquisa local e ordenação de colunas.
 - Campos `display_name`, `asset_type` e `notes` na tabela `targets`.
+
+## 0.8.8-sprint3.0
+- Service Discovery Engine via Runner/Nmap.
+- Executor `service_discovery` no Runner 2.12.0.
+- Service Knowledge Base.
+- Inventário de serviços atuais e histórico de observações.
+- Pipeline de scan com etapa de serviços e falhas parciais visíveis.
+- Contagem/detalhe de serviços na tela Ativos.

@@ -24,7 +24,7 @@ class RunnerConfig:
     default_timeout_seconds: int = 120
     data_dir: str = "./runner_data"
     log_level: str = "INFO"
-    allowed_executors: list[str] = field(default_factory=lambda: ["cmd", "powershell", "python", "atomic", "nmap_discovery"])
+    allowed_executors: list[str] = field(default_factory=lambda: ["cmd", "powershell", "python", "atomic", "nmap_discovery", "service_discovery"])
     nmap_path: str | None = None
     offline_jobs_file: str = "./offline_jobs.json"
     update_enabled: bool = False
@@ -50,8 +50,14 @@ def load_config(path: str | os.PathLike[str]) -> RunnerConfig:
         raise ValueError(f"Invalid runner configuration: {details}")
 
     secure_file_best_effort(config_path)
-    with config_path.open("r", encoding="utf-8") as fh:
+    with config_path.open("r", encoding="utf-8-sig") as fh:
         raw: dict[str, Any] = json.load(fh)
+
+    # Forward-compatible executor migration for existing 2.11.x settings.json.
+    allowed = list(raw.get("allowed_executors") or [])
+    if "nmap_discovery" in allowed and "service_discovery" not in allowed:
+        allowed.append("service_discovery")
+        raw["allowed_executors"] = allowed
 
     return RunnerConfig(**raw)
 
@@ -61,7 +67,7 @@ def read_config_raw(path: str | os.PathLike[str]) -> dict[str, Any]:
     config_path = Path(path)
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
-    with config_path.open("r", encoding="utf-8") as fh:
+    with config_path.open("r", encoding="utf-8-sig") as fh:
         return json.load(fh)
 
 

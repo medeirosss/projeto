@@ -1,0 +1,75 @@
+services:
+  20: {name: FTP Data, category: File Transfer}
+  21: {name: FTP, category: File Transfer}
+  22: {name: SSH, category: Remote Access}
+  23: {name: Telnet, category: Remote Access}
+  25: {name: SMTP, category: Mail}
+  53: {name: DNS, category: Name Service}
+  67: {name: DHCP Server, category: Network Infrastructure}
+  68: {name: DHCP Client, category: Network Infrastructure}
+  69: {name: TFTP, category: File Transfer}
+  80: {name: HTTP, category: Web}
+  88: {name: Kerberos, category: Authentication}
+  110: {name: POP3, category: Mail}
+  111: {name: RPCBind, category: RPC}
+  123: {name: NTP, category: Time Service}
+  135: {name: MS RPC, category: RPC}
+  137: {name: NetBIOS Name, category: Windows Networking}
+  138: {name: NetBIOS Datagram, category: Windows Networking}
+  139: {name: NetBIOS Session, category: Windows Networking}
+  143: {name: IMAP, category: Mail}
+  161: {name: SNMP, category: Network Management}
+  162: {name: SNMP Trap, category: Network Management}
+  389: {name: LDAP, category: Directory Service}
+  443: {name: HTTPS, category: Web}
+  445: {name: SMB, category: File Sharing}
+  465: {name: SMTPS, category: Mail}
+  500: {name: IKE, category: VPN}
+  514: {name: Syslog, category: Logging}
+  515: {name: LPD, category: Printing}
+  587: {name: SMTP Submission, category: Mail}
+  631: {name: IPP, category: Printing}
+  636: {name: LDAPS, category: Directory Service}
+  873: {name: Rsync, category: File Transfer}
+  902: {name: VMware Auth, category: Virtualization}
+  989: {name: FTPS Data, category: File Transfer}
+  990: {name: FTPS, category: File Transfer}
+  993: {name: IMAPS, category: Mail}
+  995: {name: POP3S, category: Mail}
+  1080: {name: SOCKS Proxy, category: Proxy}
+  1433: {name: Microsoft SQL Server, category: Database}
+  1521: {name: Oracle Database, category: Database}
+  1723: {name: PPTP, category: VPN}
+  1812: {name: RADIUS Auth, category: Authentication}
+  1813: {name: RADIUS Accounting, category: Authentication}
+  1883: {name: MQTT, category: Messaging}
+  2049: {name: NFS, category: File Sharing}
+  2375: {name: Docker API, category: Container}
+  2376: {name: Docker API TLS, category: Container}
+  3000: {name: Web Application, category: Web}
+  3128: {name: HTTP Proxy, category: Proxy}
+  3268: {name: Global Catalog, category: Directory Service}
+  3269: {name: Global Catalog TLS, category: Directory Service}
+  3306: {name: MySQL, category: Database}
+  3389: {name: RDP, category: Remote Access}
+  3690: {name: Subversion, category: Version Control}
+  4369: {name: Erlang Port Mapper, category: Messaging}
+  5000: {name: Web/Application, category: Application}
+  5432: {name: PostgreSQL, category: Database}
+  5672: {name: AMQP, category: Messaging}
+  5900: {name: VNC, category: Remote Access}
+  5985: {name: WinRM HTTP, category: Remote Management}
+  5986: {name: WinRM HTTPS, category: Remote Management}
+  6379: {name: Redis, category: Database}
+  6443: {name: Kubernetes API, category: Container}
+  8000: {name: HTTP Alternate, category: Web}
+  8080: {name: HTTP Proxy/Alternate, category: Web}
+  8081: {name: HTTP Alternate, category: Web}
+  8443: {name: HTTPS Alternate, category: Web}
+  8888: {name: HTTP Alternate, category: Web}
+  9200: {name: Elasticsearch, category: Search}
+  9300: {name: Elasticsearch Transport, category: Search}
+  9418: {name: Git, category: Version Control}
+  11211: {name: Memcached, category: Cache}
+  15672: {name: RabbitMQ Management, category: Messaging}
+  27017: {name: MongoDB, category: Database}

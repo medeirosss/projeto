@@ -7,6 +7,7 @@ from sqlalchemy import text
 from app.database.connection import SessionLocal
 from app.repositories.atomic_repository import update_atomic_execution_from_runner_job
 from app.services.target_service import ingest_runner_discovery_result
+from app.services.service_discovery_service import ingest_runner_service_result
 from app.repositories.runner_repository import (
     create_runner_job,
     create_runner_registration,
@@ -107,9 +108,12 @@ def job_result_v2_service(job_id: int, data: dict, headers):
             runner_job_id=int(job_id), runner_id=runner_id, status=status, result=data, error=data.get("error"),
         )
     discovery = None
+    service_discovery = None
     if result and result.get("job_type") == "nmap_discovery":
         discovery = ingest_runner_discovery_result(int(job_id), runner_id, status, data, data.get("error"))
-    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery}
+    if result and result.get("job_type") == "service_discovery":
+        service_discovery = ingest_runner_service_result(int(job_id), runner_id, status, data, data.get("error"))
+    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery}
 
 
 # Legacy /api/runner compatibility used by previous Magi builds.

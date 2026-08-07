@@ -79,6 +79,24 @@ def ensure_target_schema() -> None:
             error_summary TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS asset_services (
+            id SERIAL PRIMARY KEY, target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+            port INTEGER NOT NULL, protocol VARCHAR(10) NOT NULL DEFAULT 'tcp', service_name VARCHAR(100), friendly_name VARCHAR(120), category VARCHAR(100),
+            product VARCHAR(255), version VARCHAR(120), extra_info VARCHAR(255), banner TEXT, state VARCHAR(30) NOT NULL DEFAULT 'open',
+            first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, runner_id VARCHAR(80),
+            last_discovery_run_id INTEGER REFERENCES discovery_runs(id) ON DELETE SET NULL, active BOOLEAN NOT NULL DEFAULT TRUE,
+            UNIQUE(target_id,port,protocol)
+        );
+        CREATE TABLE IF NOT EXISTS asset_service_observations (
+            id SERIAL PRIMARY KEY, discovery_run_id INTEGER REFERENCES discovery_runs(id) ON DELETE SET NULL, target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+            port INTEGER NOT NULL, protocol VARCHAR(10) NOT NULL, state VARCHAR(30), service_name VARCHAR(100), friendly_name VARCHAR(120), category VARCHAR(100), product VARCHAR(255), version VARCHAR(120),
+            is_new BOOLEAN NOT NULL DEFAULT FALSE, observed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS service_discovery_jobs (
+            id SERIAL PRIMARY KEY, discovery_run_id INTEGER NOT NULL REFERENCES discovery_runs(id) ON DELETE CASCADE, target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+            runner_job_id INTEGER UNIQUE NOT NULL REFERENCES runner_jobs(id) ON DELETE CASCADE, runner_id VARCHAR(80), target_ip INET NOT NULL, status VARCHAR(30) NOT NULL DEFAULT 'queued',
+            service_count INTEGER NOT NULL DEFAULT 0, new_service_count INTEGER NOT NULL DEFAULT 0, error TEXT, raw_output TEXT, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, started_at TIMESTAMP, finished_at TIMESTAMP
+        );
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS vendor VARCHAR(255);
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS dns_name VARCHAR(255);
@@ -100,6 +118,7 @@ def ensure_target_schema() -> None:
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS confidence_details JSONB NOT NULL DEFAULT '[]'::jsonb;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS last_enrichment_status VARCHAR(30);
         ALTER TABLE discovery_scans ADD COLUMN IF NOT EXISTS cleanup_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE discovery_scans ADD COLUMN IF NOT EXISTS service_discovery_enabled BOOLEAN NOT NULL DEFAULT FALSE;
         ALTER TABLE discovery_scans ADD COLUMN IF NOT EXISTS cleanup_missed_scans INTEGER NOT NULL DEFAULT 10;
         ALTER TABLE discovery_scan_targets ADD COLUMN IF NOT EXISTS consecutive_misses INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS scan_id INTEGER REFERENCES discovery_scans(id) ON DELETE SET NULL;
@@ -118,12 +137,19 @@ def ensure_target_schema() -> None:
         ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS classified_count INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS unknown_count INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS pipeline_status VARCHAR(30);
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS service_jobs_total INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS service_jobs_completed INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS service_jobs_failed INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS services_found_count INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS new_services_count INTEGER NOT NULL DEFAULT 0;
         UPDATE targets SET display_name=COALESCE(NULLIF(hostname,''),NULLIF(dns_name,''),host(ip_address)) WHERE display_name IS NULL OR display_name='';
         CREATE INDEX IF NOT EXISTS idx_targets_last_seen_at ON targets(last_seen_at DESC);
         CREATE INDEX IF NOT EXISTS idx_targets_inventory_active ON targets(active_in_inventory) WHERE active_in_inventory=TRUE;
         CREATE INDEX IF NOT EXISTS idx_discovery_scans_next_run ON discovery_scans(next_run_at) WHERE is_enabled = TRUE;
         CREATE INDEX IF NOT EXISTS idx_discovery_runs_started_at ON discovery_runs(started_at DESC);
         CREATE INDEX IF NOT EXISTS idx_enrichment_events_run ON enrichment_events(discovery_run_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_asset_services_target ON asset_services(target_id,active,port);
+        CREATE INDEX IF NOT EXISTS idx_service_discovery_jobs_run ON service_discovery_jobs(discovery_run_id,status);
         """))
         db.commit()
 
@@ -136,13 +162,13 @@ def _serialize(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def create_scan(name: str, target_spec: str, target_type: str, schedule_type: str, interval_minutes: int | None, is_enabled: bool, cleanup_enabled: bool=False, cleanup_missed_scans: int=10) -> dict:
+def create_scan(name: str, target_spec: str, target_type: str, schedule_type: str, interval_minutes: int | None, is_enabled: bool, cleanup_enabled: bool=False, cleanup_missed_scans: int=10, service_discovery_enabled: bool=False) -> dict:
     now = _now(); next_run = now + timedelta(minutes=interval_minutes) if is_enabled and schedule_type == "interval" and interval_minutes else None
     with SessionLocal() as db:
         row = db.execute(text("""INSERT INTO discovery_scans
-        (scan_uuid,name,target_spec,target_type,schedule_type,interval_minutes,is_enabled,next_run_at,cleanup_enabled,cleanup_missed_scans,created_at,updated_at)
-        VALUES(:uuid,:name,:spec,:type,:sched,:interval,:enabled,:next,:cleanup_enabled,:cleanup_missed,:now,:now) RETURNING *"""),
-        {"uuid":_uuid("SCN"),"name":name,"spec":target_spec,"type":target_type,"sched":schedule_type,"interval":interval_minutes,"enabled":is_enabled,"next":next_run,"cleanup_enabled":cleanup_enabled,"cleanup_missed":cleanup_missed_scans,"now":now}).mappings().first()
+        (scan_uuid,name,target_spec,target_type,schedule_type,interval_minutes,is_enabled,next_run_at,cleanup_enabled,cleanup_missed_scans,service_discovery_enabled,created_at,updated_at)
+        VALUES(:uuid,:name,:spec,:type,:sched,:interval,:enabled,:next,:cleanup_enabled,:cleanup_missed,:service_enabled,:now,:now) RETURNING *"""),
+        {"uuid":_uuid("SCN"),"name":name,"spec":target_spec,"type":target_type,"sched":schedule_type,"interval":interval_minutes,"enabled":is_enabled,"next":next_run,"cleanup_enabled":cleanup_enabled,"cleanup_missed":cleanup_missed_scans,"service_enabled":service_discovery_enabled,"now":now}).mappings().first()
         db.commit(); return _serialize(dict(row))
 
 
@@ -159,7 +185,7 @@ def get_scan(scan_uuid: str) -> dict | None:
 
 
 def update_scan(scan_uuid: str, **fields) -> dict | None:
-    allowed={"name","target_spec","target_type","schedule_type","interval_minutes","is_enabled","cleanup_enabled","cleanup_missed_scans"}
+    allowed={"name","target_spec","target_type","schedule_type","interval_minutes","is_enabled","cleanup_enabled","cleanup_missed_scans","service_discovery_enabled"}
     values={k:v for k,v in fields.items() if k in allowed}
     current=get_scan(scan_uuid)
     if not current: return None
@@ -370,7 +396,7 @@ def apply_scan_cleanup(scan_id:int, seen_target_ids:list[int]) -> dict:
         db.commit(); return {"missed":len(missed),"retired":len(retired)}
 
 
-def update_run_pipeline_summary(run_id:int) -> None:
+def update_run_pipeline_summary(run_id:int, finalize:bool=True) -> None:
     with SessionLocal() as db:
         rows=db.execute(text("SELECT is_new,stages,classification FROM enrichment_events WHERE discovery_run_id=:id"),{"id":run_id}).mappings().all()
         def stage_status(row,name):
@@ -386,8 +412,8 @@ def update_run_pipeline_summary(run_id:int) -> None:
             "unknown_count":sum(1 for r in rows if str(r.get("classification") or "unknown")=="unknown"),
         }
         db.execute(text("""UPDATE discovery_runs SET new_count=:new_count,updated_count=:updated_count,dns_success_count=:dns_success_count,dns_failed_count=:dns_failed_count,
-            fingerprint_success_count=:fingerprint_success_count,fingerprint_failed_count=:fingerprint_failed_count,classified_count=:classified_count,unknown_count=:unknown_count,pipeline_status='completed'
-            WHERE id=:id"""),{**counts,"id":run_id})
+            fingerprint_success_count=:fingerprint_success_count,fingerprint_failed_count=:fingerprint_failed_count,classified_count=:classified_count,unknown_count=:unknown_count,pipeline_status=:pipeline_status
+            WHERE id=:id"""),{**counts,"id":run_id,"pipeline_status":"completed" if finalize else "enrichment_complete"})
         db.commit()
 
 
@@ -396,7 +422,8 @@ def list_targets(search=None,limit=200,offset=0):
     where="WHERE t.deleted_at IS NULL AND t.active_in_inventory=TRUE AND (:s='%%' OR lower(COALESCE(t.display_name,'')) LIKE :s OR lower(COALESCE(t.hostname,'')) LIKE :s OR lower(COALESCE(t.dns_name,'')) LIKE :s OR host(t.ip_address) LIKE :s OR lower(COALESCE(t.mac_address,'')) LIKE :s OR lower(COALESCE(t.vendor,'')) LIKE :s OR lower(COALESCE(t.runner_id,'')) LIKE :s OR lower(COALESCE(r.name,'')) LIKE :s)"
     with SessionLocal() as db:
         rows=db.execute(text(f"""SELECT t.*, COALESCE(NULLIF(r.name,''),NULLIF(r.hostname,''),t.runner_id) AS runner_name,
-            'detected' AS lifecycle_status
+            'detected' AS lifecycle_status,
+            (SELECT COUNT(*) FROM asset_services svc WHERE svc.target_id=t.id AND svc.active=TRUE) AS service_count
             FROM targets t LEFT JOIN runners r ON r.runner_id=t.runner_id
             {where} ORDER BY t.last_seen_at DESC LIMIT :l OFFSET :o"""),{"s":s,"l":limit,"o":offset}).mappings().all()
         total=db.execute(text(f"SELECT COUNT(*) FROM targets t LEFT JOIN runners r ON r.runner_id=t.runner_id {where}"),{"s":s}).scalar_one()
@@ -408,7 +435,8 @@ def list_new_assets_latest_run(limit:int=500) -> dict:
         run=db.execute(text("""SELECT id,run_uuid,started_at,finished_at FROM discovery_runs
             WHERE status='success' ORDER BY COALESCE(finished_at,started_at) DESC LIMIT 1""")).mappings().first()
         if not run: return {"items":[],"total":0,"run":None}
-        rows=db.execute(text("""SELECT t.*,COALESCE(NULLIF(r.name,''),NULLIF(r.hostname,''),t.runner_id) AS runner_name,e.stages,e.evidence,e.confidence
+        rows=db.execute(text("""SELECT t.*,COALESCE(NULLIF(r.name,''),NULLIF(r.hostname,''),t.runner_id) AS runner_name,e.stages,e.evidence,e.confidence,
+            (SELECT COUNT(*) FROM asset_services svc WHERE svc.target_id=t.id AND svc.active=TRUE) AS service_count
             FROM enrichment_events e JOIN targets t ON t.id=e.target_id LEFT JOIN runners r ON r.runner_id=t.runner_id
             WHERE e.discovery_run_id=:rid AND e.is_new=TRUE AND t.active_in_inventory=TRUE AND t.deleted_at IS NULL
             ORDER BY e.created_at DESC LIMIT :limit"""),{"rid":run["id"],"limit":limit}).mappings().all()
@@ -423,6 +451,9 @@ def get_target(target_uuid):
         result=_serialize(dict(r))
         ev=db.execute(text("SELECT * FROM enrichment_events WHERE target_id=:id ORDER BY created_at DESC LIMIT 1"),{"id":r["id"]}).mappings().first()
         result["latest_enrichment"]=_serialize(dict(ev)) if ev else None
+        from app.repositories.service_discovery_repository import list_asset_services
+        result["services"]=list_asset_services(int(r["id"]))
+        result["service_count"]=len(result["services"])
         return result
 
 
@@ -443,8 +474,11 @@ def get_discovery_run(run_uuid:str) -> dict|None:
         row=db.execute(text("""SELECT r.*,s.scan_uuid,s.name AS scan_name FROM discovery_runs r LEFT JOIN discovery_scans s ON s.id=r.scan_id WHERE r.run_uuid=:u"""),{"u":run_uuid}).mappings().first()
         if not row:return None
         result=_serialize(dict(row))
-        events=db.execute(text("""SELECT e.*,t.target_uuid,t.display_name,t.hostname,host(t.ip_address) AS ip_address,t.mac_address
-            FROM enrichment_events e JOIN targets t ON t.id=e.target_id WHERE e.discovery_run_id=:rid ORDER BY e.created_at"""),{"rid":row["id"]}).mappings().all()
+        events=db.execute(text("""SELECT e.*,t.target_uuid,t.display_name,t.hostname,host(t.ip_address) AS ip_address,t.mac_address,
+            sdj.status AS service_status,sdj.service_count,sdj.new_service_count,sdj.error AS service_error
+            FROM enrichment_events e JOIN targets t ON t.id=e.target_id
+            LEFT JOIN service_discovery_jobs sdj ON sdj.discovery_run_id=e.discovery_run_id AND sdj.target_id=e.target_id
+            WHERE e.discovery_run_id=:rid ORDER BY e.created_at"""),{"rid":row["id"]}).mappings().all()
         result["assets"]=[_serialize(dict(e)) for e in events]
         return result
 

@@ -7,11 +7,12 @@ from .cmd import CmdExecutor
 from .powershell import PowerShellExecutor
 from .python_exec import PythonExecutor
 from .nmap_discovery import NmapDiscoveryExecutor
+from .service_discovery import ServiceDiscoveryExecutor
 
 
 class ExecutorRegistry:
     def __init__(self, allowed: list[str]) -> None:
-        executors = [CmdExecutor(), PowerShellExecutor(), PythonExecutor(), AtomicExecutor(), NmapDiscoveryExecutor()]
+        executors = [CmdExecutor(), PowerShellExecutor(), PythonExecutor(), AtomicExecutor(), NmapDiscoveryExecutor(), ServiceDiscoveryExecutor()]
         self._executors = {e.name: e for e in executors if e.name in allowed}
         self._executors["ps"] = self._executors.get("powershell")
         self._executors["pwsh"] = self._executors.get("powershell")

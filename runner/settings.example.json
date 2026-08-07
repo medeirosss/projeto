@@ -17,7 +17,8 @@
     "powershell",
     "python",
     "atomic",
-    "nmap_discovery"
+    "nmap_discovery",
+    "service_discovery"
   ],
   "offline_jobs_file": "./offline_jobs.json",
   "update_enabled": false,

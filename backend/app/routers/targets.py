@@ -84,6 +84,13 @@ async def api_delete_scan(scan_uuid:str,remove_exclusive_targets:bool=Query(Fals
         return {"success":True}
     except ValueError as exc: raise HTTPException(409,str(exc)) from exc
 
+
+@router.get("/{target_uuid}/services")
+async def api_target_services(target_uuid:str):
+    target=repo.get_target(target_uuid)
+    if not target: raise HTTPException(404,"Ativo não encontrado.")
+    return {"target_uuid":target_uuid,"items":target.get("services") or [],"total":target.get("service_count") or 0}
+
 @router.get("/{target_uuid}")
 async def api_get_target(target_uuid:str):
     target=repo.get_target(target_uuid)
