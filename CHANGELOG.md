@@ -81,3 +81,9 @@
 - Inventário de serviços atuais e histórico de observações.
 - Pipeline de scan com etapa de serviços e falhas parciais visíveis.
 - Contagem/detalhe de serviços na tela Ativos.
+
+## 0.8.8-sprint3.0.1
+- Corrige perfil do Service Discovery para top 1000 e detecção de versão normal.
+- Preserva portas abertas desconhecidas e metadados Nmap (OS hint, CPE, tunnel e fingerprint).
+- Adiciona artefatos de troubleshooting e teste de regressão do parser.
+- Runner 2.12.1; Alembic 20260807_0021.

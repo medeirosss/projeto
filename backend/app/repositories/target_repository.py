@@ -82,7 +82,7 @@ def ensure_target_schema() -> None:
         CREATE TABLE IF NOT EXISTS asset_services (
             id SERIAL PRIMARY KEY, target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
             port INTEGER NOT NULL, protocol VARCHAR(10) NOT NULL DEFAULT 'tcp', service_name VARCHAR(100), friendly_name VARCHAR(120), category VARCHAR(100),
-            product VARCHAR(255), version VARCHAR(120), extra_info VARCHAR(255), banner TEXT, state VARCHAR(30) NOT NULL DEFAULT 'open',
+            product VARCHAR(255), version VARCHAR(120), extra_info VARCHAR(255), banner TEXT, os_type VARCHAR(80), cpe JSONB NOT NULL DEFAULT '[]'::jsonb, service_fingerprint TEXT, tunnel VARCHAR(30), detection_method VARCHAR(30), detection_confidence INTEGER, state VARCHAR(30) NOT NULL DEFAULT 'open',
             first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, runner_id VARCHAR(80),
             last_discovery_run_id INTEGER REFERENCES discovery_runs(id) ON DELETE SET NULL, active BOOLEAN NOT NULL DEFAULT TRUE,
             UNIQUE(target_id,port,protocol)
@@ -117,6 +117,12 @@ def ensure_target_schema() -> None:
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS consecutive_misses INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS confidence_details JSONB NOT NULL DEFAULT '[]'::jsonb;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS last_enrichment_status VARCHAR(30);
+        ALTER TABLE asset_services ADD COLUMN IF NOT EXISTS os_type VARCHAR(80);
+        ALTER TABLE asset_services ADD COLUMN IF NOT EXISTS cpe JSONB NOT NULL DEFAULT '[]'::jsonb;
+        ALTER TABLE asset_services ADD COLUMN IF NOT EXISTS service_fingerprint TEXT;
+        ALTER TABLE asset_services ADD COLUMN IF NOT EXISTS tunnel VARCHAR(30);
+        ALTER TABLE asset_services ADD COLUMN IF NOT EXISTS detection_method VARCHAR(30);
+        ALTER TABLE asset_services ADD COLUMN IF NOT EXISTS detection_confidence INTEGER;
         ALTER TABLE discovery_scans ADD COLUMN IF NOT EXISTS cleanup_enabled BOOLEAN NOT NULL DEFAULT FALSE;
         ALTER TABLE discovery_scans ADD COLUMN IF NOT EXISTS service_discovery_enabled BOOLEAN NOT NULL DEFAULT FALSE;
         ALTER TABLE discovery_scans ADD COLUMN IF NOT EXISTS cleanup_missed_scans INTEGER NOT NULL DEFAULT 10;

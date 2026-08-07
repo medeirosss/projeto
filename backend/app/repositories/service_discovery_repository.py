@@ -50,13 +50,13 @@ def ingest_services(*,runner_job_id:int,runner_id:str,status:str,services:list[d
                 protocol=str(svc.get('protocol') or 'tcp').lower()[:10]
                 existing=db.execute(text("SELECT id FROM asset_services WHERE target_id=:tid AND port=:port AND protocol=:proto"),{"tid":job['target_id'],"port":port,"proto":protocol}).first()
                 if not existing: new_count+=1
-                db.execute(text("""INSERT INTO asset_services(target_id,port,protocol,service_name,friendly_name,category,product,version,extra_info,banner,state,first_seen_at,last_seen_at,runner_id,last_discovery_run_id,active)
-                    VALUES(:tid,:port,:proto,:service,:friendly,:category,:product,:version,:extra,:banner,:state,:now,:now,:runner,:run,TRUE)
+                db.execute(text("""INSERT INTO asset_services(target_id,port,protocol,service_name,friendly_name,category,product,version,extra_info,banner,os_type,cpe,service_fingerprint,tunnel,detection_method,detection_confidence,state,first_seen_at,last_seen_at,runner_id,last_discovery_run_id,active)
+                    VALUES(:tid,:port,:proto,:service,:friendly,:category,:product,:version,:extra,:banner,:os_type,CAST(:cpe AS jsonb),:servicefp,:tunnel,:method,:conf,:state,:now,:now,:runner,:run,TRUE)
                     ON CONFLICT(target_id,port,protocol) DO UPDATE SET service_name=EXCLUDED.service_name,friendly_name=EXCLUDED.friendly_name,category=EXCLUDED.category,
-                    product=EXCLUDED.product,version=EXCLUDED.version,extra_info=EXCLUDED.extra_info,banner=EXCLUDED.banner,state=EXCLUDED.state,last_seen_at=EXCLUDED.last_seen_at,
+                    product=EXCLUDED.product,version=EXCLUDED.version,extra_info=EXCLUDED.extra_info,banner=EXCLUDED.banner,os_type=EXCLUDED.os_type,cpe=EXCLUDED.cpe,service_fingerprint=EXCLUDED.service_fingerprint,tunnel=EXCLUDED.tunnel,detection_method=EXCLUDED.detection_method,detection_confidence=EXCLUDED.detection_confidence,state=EXCLUDED.state,last_seen_at=EXCLUDED.last_seen_at,
                     runner_id=EXCLUDED.runner_id,last_discovery_run_id=EXCLUDED.last_discovery_run_id,active=TRUE"""),{
                     "tid":job['target_id'],"port":port,"proto":protocol,"service":svc.get('service_name'),"friendly":svc.get('friendly_name'),"category":svc.get('category'),
-                    "product":svc.get('product'),"version":svc.get('version'),"extra":svc.get('extra_info'),"banner":svc.get('banner'),"state":svc.get('state') or 'open',
+                    "product":svc.get('product'),"version":svc.get('version'),"extra":svc.get('extra_info'),"banner":svc.get('banner'),"os_type":svc.get('os_type'),"cpe":json.dumps(svc.get('cpe') or []),"servicefp":svc.get('service_fingerprint'),"tunnel":svc.get('tunnel'),"method":svc.get('method'),"conf":int(svc.get('conf')) if str(svc.get('conf') or "").isdigit() else None,"state":svc.get('state') or 'open',
                     "now":_now(),"runner":runner_id,"run":job['discovery_run_id']})
                 db.execute(text("""INSERT INTO asset_service_observations(discovery_run_id,target_id,port,protocol,state,service_name,friendly_name,category,product,version,is_new,observed_at)
                     VALUES(:run,:tid,:port,:proto,:state,:service,:friendly,:category,:product,:version,:is_new,:now)"""),{
@@ -81,7 +81,7 @@ def ingest_services(*,runner_job_id:int,runner_id:str,status:str,services:list[d
 
 def list_asset_services(target_id:int,include_inactive:bool=False)->list[dict[str,Any]]:
     with SessionLocal() as db:
-        rows=db.execute(text("""SELECT id,port,protocol,service_name,friendly_name,category,product,version,extra_info,banner,state,first_seen_at,last_seen_at,runner_id,active
+        rows=db.execute(text("""SELECT id,port,protocol,service_name,friendly_name,category,product,version,extra_info,banner,os_type,cpe,service_fingerprint,tunnel,detection_method,detection_confidence,state,first_seen_at,last_seen_at,runner_id,active
             FROM asset_services WHERE target_id=:id AND (:all=TRUE OR active=TRUE) ORDER BY port,protocol"""),{"id":target_id,"all":include_inactive}).mappings().all()
         out=[]
         for r in rows:

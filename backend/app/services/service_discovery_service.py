@@ -17,8 +17,8 @@ def enqueue_for_discovery_run(run:dict,targets:list[dict],runner_id:str)->dict:
             "executor":"service_discovery",
             "target":ip,
             "timeout_seconds":120,
-            "profile":"top100",
-            "version_intensity":"light",
+            "profile":"top1000",
+            "version_intensity":"normal",
             "discovery_run_id":run_id,
             "target_id":int(target_id),
         }
