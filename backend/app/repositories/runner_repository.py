@@ -186,6 +186,15 @@ def get_next_job(runner_id: str):
             """), {"runner_job_id": int(job["id"]), "now": datetime.utcnow()})
             db.commit()
 
+        if job.get("job_type") == "nmap_discovery":
+            db.execute(text("""
+                UPDATE discovery_runs
+                SET status = 'running', pipeline_status = 'running'
+                WHERE runner_job_id = :runner_job_id
+                  AND status = 'queued'
+            """), {"runner_job_id": int(job["id"])})
+            db.commit()
+
         executor = payload.get("executor") or payload.get("type")
         if not executor:
             executor = "atomic" if job.get("job_type") == "atomic_validation" else job.get("job_type")

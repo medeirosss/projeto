@@ -1,3 +1,11 @@
+
+## Sprint 2.3.1 — Enrichment & Asset Compliance
+- Pipeline visual e resultado por ativo.
+- Novos ativos + inventário consolidado.
+- Compliance de nomenclatura para Server, Workstation e Network Device.
+- Confidence Engine transparente e evidências persistidas.
+- Cleanup por scans ausentes com soft-retire.
+- Migration `20260806_0019`.
 ## 2.11.2 / Sprint 2.1.1
 - DNS enrichment opcional via Runner.
 - Consulta PTR em DNS primário/secundário configuráveis.
