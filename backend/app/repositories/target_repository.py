@@ -172,6 +172,15 @@ def ensure_target_schema() -> None:
         CREATE INDEX IF NOT EXISTS idx_discovery_runs_started_at ON discovery_runs(started_at DESC);
         CREATE INDEX IF NOT EXISTS idx_enrichment_events_run ON enrichment_events(discovery_run_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_asset_services_target ON asset_services(target_id,active,port);
+        CREATE TABLE IF NOT EXISTS exposure_findings (
+            id SERIAL PRIMARY KEY, finding_uuid VARCHAR(40) UNIQUE NOT NULL, target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+            rule_id VARCHAR(100) NOT NULL, source_type VARCHAR(30) NOT NULL, source_key VARCHAR(255) NOT NULL, title VARCHAR(255) NOT NULL,
+            category VARCHAR(100) NOT NULL, severity VARCHAR(20) NOT NULL, status VARCHAR(20) NOT NULL DEFAULT 'open', evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+            first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, resolved_at TIMESTAMP, ignored_at TIMESTAMP, ignored_reason TEXT, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(target_id,source_type,source_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_exposure_findings_status ON exposure_findings(status,severity);
+        CREATE INDEX IF NOT EXISTS idx_exposure_findings_target ON exposure_findings(target_id,status);
         CREATE INDEX IF NOT EXISTS idx_service_discovery_jobs_run ON service_discovery_jobs(discovery_run_id,status);
         """))
         db.commit()
@@ -448,7 +457,8 @@ def list_targets(search=None,limit=200,offset=0):
     with SessionLocal() as db:
         rows=db.execute(text(f"""SELECT t.*, COALESCE(NULLIF(r.name,''),NULLIF(r.hostname,''),t.runner_id) AS runner_name,
             'detected' AS lifecycle_status,
-            (SELECT COUNT(*) FROM asset_services svc WHERE svc.target_id=t.id AND svc.active=TRUE) AS service_count
+            (SELECT COUNT(*) FROM asset_services svc WHERE svc.target_id=t.id AND svc.active=TRUE) AS service_count,
+            (SELECT COUNT(*) FROM exposure_findings ef WHERE ef.target_id=t.id AND ef.status='open') AS exposure_count
             FROM targets t LEFT JOIN runners r ON r.runner_id=t.runner_id
             {where} ORDER BY t.last_seen_at DESC LIMIT :l OFFSET :o"""),{"s":s,"l":limit,"o":offset}).mappings().all()
         total=db.execute(text(f"SELECT COUNT(*) FROM targets t LEFT JOIN runners r ON r.runner_id=t.runner_id {where}"),{"s":s}).scalar_one()
@@ -487,8 +497,11 @@ def get_target(target_uuid):
             result["deep_inventory"]=get_snapshot(int(r["id"]))
             result["hardware_changes"]=list_hardware_changes(int(r["id"]),100)
             result["process_findings"]=list_process_findings(int(r["id"]))
+            from app.repositories.exposure_repository import list_findings, summary
+            result["exposures"]=list_findings(target_id=int(r["id"]),limit=200)
+            result["exposure_summary"]=summary(target_id=int(r["id"]))
         except Exception:
-            result["deep_inventory"]=None; result["hardware_changes"]=[]; result["process_findings"]=[]
+            result["deep_inventory"]=None; result["hardware_changes"]=[]; result["process_findings"]=[]; result["exposures"]=[]; result["exposure_summary"]={"total":0}
         return result
 
 

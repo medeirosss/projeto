@@ -63,6 +63,7 @@ function buildHeader(activeKey){
     { key:'alerts', href:'/alertas', label:'Alertas' },
     { key:'validations', href:'/validacoes', label:'Tarefas' },
     { key:'targets', href:'/ativos', label:'Ativos' },
+    { key:'exposures', href:'/exposicoes', label:'Exposições' },
     { key:'settings', href:'/configuracoes', label:'Configurações' }
   ];
   menu.innerHTML = items.map(item => `<a class="${item.key===activeKey?'active':''}" href="${item.href}">${item.label}</a>`).join('');

@@ -123,6 +123,12 @@ def ingest_deep_result(runner_job_id:int,runner_id:str,status:str,result:dict,er
         if job.get('discovery_run_id'):
             db.execute(text("""UPDATE discovery_runs SET deep_jobs_completed=deep_jobs_completed+1,deep_jobs_success=deep_jobs_success+:ok,deep_jobs_failed=deep_jobs_failed+:fail,hardware_changes_count=hardware_changes_count+:hc,process_findings_count=process_findings_count+:pf WHERE id=:run"""),{'ok':1 if final=='success' else 0,'fail':0 if final=='success' else 1,'hc':len(changes),'pf':len(matches),'run':job['discovery_run_id']})
         db.commit()
+    if final == 'success':
+        try:
+            from app.repositories.exposure_repository import evaluate_target
+            evaluate_target(int(target_id))
+        except Exception:
+            pass
     if job.get('discovery_run_id'): finalize_run_if_no_deep(int(job['discovery_run_id']))
     return {'target_id':target_id,'status':final,'hardware_changes':len(changes),'process_findings':len(matches),'discovery_run_id':job.get('discovery_run_id')}
 

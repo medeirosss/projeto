@@ -62,6 +62,11 @@ async def targets_page():
     return serve_frontend_file("targets.html")
 
 
+@router.get("/exposicoes", response_class=HTMLResponse)
+async def exposures_page():
+    return serve_frontend_file("exposures.html")
+
+
 @router.get("/configuracoes", response_class=HTMLResponse)
 async def settings_page():
     return serve_frontend_file("settings.html")
