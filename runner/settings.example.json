@@ -18,7 +18,8 @@
     "python",
     "atomic",
     "nmap_discovery",
-    "service_discovery"
+    "service_discovery",
+    "credential_validate"
   ],
   "offline_jobs_file": "./offline_jobs.json",
   "update_enabled": false,

@@ -32,5 +32,5 @@ def get_host_info(active_jobs: int = 0) -> dict[str, Any]:
         "uptime_seconds": int(time.time() - psutil.boot_time()),
         "ips": addrs,
         "active_jobs": active_jobs,
-        "capabilities": {"nmap_discovery": nmap_capability(), "service_discovery": nmap_capability()},
+        "capabilities": {"nmap_discovery": nmap_capability(), "service_discovery": nmap_capability(), "credential_validate": {"available": True, "max_attempts_per_host": 2}},
     }

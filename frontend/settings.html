@@ -113,6 +113,24 @@
       </div></div>
     </section>
 
+
+    <section id="settingsCredentialsSection" class="hidden-section report-section">
+      <div class="toolbar"><div><div class="title">Discovery · Credenciais</div><p class="section-subtitle">Credenciais opcionais usadas pelo Credential Engine. O segredo é criptografado no PostgreSQL e nunca é exibido novamente.</p></div></div>
+      <div class="card"><div class="card-header">Nova credencial</div><div class="form-body">
+        <div class="form-grid">
+          <div class="field"><label>Nome</label><input id="cred_name" type="text" placeholder="Ex.: Windows - Servidores"></div>
+          <div class="field"><label>Tipo</label><select id="cred_type"><option value="windows">Windows (WMI / WinRM)</option><option value="ssh">SSH</option><option value="snmp_v2c">SNMP v2c</option></select></div>
+          <div class="field"><label>Usuário</label><input id="cred_username" type="text" placeholder="administrator ou usuário SSH"></div>
+          <div class="field"><label>Domínio</label><input id="cred_domain" type="text" placeholder="DOMINIO (somente Windows)"></div>
+          <div class="field"><label>Senha / Community</label><input id="cred_password" type="password" placeholder="Segredo"></div>
+          <div class="field"><label>Porta opcional</label><input id="cred_port" type="number" placeholder="22 para SSH; 161 para SNMP"></div>
+        </div>
+        <div class="actions"><button class="btn primary" id="saveCredentialBtn" type="button">Salvar credencial</button></div>
+        <div class="notice" id="credentialStatusBox">O Magi limita o Credential Engine a 2 tentativas por host. Se nenhuma credencial for selecionada no Scan, a etapa é ignorada.</div>
+      </div></div>
+      <div class="card" style="margin-top:16px"><div class="card-header">Credenciais salvas</div><div class="form-body"><div class="table-wrap"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Usuário</th><th>Domínio</th><th>Segredo</th><th>Ações</th></tr></thead><tbody id="credentialsTable"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div></div></div>
+    </section>
+
     <section id="settingsParametersSection" class="hidden-section report-section">
       <div class="toolbar"><div class="title">UEM · Parâmetros</div></div>
       <div class="card"><div class="card-header">Coleta, paginação e execução</div><div class="form-body">

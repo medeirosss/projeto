@@ -1,3 +1,11 @@
+# Sprint 3.1 — 2026-08-10
+- Credential Engine opcional por scan.
+- Cofre de credenciais criptografado no PostgreSQL.
+- Runner 2.13.0 com validação Windows WMI/WinRM, SSH e SNMP v2c.
+- Máximo de 2 tentativas por host.
+- Hostname obtido por credencial preenche ativos sem hostname.
+- Segredos não são persistidos em runner_jobs nem artefatos do Runner.
+
 
 ## Sprint 2.3.1 — Enrichment & Asset Compliance
 - Pipeline visual e resultado por ativo.

@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from app.repositories.credentials_repository import (
     disable_stored_credential,
     get_stored_credential_by_name,
+    get_stored_credential_by_id,
     list_stored_credentials,
     save_stored_credential,
 )
@@ -43,11 +44,23 @@ def get_credential_by_name(name: str, include_secret: bool = False) -> Dict[str,
     return _public_row(item, include_secret=include_secret)
 
 
+
+
+def get_credential_by_id(credential_id: str | int, include_secret: bool = False) -> Dict[str, Any] | None:
+    item = get_stored_credential_by_id(credential_id)
+    if not item:
+        return None
+    return _public_row(item, include_secret=include_secret)
+
 def save_credential(payload: Dict[str, Any]) -> Dict[str, Any]:
     data = dict(payload or {})
     password = str(data.pop("password", "") or "")
 
     metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    ctype = str(data.get("type") or data.get("credential_type") or "generic").lower()
+    for key in ("port", "description_hint"):
+        if key in data and data.get(key) not in (None, ""):
+            metadata[key] = data.pop(key)
     # Permite que o frontend envie estes campos diretamente.
     if str(data.get("type") or data.get("credential_type") or "").lower() == "winrm":
         metadata.update({

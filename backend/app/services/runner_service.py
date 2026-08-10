@@ -8,6 +8,7 @@ from app.database.connection import SessionLocal
 from app.repositories.atomic_repository import update_atomic_execution_from_runner_job
 from app.services.target_service import ingest_runner_discovery_result
 from app.services.service_discovery_service import ingest_runner_service_result
+from app.services.credential_engine_service import ingest_runner_credential_result
 from app.repositories.runner_repository import (
     create_runner_job,
     create_runner_registration,
@@ -84,6 +85,23 @@ def heartbeat_v2_service(data: dict, headers, remote_addr: str | None = None):
 def get_next_job_v2_service(headers):
     runner_id = _auth_runner_from_headers(headers)
     job = get_next_job(runner_id)
+    if job and job.get("job_type") == "credential_validate":
+        # Inject plaintext only into the transient HTTP response. runner_jobs stores only credential_id.
+        from app.services.credentials_service import get_credential_by_id
+        payload = dict(job.get("payload") or {})
+        cred = get_credential_by_id(payload.get("credential_id"), include_secret=True)
+        if not cred or not cred.get("password"):
+            # Do not strand a job in running when a credential was removed after scheduling.
+            failed = save_job_result(int(job["job_id"]), runner_id, "failed", {"status":"failed","error":"Credencial indisponível."}, "Credencial indisponível.")
+            if failed:
+                ingest_runner_credential_result(int(job["job_id"]), runner_id, "failed", {"status":"failed","error":"Credencial indisponível."}, "Credencial indisponível.")
+            return {"success": True, "runner_id": runner_id, "job": None}
+        payload["credential"] = {
+            "id": cred.get("id"), "name": cred.get("name"), "type": cred.get("type"),
+            "username": cred.get("username"), "domain": cred.get("domain"),
+            "secret": cred.get("password"), "metadata": cred.get("metadata") or {},
+        }
+        job = dict(job); job["payload"] = payload
     return {"success": True, "runner_id": runner_id, "job": job}
 
 
@@ -109,11 +127,14 @@ def job_result_v2_service(job_id: int, data: dict, headers):
         )
     discovery = None
     service_discovery = None
+    credential_engine = None
     if result and result.get("job_type") == "nmap_discovery":
         discovery = ingest_runner_discovery_result(int(job_id), runner_id, status, data, data.get("error"))
     if result and result.get("job_type") == "service_discovery":
         service_discovery = ingest_runner_service_result(int(job_id), runner_id, status, data, data.get("error"))
-    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery}
+    if result and result.get("job_type") == "credential_validate":
+        credential_engine = ingest_runner_credential_result(int(job_id), runner_id, status, data, data.get("error"))
+    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery, "credential_engine": credential_engine}
 
 
 # Legacy /api/runner compatibility used by previous Magi builds.

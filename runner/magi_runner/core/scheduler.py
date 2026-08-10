@@ -12,6 +12,17 @@ from magi_runner.core.state import LocalState
 from magi_runner.executors.registry import ExecutorRegistry
 
 
+def redact_job(job: dict[str, Any]) -> dict[str, Any]:
+    import copy
+    safe=copy.deepcopy(job)
+    payload=safe.get("payload") or {}
+    cred=payload.get("credential")
+    if isinstance(cred,dict):
+        for key in ("secret","password","community","auth_key","priv_key"):
+            if key in cred: cred[key]="********"
+    return safe
+
+
 class JobScheduler:
     def __init__(self, config: RunnerConfig, state: LocalState, logger: logging.Logger) -> None:
         self.config = config
@@ -52,7 +63,7 @@ class JobScheduler:
             evidence = self.evidence.collect(job.get("collect") or {}, job_dir)
             self.artifacts.write_text(job_dir, "stdout.txt", result.stdout)
             self.artifacts.write_text(job_dir, "stderr.txt", result.stderr)
-            self.artifacts.write_json(job_dir, "job.json", job)
+            self.artifacts.write_json(job_dir, "job.json", redact_job(job))
             self.artifacts.write_json(job_dir, "evidence.json", evidence)
             summary = {
                 "job_id": job_id,

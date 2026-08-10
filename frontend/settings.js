@@ -408,4 +408,41 @@ bootSettings = async function(){
 };
 
 
+
+// Sprint 3.1 — Credential Engine
+function credEsc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function credentialTypeLabel(v){const m={windows:'Windows',ssh:'SSH',snmp_v2c:'SNMP v2c'};return m[String(v||'').toLowerCase()]||v||'—'}
+async function loadCredentials(){
+  const body=document.getElementById('credentialsTable'); if(!body)return;
+  body.innerHTML='<tr><td colspan="6">Carregando...</td></tr>';
+  try{
+    const res=await fetch('/api/actions/credentials'); const data=await res.json(); if(!res.ok)throw new Error(data.detail||'Falha ao carregar credenciais.');
+    const rows=data.credentials||[];
+    body.innerHTML=rows.length?rows.map(c=>`<tr><td>${credEsc(c.name||'—')}</td><td>${credEsc(credentialTypeLabel(c.type))}</td><td>${credEsc(c.username||'—')}</td><td>${credEsc(c.domain||'—')}</td><td>${c.has_password?'••••••••':'—'}</td><td><button class="btn danger btn-sm cred-delete" data-id="${c.id}">Excluir</button></td></tr>`).join(''):'<tr><td colspan="6">Nenhuma credencial cadastrada.</td></tr>';
+    document.querySelectorAll('.cred-delete').forEach(b=>b.onclick=async()=>{if(!confirm('Desabilitar esta credencial? Scans antigos manterão a referência para auditoria.'))return;await fetch(`/api/actions/credentials/${b.dataset.id}`,{method:'DELETE'});await loadCredentials()});
+  }catch(e){body.innerHTML=`<tr><td colspan="6">${e.message}</td></tr>`}
+}
+async function saveDiscoveryCredential(){
+  const type=document.getElementById('cred_type').value;
+  const payload={name:document.getElementById('cred_name').value.trim(),type,username:document.getElementById('cred_username').value.trim(),domain:document.getElementById('cred_domain').value.trim(),password:document.getElementById('cred_password').value,metadata:{}};
+  const port=Number(document.getElementById('cred_port').value||0); if(port)payload.metadata.port=port;
+  if(type==='snmp_v2c'){payload.username='';payload.domain='';}
+  const res=await fetch('/api/actions/credentials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await res.json().catch(()=>({}));
+  setMessage('credentialStatusBox',res.ok?'Credencial salva de forma criptografada.':(data.detail||'Falha ao salvar credencial.'));
+  if(res.ok){document.getElementById('cred_password').value='';document.getElementById('cred_name').value='';await loadCredentials()}
+}
+const _bindCredPrevious=bindFixedActions;
+bindFixedActions=function(){_bindCredPrevious();document.getElementById('saveCredentialBtn')?.addEventListener('click',saveDiscoveryCredential)};
+const _bootCredPrevious=bootSettings;
+bootSettings=async function(){
+  buildHeader('settings');settingsModules=await fetchModuleStatus();
+  const groups=[
+    {title:'Fixos',items:[{key:'settingsMailSection',label:'Mail Server'},{key:'settingsBrandingSection',label:'Branding'},{key:'settingsWebhookSection',label:'Webhook'},{key:'settingsUsersSection',label:'Usuários'},{key:'settingsStatusSection',label:'Status'},{key:'settingsRunnersSection',label:'Runners'}]},
+    {title:'Discovery',items:[{key:'settingsDiscoveryDnsSection',label:'DNS'},{key:'settingsCredentialsSection',label:'Credenciais'}]},
+    {title:'UEM',items:[{key:'settingsUemApiSection',label:'APIs'},{key:'settingsAdSection',label:'Active Directory'},{key:'settingsParametersSection',label:'Parâmetros'},{key:'settingsIpScopeSection',label:'IP Scope'}]}
+  ];
+  renderModuleSidebar('settingsSidebar',groups,async key=>{showSettingsSection(key);if(key==='settingsUsersSection')await loadAuthAccess();if(key==='settingsRunnersSection')await loadRunners();if(key==='settingsCredentialsSection')await loadCredentials()});
+  showSettingsSection('settingsMailSection');bindFixedActions();await loadSettings();
+};
+
 bootSettings();

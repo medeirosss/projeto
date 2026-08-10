@@ -77,7 +77,7 @@ def ingest_services(*,runner_job_id:int,runner_id:str,status:str,services:list[d
         db.execute(text("""UPDATE discovery_runs SET service_jobs_total=:total,service_jobs_completed=:done,service_jobs_failed=:failed,services_found_count=:services,new_services_count=:new,pipeline_status=:pipeline
             WHERE id=:run"""),{"total":int(totals['total']),"done":completed,"failed":int(totals['failed_count']),"services":int(totals['service_count']),"new":int(totals['new_count']),"pipeline":pipeline,"run":job['discovery_run_id']})
         db.commit()
-    return {"discovery_run_id":job['discovery_run_id'],"services_found":found,"new_services":new_count}
+    return {"discovery_run_id":job['discovery_run_id'],"services_found":found,"new_services":new_count,"pipeline_completed": completed>=int(totals['total'])}
 
 def list_asset_services(target_id:int,include_inactive:bool=False)->list[dict[str,Any]]:
     with SessionLocal() as db:

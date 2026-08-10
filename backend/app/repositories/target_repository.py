@@ -125,6 +125,23 @@ def ensure_target_schema() -> None:
         ALTER TABLE asset_services ADD COLUMN IF NOT EXISTS detection_confidence INTEGER;
         ALTER TABLE discovery_scans ADD COLUMN IF NOT EXISTS cleanup_enabled BOOLEAN NOT NULL DEFAULT FALSE;
         ALTER TABLE discovery_scans ADD COLUMN IF NOT EXISTS service_discovery_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE discovery_scans ADD COLUMN IF NOT EXISTS credential_id INTEGER REFERENCES stored_credentials(id) ON DELETE SET NULL;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS credential_jobs_total INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS credential_jobs_completed INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS credential_jobs_failed INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS credential_jobs_success INTEGER NOT NULL DEFAULT 0;
+        CREATE TABLE IF NOT EXISTS credential_attempts (
+            id SERIAL PRIMARY KEY, discovery_run_id INTEGER REFERENCES discovery_runs(id) ON DELETE CASCADE,
+            target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE, credential_id INTEGER NOT NULL REFERENCES stored_credentials(id) ON DELETE RESTRICT,
+            runner_job_id INTEGER UNIQUE REFERENCES runner_jobs(id) ON DELETE CASCADE, runner_id VARCHAR(100), target_ip INET NOT NULL, protocol VARCHAR(30),
+            status VARCHAR(30) NOT NULL DEFAULT 'queued', attempts_used INTEGER NOT NULL DEFAULT 0, hostname_result VARCHAR(255), error TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, started_at TIMESTAMP, finished_at TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS asset_credentials (
+            id SERIAL PRIMARY KEY, target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE, credential_id INTEGER NOT NULL REFERENCES stored_credentials(id) ON DELETE RESTRICT,
+            protocol VARCHAR(30) NOT NULL, last_success_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, hostname_result VARCHAR(255), runner_id VARCHAR(100),
+            UNIQUE(target_id,credential_id,protocol)
+        );
         ALTER TABLE discovery_scans ADD COLUMN IF NOT EXISTS cleanup_missed_scans INTEGER NOT NULL DEFAULT 10;
         ALTER TABLE discovery_scan_targets ADD COLUMN IF NOT EXISTS consecutive_misses INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS scan_id INTEGER REFERENCES discovery_scans(id) ON DELETE SET NULL;
@@ -168,30 +185,32 @@ def _serialize(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def create_scan(name: str, target_spec: str, target_type: str, schedule_type: str, interval_minutes: int | None, is_enabled: bool, cleanup_enabled: bool=False, cleanup_missed_scans: int=10, service_discovery_enabled: bool=False) -> dict:
+def create_scan(name: str, target_spec: str, target_type: str, schedule_type: str, interval_minutes: int | None, is_enabled: bool, cleanup_enabled: bool=False, cleanup_missed_scans: int=10, service_discovery_enabled: bool=False, credential_id:int|None=None) -> dict:
     now = _now(); next_run = now + timedelta(minutes=interval_minutes) if is_enabled and schedule_type == "interval" and interval_minutes else None
     with SessionLocal() as db:
         row = db.execute(text("""INSERT INTO discovery_scans
-        (scan_uuid,name,target_spec,target_type,schedule_type,interval_minutes,is_enabled,next_run_at,cleanup_enabled,cleanup_missed_scans,service_discovery_enabled,created_at,updated_at)
-        VALUES(:uuid,:name,:spec,:type,:sched,:interval,:enabled,:next,:cleanup_enabled,:cleanup_missed,:service_enabled,:now,:now) RETURNING *"""),
-        {"uuid":_uuid("SCN"),"name":name,"spec":target_spec,"type":target_type,"sched":schedule_type,"interval":interval_minutes,"enabled":is_enabled,"next":next_run,"cleanup_enabled":cleanup_enabled,"cleanup_missed":cleanup_missed_scans,"service_enabled":service_discovery_enabled,"now":now}).mappings().first()
+        (scan_uuid,name,target_spec,target_type,schedule_type,interval_minutes,is_enabled,next_run_at,cleanup_enabled,cleanup_missed_scans,service_discovery_enabled,credential_id,created_at,updated_at)
+        VALUES(:uuid,:name,:spec,:type,:sched,:interval,:enabled,:next,:cleanup_enabled,:cleanup_missed,:service_enabled,:credential_id,:now,:now) RETURNING *"""),
+        {"uuid":_uuid("SCN"),"name":name,"spec":target_spec,"type":target_type,"sched":schedule_type,"interval":interval_minutes,"enabled":is_enabled,"next":next_run,"cleanup_enabled":cleanup_enabled,"cleanup_missed":cleanup_missed_scans,"service_enabled":service_discovery_enabled,"credential_id":credential_id,"now":now}).mappings().first()
         db.commit(); return _serialize(dict(row))
 
 
 def list_scans() -> list[dict]:
     with SessionLocal() as db:
-        rows=db.execute(text("SELECT * FROM discovery_scans ORDER BY created_at DESC")).mappings().all()
+        rows=db.execute(text("""SELECT s.*,c.name AS credential_name,c.credential_type FROM discovery_scans s
+            LEFT JOIN stored_credentials c ON c.id=s.credential_id ORDER BY s.created_at DESC""")).mappings().all()
         return [_serialize(dict(x)) for x in rows]
 
 
 def get_scan(scan_uuid: str) -> dict | None:
     with SessionLocal() as db:
-        row=db.execute(text("SELECT * FROM discovery_scans WHERE scan_uuid=:u"),{"u":scan_uuid}).mappings().first()
+        row=db.execute(text("""SELECT s.*,c.name AS credential_name,c.credential_type FROM discovery_scans s
+            LEFT JOIN stored_credentials c ON c.id=s.credential_id WHERE s.scan_uuid=:u"""),{"u":scan_uuid}).mappings().first()
         return _serialize(dict(row)) if row else None
 
 
 def update_scan(scan_uuid: str, **fields) -> dict | None:
-    allowed={"name","target_spec","target_type","schedule_type","interval_minutes","is_enabled","cleanup_enabled","cleanup_missed_scans","service_discovery_enabled"}
+    allowed={"name","target_spec","target_type","schedule_type","interval_minutes","is_enabled","cleanup_enabled","cleanup_missed_scans","service_discovery_enabled","credential_id"}
     values={k:v for k,v in fields.items() if k in allowed}
     current=get_scan(scan_uuid)
     if not current: return None
@@ -460,6 +479,9 @@ def get_target(target_uuid):
         from app.repositories.service_discovery_repository import list_asset_services
         result["services"]=list_asset_services(int(r["id"]))
         result["service_count"]=len(result["services"])
+        cred=db.execute(text("""SELECT ac.protocol,ac.last_success_at,ac.hostname_result,c.id AS credential_id,c.name AS credential_name,c.credential_type
+            FROM asset_credentials ac JOIN stored_credentials c ON c.id=ac.credential_id WHERE ac.target_id=:id ORDER BY ac.last_success_at DESC"""),{"id":r["id"]}).mappings().all()
+        result["credentials"]=[_serialize(dict(x)) for x in cred]
         return result
 
 
@@ -481,9 +503,13 @@ def get_discovery_run(run_uuid:str) -> dict|None:
         if not row:return None
         result=_serialize(dict(row))
         events=db.execute(text("""SELECT e.*,t.target_uuid,t.display_name,t.hostname,host(t.ip_address) AS ip_address,t.mac_address,
-            sdj.status AS service_status,sdj.service_count,sdj.new_service_count,sdj.error AS service_error
+            sdj.status AS service_status,sdj.service_count,sdj.new_service_count,sdj.error AS service_error,
+            ca.status AS credential_status,ca.attempts_used AS credential_attempts,ca.protocol AS credential_protocol,ca.hostname_result AS credential_hostname,ca.error AS credential_error,
+            sc.name AS credential_name
             FROM enrichment_events e JOIN targets t ON t.id=e.target_id
             LEFT JOIN service_discovery_jobs sdj ON sdj.discovery_run_id=e.discovery_run_id AND sdj.target_id=e.target_id
+            LEFT JOIN credential_attempts ca ON ca.discovery_run_id=e.discovery_run_id AND ca.target_id=e.target_id
+            LEFT JOIN stored_credentials sc ON sc.id=ca.credential_id
             WHERE e.discovery_run_id=:rid ORDER BY e.created_at"""),{"rid":row["id"]}).mappings().all()
         result["assets"]=[_serialize(dict(e)) for e in events]
         return result

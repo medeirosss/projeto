@@ -198,6 +198,9 @@ def get_next_job(runner_id: str):
         if job.get("job_type") == "service_discovery":
             db.execute(text("""UPDATE service_discovery_jobs SET status='running',started_at=COALESCE(started_at,:now) WHERE runner_job_id=:runner_job_id"""), {"runner_job_id": int(job["id"]), "now": datetime.utcnow()})
             db.commit()
+        if job.get("job_type") == "credential_validate":
+            db.execute(text("""UPDATE credential_attempts SET status='running',started_at=COALESCE(started_at,:now) WHERE runner_job_id=:runner_job_id"""), {"runner_job_id": int(job["id"]), "now": datetime.utcnow()})
+            db.commit()
 
         executor = payload.get("executor") or payload.get("type")
         if not executor:

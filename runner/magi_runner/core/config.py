@@ -24,7 +24,7 @@ class RunnerConfig:
     default_timeout_seconds: int = 120
     data_dir: str = "./runner_data"
     log_level: str = "INFO"
-    allowed_executors: list[str] = field(default_factory=lambda: ["cmd", "powershell", "python", "atomic", "nmap_discovery", "service_discovery"])
+    allowed_executors: list[str] = field(default_factory=lambda: ["cmd", "powershell", "python", "atomic", "nmap_discovery", "service_discovery", "credential_validate"])
     nmap_path: str | None = None
     offline_jobs_file: str = "./offline_jobs.json"
     update_enabled: bool = False
@@ -57,7 +57,9 @@ def load_config(path: str | os.PathLike[str]) -> RunnerConfig:
     allowed = list(raw.get("allowed_executors") or [])
     if "nmap_discovery" in allowed and "service_discovery" not in allowed:
         allowed.append("service_discovery")
-        raw["allowed_executors"] = allowed
+    if "service_discovery" in allowed and "credential_validate" not in allowed:
+        allowed.append("credential_validate")
+    raw["allowed_executors"] = allowed
 
     return RunnerConfig(**raw)
 

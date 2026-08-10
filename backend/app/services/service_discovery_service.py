@@ -13,15 +13,7 @@ def enqueue_for_discovery_run(run:dict,targets:list[dict],runner_id:str)->dict:
         ip=str(target.get('ip_address') or '')
         target_id=target.get('id')
         if not ip or not target_id: continue
-        payload={
-            "executor":"service_discovery",
-            "target":ip,
-            "timeout_seconds":120,
-            "profile":"top1000",
-            "version_intensity":"normal",
-            "discovery_run_id":run_id,
-            "target_id":int(target_id),
-        }
+        payload={"executor":"service_discovery","target":ip,"timeout_seconds":120,"profile":"top1000","version_intensity":"normal","discovery_run_id":run_id,"target_id":int(target_id)}
         job=create_runner_job(runner_id=runner_id,job_type='service_discovery',target=ip,payload=payload)
         repo.create_service_job_link(run_id,int(target_id),int(job['id']),runner_id,ip)
         queued+=1
@@ -34,8 +26,9 @@ def ingest_runner_service_result(job_id:int,runner_id:str,status:str,result:dict
     metadata=(result or {}).get('metadata') or {}
     services=[]
     for raw in metadata.get('services') or []:
-        item=dict(raw)
-        knowledge=lookup_service(int(item.get('port') or 0),str(item.get('protocol') or 'tcp'),item.get('service_name'))
-        item.update(knowledge)
-        services.append(item)
-    return repo.ingest_services(runner_job_id=job_id,runner_id=runner_id,status=status,services=services,error=error or result.get('error') or result.get('stderr'),raw_xml=metadata.get('raw_xml'))
+        item=dict(raw); item.update(lookup_service(int(item.get('port') or 0),str(item.get('protocol') or 'tcp'),item.get('service_name'))); services.append(item)
+    out=repo.ingest_services(runner_job_id=job_id,runner_id=runner_id,status=status,services=services,error=error or result.get('error') or result.get('stderr'),raw_xml=metadata.get('raw_xml'))
+    if out and out.get('pipeline_completed'):
+        from app.services.credential_engine_service import enqueue_for_discovery_run
+        out['credential_engine']=enqueue_for_discovery_run(int(out['discovery_run_id']),runner_id)
+    return out
