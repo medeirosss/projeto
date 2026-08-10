@@ -9,11 +9,12 @@ from .python_exec import PythonExecutor
 from .nmap_discovery import NmapDiscoveryExecutor
 from .service_discovery import ServiceDiscoveryExecutor
 from .credential_validate import CredentialValidateExecutor
+from .deep_inventory import DeepInventoryExecutor
 
 
 class ExecutorRegistry:
     def __init__(self, allowed: list[str]) -> None:
-        executors = [CmdExecutor(), PowerShellExecutor(), PythonExecutor(), AtomicExecutor(), NmapDiscoveryExecutor(), ServiceDiscoveryExecutor(), CredentialValidateExecutor()]
+        executors = [CmdExecutor(), PowerShellExecutor(), PythonExecutor(), AtomicExecutor(), NmapDiscoveryExecutor(), ServiceDiscoveryExecutor(), CredentialValidateExecutor(), DeepInventoryExecutor()]
         self._executors = {e.name: e for e in executors if e.name in allowed}
         self._executors["ps"] = self._executors.get("powershell")
         self._executors["pwsh"] = self._executors.get("powershell")

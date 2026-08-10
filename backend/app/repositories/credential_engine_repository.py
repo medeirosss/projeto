@@ -93,9 +93,13 @@ def ingest_attempt_result(*,runner_job_id:int,runner_id:str,status:str,result:di
             COUNT(*) FILTER(WHERE status IN ('failed','error','timeout')) AS failed
             FROM credential_attempts WHERE discovery_run_id=:run"""),{"run":job['discovery_run_id']}).mappings().first()
         completed=int(totals['ok'])+int(totals['failed'])
-        pipeline='completed' if completed>=int(totals['total']) else 'credential_engine'
+        # Deep Inventory, when enabled, is enqueued after each successful credential.
+        # Do not close the pipeline here if at least one Deep Inventory job is expected.
+        cfg=db.execute(text("""SELECT s.deep_inventory_enabled FROM discovery_runs r LEFT JOIN discovery_scans s ON s.id=r.scan_id WHERE r.id=:run"""),{"run":job['discovery_run_id']}).mappings().first()
+        deep_enabled=bool(cfg and cfg.get('deep_inventory_enabled'))
+        pipeline=('deep_inventory' if deep_enabled and auth_ok else ('completed' if completed>=int(totals['total']) else 'credential_engine'))
         db.execute(text("""UPDATE discovery_runs SET credential_jobs_total=:total,credential_jobs_completed=:done,
             credential_jobs_failed=:failed,credential_jobs_success=:ok,pipeline_status=:pipeline WHERE id=:run"""),
             {"total":int(totals['total']),"done":completed,"failed":int(totals['failed']),"ok":int(totals['ok']),"pipeline":pipeline,"run":job['discovery_run_id']})
         db.commit()
-    return {"discovery_run_id":job['discovery_run_id'],"target_id":job['target_id'],"status":final_status,"authenticated":auth_ok,"hostname":hostname,"attempts_used":attempts_used,"pipeline_status":pipeline}
+    return {"discovery_run_id":job['discovery_run_id'],"target_id":job['target_id'],"credential_id":job['credential_id'],"target_ip":str(job['target_ip']),"protocol":protocol,"status":final_status,"authenticated":auth_ok,"hostname":hostname,"attempts_used":attempts_used,"pipeline_status":pipeline}

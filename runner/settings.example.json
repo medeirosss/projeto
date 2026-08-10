@@ -19,7 +19,8 @@
     "atomic",
     "nmap_discovery",
     "service_discovery",
-    "credential_validate"
+    "credential_validate",
+    "deep_inventory"
   ],
   "offline_jobs_file": "./offline_jobs.json",
   "update_enabled": false,

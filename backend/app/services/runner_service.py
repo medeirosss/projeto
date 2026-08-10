@@ -9,6 +9,7 @@ from app.repositories.atomic_repository import update_atomic_execution_from_runn
 from app.services.target_service import ingest_runner_discovery_result
 from app.services.service_discovery_service import ingest_runner_service_result
 from app.services.credential_engine_service import ingest_runner_credential_result
+from app.services.deep_inventory_service import ingest_runner_deep_result
 from app.repositories.runner_repository import (
     create_runner_job,
     create_runner_registration,
@@ -85,7 +86,7 @@ def heartbeat_v2_service(data: dict, headers, remote_addr: str | None = None):
 def get_next_job_v2_service(headers):
     runner_id = _auth_runner_from_headers(headers)
     job = get_next_job(runner_id)
-    if job and job.get("job_type") == "credential_validate":
+    if job and job.get("job_type") in {"credential_validate","deep_inventory"}:
         # Inject plaintext only into the transient HTTP response. runner_jobs stores only credential_id.
         from app.services.credentials_service import get_credential_by_id
         payload = dict(job.get("payload") or {})
@@ -128,13 +129,16 @@ def job_result_v2_service(job_id: int, data: dict, headers):
     discovery = None
     service_discovery = None
     credential_engine = None
+    deep_inventory = None
     if result and result.get("job_type") == "nmap_discovery":
         discovery = ingest_runner_discovery_result(int(job_id), runner_id, status, data, data.get("error"))
     if result and result.get("job_type") == "service_discovery":
         service_discovery = ingest_runner_service_result(int(job_id), runner_id, status, data, data.get("error"))
     if result and result.get("job_type") == "credential_validate":
         credential_engine = ingest_runner_credential_result(int(job_id), runner_id, status, data, data.get("error"))
-    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery, "credential_engine": credential_engine}
+    if result and result.get("job_type") == "deep_inventory":
+        deep_inventory = ingest_runner_deep_result(int(job_id), runner_id, status, data, data.get("error"))
+    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery, "credential_engine": credential_engine, "deep_inventory": deep_inventory}
 
 
 # Legacy /api/runner compatibility used by previous Magi builds.

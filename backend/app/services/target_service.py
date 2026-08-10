@@ -101,7 +101,11 @@ def create_scan(payload):
         from app.repositories.credentials_repository import get_stored_credential_by_id
         credential_id=int(credential_id)
         if not get_stored_credential_by_id(credential_id): raise ValueError("Credencial selecionada não existe ou está desabilitada.")
-    return repo.create_scan(name,spec,target_type(spec),sched,interval,bool(payload.get("is_enabled") and sched=="interval"),cleanup_enabled,cleanup_missed,bool(payload.get("service_discovery_enabled",False)),credential_id)
+    deep_enabled=bool(payload.get("deep_inventory_enabled",False))
+    deep_interval=int(payload.get("deep_inventory_interval_minutes") or 30)
+    if deep_interval not in {10,30,60}: raise ValueError("Deep Inventory aceita intervalos de 10, 30 ou 60 minutos.")
+    if deep_enabled and not credential_id: raise ValueError("Deep Inventory requer uma credencial selecionada no scan.")
+    return repo.create_scan(name,spec,target_type(spec),sched,interval,bool(payload.get("is_enabled") and sched=="interval"),cleanup_enabled,cleanup_missed,bool(payload.get("service_discovery_enabled",False)),credential_id,deep_enabled,deep_interval)
 
 
 list_targets=repo.list_targets; get_target=repo.get_target; list_discovery_runs=repo.list_discovery_runs

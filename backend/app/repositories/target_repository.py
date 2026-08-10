@@ -185,13 +185,13 @@ def _serialize(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def create_scan(name: str, target_spec: str, target_type: str, schedule_type: str, interval_minutes: int | None, is_enabled: bool, cleanup_enabled: bool=False, cleanup_missed_scans: int=10, service_discovery_enabled: bool=False, credential_id:int|None=None) -> dict:
+def create_scan(name: str, target_spec: str, target_type: str, schedule_type: str, interval_minutes: int | None, is_enabled: bool, cleanup_enabled: bool=False, cleanup_missed_scans: int=10, service_discovery_enabled: bool=False, credential_id:int|None=None, deep_inventory_enabled:bool=False, deep_inventory_interval_minutes:int=30) -> dict:
     now = _now(); next_run = now + timedelta(minutes=interval_minutes) if is_enabled and schedule_type == "interval" and interval_minutes else None
     with SessionLocal() as db:
         row = db.execute(text("""INSERT INTO discovery_scans
-        (scan_uuid,name,target_spec,target_type,schedule_type,interval_minutes,is_enabled,next_run_at,cleanup_enabled,cleanup_missed_scans,service_discovery_enabled,credential_id,created_at,updated_at)
-        VALUES(:uuid,:name,:spec,:type,:sched,:interval,:enabled,:next,:cleanup_enabled,:cleanup_missed,:service_enabled,:credential_id,:now,:now) RETURNING *"""),
-        {"uuid":_uuid("SCN"),"name":name,"spec":target_spec,"type":target_type,"sched":schedule_type,"interval":interval_minutes,"enabled":is_enabled,"next":next_run,"cleanup_enabled":cleanup_enabled,"cleanup_missed":cleanup_missed_scans,"service_enabled":service_discovery_enabled,"credential_id":credential_id,"now":now}).mappings().first()
+        (scan_uuid,name,target_spec,target_type,schedule_type,interval_minutes,is_enabled,next_run_at,cleanup_enabled,cleanup_missed_scans,service_discovery_enabled,credential_id,deep_inventory_enabled,deep_inventory_interval_minutes,created_at,updated_at)
+        VALUES(:uuid,:name,:spec,:type,:sched,:interval,:enabled,:next,:cleanup_enabled,:cleanup_missed,:service_enabled,:credential_id,:deep_enabled,:deep_interval,:now,:now) RETURNING *"""),
+        {"uuid":_uuid("SCN"),"name":name,"spec":target_spec,"type":target_type,"sched":schedule_type,"interval":interval_minutes,"enabled":is_enabled,"next":next_run,"cleanup_enabled":cleanup_enabled,"cleanup_missed":cleanup_missed_scans,"service_enabled":service_discovery_enabled,"credential_id":credential_id,"deep_enabled":deep_inventory_enabled,"deep_interval":deep_inventory_interval_minutes,"now":now}).mappings().first()
         db.commit(); return _serialize(dict(row))
 
 
@@ -210,7 +210,7 @@ def get_scan(scan_uuid: str) -> dict | None:
 
 
 def update_scan(scan_uuid: str, **fields) -> dict | None:
-    allowed={"name","target_spec","target_type","schedule_type","interval_minutes","is_enabled","cleanup_enabled","cleanup_missed_scans","service_discovery_enabled","credential_id"}
+    allowed={"name","target_spec","target_type","schedule_type","interval_minutes","is_enabled","cleanup_enabled","cleanup_missed_scans","service_discovery_enabled","credential_id","deep_inventory_enabled","deep_inventory_interval_minutes"}
     values={k:v for k,v in fields.items() if k in allowed}
     current=get_scan(scan_uuid)
     if not current: return None
@@ -482,6 +482,13 @@ def get_target(target_uuid):
         cred=db.execute(text("""SELECT ac.protocol,ac.last_success_at,ac.hostname_result,c.id AS credential_id,c.name AS credential_name,c.credential_type
             FROM asset_credentials ac JOIN stored_credentials c ON c.id=ac.credential_id WHERE ac.target_id=:id ORDER BY ac.last_success_at DESC"""),{"id":r["id"]}).mappings().all()
         result["credentials"]=[_serialize(dict(x)) for x in cred]
+        try:
+            from app.repositories.deep_inventory_repository import get_snapshot,list_hardware_changes,list_process_findings
+            result["deep_inventory"]=get_snapshot(int(r["id"]))
+            result["hardware_changes"]=list_hardware_changes(int(r["id"]),100)
+            result["process_findings"]=list_process_findings(int(r["id"]))
+        except Exception:
+            result["deep_inventory"]=None; result["hardware_changes"]=[]; result["process_findings"]=[]
         return result
 
 
@@ -505,11 +512,12 @@ def get_discovery_run(run_uuid:str) -> dict|None:
         events=db.execute(text("""SELECT e.*,t.target_uuid,t.display_name,t.hostname,host(t.ip_address) AS ip_address,t.mac_address,
             sdj.status AS service_status,sdj.service_count,sdj.new_service_count,sdj.error AS service_error,
             ca.status AS credential_status,ca.attempts_used AS credential_attempts,ca.protocol AS credential_protocol,ca.hostname_result AS credential_hostname,ca.error AS credential_error,
-            sc.name AS credential_name
+            sc.name AS credential_name,dij.status AS deep_inventory_status,dij.hardware_changes AS deep_hardware_changes,dij.process_findings AS deep_process_findings,dij.error AS deep_inventory_error
             FROM enrichment_events e JOIN targets t ON t.id=e.target_id
             LEFT JOIN service_discovery_jobs sdj ON sdj.discovery_run_id=e.discovery_run_id AND sdj.target_id=e.target_id
             LEFT JOIN credential_attempts ca ON ca.discovery_run_id=e.discovery_run_id AND ca.target_id=e.target_id
             LEFT JOIN stored_credentials sc ON sc.id=ca.credential_id
+            LEFT JOIN deep_inventory_jobs dij ON dij.discovery_run_id=e.discovery_run_id AND dij.target_id=e.target_id
             WHERE e.discovery_run_id=:rid ORDER BY e.created_at"""),{"rid":row["id"]}).mappings().all()
         result["assets"]=[_serialize(dict(e)) for e in events]
         return result

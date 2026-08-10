@@ -1,3 +1,11 @@
+# Sprint 3.2 — 2026-08-10
+- Deep Inventory opcional com intervalos de 10, 30 ou 60 minutos.
+- Snapshot atual de hardware/sistema sem série histórica de métricas.
+- Histórico somente quando há mudança estrutural de hardware.
+- Process Knowledge Base e findings persistentes de processos de interesse.
+- Runner 2.14.0 com executor `deep_inventory`.
+- Migration `20260810_0023`.
+
 # Sprint 3.1 — 2026-08-10
 - Credential Engine opcional por scan.
 - Cofre de credenciais criptografado no PostgreSQL.

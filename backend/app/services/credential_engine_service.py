@@ -41,4 +41,12 @@ def enqueue_for_discovery_run(discovery_run_id:int,runner_id:str)->dict:
 
 
 def ingest_runner_credential_result(job_id:int,runner_id:str,status:str,result:dict,error:str|None=None):
-    return repo.ingest_attempt_result(runner_job_id=job_id,runner_id=runner_id,status=status,result=result,error=error)
+    out=repo.ingest_attempt_result(runner_job_id=job_id,runner_id=runner_id,status=status,result=result,error=error)
+    if out:
+        from app.services.deep_inventory_service import maybe_enqueue_after_credential
+        deep=maybe_enqueue_after_credential(out,runner_id,bool(out.get('authenticated')))
+        if deep: out['deep_inventory_job_id']=deep.get('id')
+        elif out.get('discovery_run_id'):
+            from app.repositories.deep_inventory_repository import finalize_run_if_no_deep
+            finalize_run_if_no_deep(int(out['discovery_run_id']))
+    return out

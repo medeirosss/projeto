@@ -25,6 +25,24 @@ async def api_save_compliance(payload:dict=Body(...)):
     try: return {"items":repo.save_compliance_rules(payload.get("items") or [])}
     except ValueError as exc: raise HTTPException(422,str(exc)) from exc
 
+
+@router.get("/process-rules")
+async def api_process_rules():
+    from app.repositories.deep_inventory_repository import get_process_rules
+    return {"items":get_process_rules(False)}
+
+@router.post("/process-rules")
+async def api_save_process_rule(payload:dict=Body(...)):
+    from app.repositories.deep_inventory_repository import save_process_rule
+    try: return save_process_rule(payload)
+    except ValueError as exc: raise HTTPException(422,str(exc)) from exc
+
+@router.delete("/process-rules/{rule_id}")
+async def api_delete_process_rule(rule_id:int):
+    from app.repositories.deep_inventory_repository import delete_process_rule
+    if not delete_process_rule(rule_id): raise HTTPException(404,"Regra não encontrada.")
+    return {"success":True}
+
 @router.get("/scoring-policy")
 async def api_scoring_policy(): return scoring_policy()
 
@@ -64,6 +82,7 @@ async def api_update_scan(scan_uuid:str,payload:dict=Body(...)):
         effective_schedule=payload.get("schedule_type")
         if effective_schedule=="interval" and int(payload.get("interval_minutes") or 0)<15: raise ValueError("O intervalo mínimo é de 15 minutos.")
         if "cleanup_missed_scans" in payload and int(payload.get("cleanup_missed_scans") or 0)<3: raise ValueError("Cleanup requer no mínimo 3 scans ausentes.")
+        if "deep_inventory_interval_minutes" in payload and int(payload.get("deep_inventory_interval_minutes") or 0) not in {10,30,60}: raise ValueError("Deep Inventory aceita 10, 30 ou 60 minutos.")
         scan=repo.update_scan(scan_uuid,**payload)
         if not scan: raise HTTPException(404,"Scan não encontrado.")
         return scan
