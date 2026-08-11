@@ -1,3 +1,16 @@
+# Changelog
+
+## v000.9.0-sprint4.0 — Repository / Planner / Evidence / Remediation
+- Novo Repository Engine com providers MAGI, Atomic Red Team e Nuclei (provider Nuclei preparado, não habilitado para execução nesta build).
+- Novo catálogo nativo MAGI Security Checks.
+- Execution Planner valida target, tarefa, aprovação administrativa e Runner online antes de enfileirar.
+- Novo executor `security_check` no Runner.
+- Checks defensivos iniciais: RDP/3389, SMB/445, WinRM/5985, WinRM HTTPS/5986, SSH/22 e Telnet/23.
+- Evidence Engine persiste estado observado, porta, latência, ponto de observação e resultado do finding.
+- Remediation associada a cada check e persistida no histórico.
+- Nova área Repositórios dentro de Tarefas, com sincronização, catálogo, planejamento e execução.
+- Mantida a política do produto: risco/impacto é metadado; bloqueio de execução ocorre por desabilitação/não aprovação administrativa.
+
 # Sprint 3.2 — 2026-08-10
 - Deep Inventory opcional com intervalos de 10, 30 ou 60 minutos.
 - Snapshot atual de hardware/sistema sem série histórica de métricas.
@@ -28,7 +41,6 @@
 - Fallback para DNS do sistema.
 - Persistência de dns_name e hostname_source.
 
-# Changelog
 
 ## 0.8.0-validation-history
 

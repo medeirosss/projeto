@@ -204,6 +204,9 @@ def get_next_job(runner_id: str):
         if job.get("job_type") == "deep_inventory":
             db.execute(text("""UPDATE deep_inventory_jobs SET status='running',started_at=COALESCE(started_at,:now) WHERE runner_job_id=:runner_job_id"""), {"runner_job_id": int(job["id"]), "now": datetime.utcnow()})
             db.commit()
+        if job.get("job_type") == "security_check":
+            from app.repositories.validation_repository import mark_execution_running
+            mark_execution_running(int(job["id"]))
 
         executor = payload.get("executor") or payload.get("type")
         if not executor:

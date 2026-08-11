@@ -20,7 +20,8 @@
     "nmap_discovery",
     "service_discovery",
     "credential_validate",
-    "deep_inventory"
+    "deep_inventory",
+    "security_check"
   ],
   "offline_jobs_file": "./offline_jobs.json",
   "update_enabled": false,

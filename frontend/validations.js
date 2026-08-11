@@ -250,18 +250,42 @@ async function importAtomicCatalog(){
 }
 
 
+async function loadRepositories(){
+  const data=await fetchJson('/api/repositories/summary'); const summary=data.summary||{};
+  document.getElementById('repoCount').textContent=summary.repositories||0; document.getElementById('repoAvailable').textContent=summary.available_repositories||0; document.getElementById('repoTasks').textContent=summary.tasks||0; document.getElementById('repoEnabledTasks').textContent=summary.enabled_tasks||0;
+  const tbody=document.getElementById('repositoriesTable'); const rows=data.repositories||[];
+  tbody.innerHTML=rows.map(r=>`<tr><td><strong>${escapeHtml(r.name)}</strong><br><small>${escapeHtml(r.repository_key)}</small></td><td>${escapeHtml(r.provider)}</td><td>${r.available?'<span class="badge badge-ok">Disponível</span>':'<span class="badge badge-muted">Preparado</span>'}</td><td>${r.task_count||0}</td><td>${escapeHtml(r.description||'--')}</td></tr>`).join('')||'<tr><td colspan="5">Nenhum repositório.</td></tr>';
+}
+async function loadMagiChecks(){
+  const search=document.getElementById('magiCheckSearch')?.value.trim()||''; const url=new URL('/api/repositories/tasks',window.location.origin); url.searchParams.set('repository_key','magi'); if(search)url.searchParams.set('search',search);
+  const data=await fetchJson(url); const tbody=document.getElementById('magiChecksTable'); const rows=data.tasks||[];
+  tbody.innerHTML=rows.map(r=>`<tr><td><strong>${escapeHtml(r.task_key)} - ${escapeHtml(r.name)}</strong><br><small>${escapeHtml(r.description||'')}</small></td><td>${escapeHtml(r.category||'--')}</td><td>${escapeHtml(r.platform||'--')}</td><td>${riskBadge(r.impact)}</td><td><code>${escapeHtml(JSON.stringify(r.detection||{}))}</code></td><td>${escapeHtml(r.remediation||'--')}</td><td class="action-cell"><button class="btn secondary btn-sm magi-plan" data-id="${r.id}">Planejar</button> <button class="btn primary btn-sm magi-execute" data-id="${r.id}">Executar</button></td></tr>`).join('')||'<tr><td colspan="7">Nenhum check.</td></tr>';
+  document.querySelectorAll('.magi-plan').forEach(b=>b.addEventListener('click',()=>runMagiCheck(b.dataset.id,true))); document.querySelectorAll('.magi-execute').forEach(b=>b.addEventListener('click',()=>runMagiCheck(b.dataset.id,false)));
+}
+async function runMagiCheck(id,planOnly){
+  const target=document.getElementById('magiCheckTarget').value.trim(), out=document.getElementById('magiCheckResult'); if(!target){out.textContent='Target obrigatório.';return;}
+  if(!planOnly&&!confirm(`Executar check defensivo em ${target}?`))return; out.textContent=planOnly?'Montando plano...':'Enviando ao Runner...';
+  try{const data=await fetchJson(`/api/repositories/tasks/${id}/${planOnly?'plan':'execute'}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target})});out.textContent=jsonPretty(data);}catch(e){out.textContent=e.message;}
+}
+async function syncRepositories(){const out=document.getElementById('magiCheckResult');out.textContent='Sincronizando...';try{const d=await fetchJson('/api/repositories/sync',{method:'POST'});out.textContent=jsonPretty(d);await loadRepositories();await loadMagiChecks();}catch(e){out.textContent=e.message;}}
+
 function showValidationSection(key){
   const tasks = document.getElementById('tasksSection');
   const history = document.getElementById('historySection');
-  if(tasks) tasks.hidden = key === 'history';
+  const repositories = document.getElementById('repositoriesSection');
+  if(tasks) tasks.hidden = key !== 'tasks';
   if(history) history.hidden = key !== 'history';
+  if(repositories) repositories.hidden = key !== 'repositories';
   if(key === 'history') loadAtomicExecutions().catch(()=>{});
+  if(key === 'repositories'){ loadRepositories().catch(()=>{}); loadMagiChecks().catch(()=>{}); }
 }
 
 function bindValidationsUi(){
   buildHeader('validations');
   initializeBranding();
-  renderModuleSidebar('validationsSidebar', [{title:'Tarefas', items:[{key:'tasks', label:'Tarefas'},{key:'history', label:'Histórico'}]}], showValidationSection);
+  renderModuleSidebar('validationsSidebar', [{title:'Validação', items:[{key:'tasks', label:'Tarefas'},{key:'repositories', label:'Repositórios'},{key:'history', label:'Histórico'}]}], showValidationSection);
+  document.getElementById('repositoriesSyncBtn')?.addEventListener('click', syncRepositories);
+  document.getElementById('magiCheckSearch')?.addEventListener('input', ()=>{clearTimeout(window.__magiCheckTimer);window.__magiCheckTimer=setTimeout(loadMagiChecks,250);});
   document.getElementById('atomicImportBtn')?.addEventListener('click', importAtomicCatalog);
   document.getElementById('atomicRefreshBtn')?.addEventListener('click', async ()=>{ await loadAtomicSummary(); await loadAtomicTechniques(); if(selectedTechniqueId) await selectTechnique(selectedTechniqueId); });
   document.getElementById('atomicExecutionsRefreshBtn')?.addEventListener('click', loadAtomicExecutions);

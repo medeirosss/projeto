@@ -130,6 +130,7 @@ def job_result_v2_service(job_id: int, data: dict, headers):
     service_discovery = None
     credential_engine = None
     deep_inventory = None
+    security_check = None
     if result and result.get("job_type") == "nmap_discovery":
         discovery = ingest_runner_discovery_result(int(job_id), runner_id, status, data, data.get("error"))
     if result and result.get("job_type") == "service_discovery":
@@ -138,7 +139,10 @@ def job_result_v2_service(job_id: int, data: dict, headers):
         credential_engine = ingest_runner_credential_result(int(job_id), runner_id, status, data, data.get("error"))
     if result and result.get("job_type") == "deep_inventory":
         deep_inventory = ingest_runner_deep_result(int(job_id), runner_id, status, data, data.get("error"))
-    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery, "credential_engine": credential_engine, "deep_inventory": deep_inventory}
+    if result and result.get("job_type") == "security_check":
+        from app.repositories.validation_repository import ingest_execution_result
+        security_check = ingest_execution_result(int(job_id), status, data, data.get("error"))
+    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery, "credential_engine": credential_engine, "deep_inventory": deep_inventory, "security_check": security_check}
 
 
 # Legacy /api/runner compatibility used by previous Magi builds.

@@ -18,6 +18,14 @@
       <details class="card alerts-card" style="margin-top:16px"><summary class="card-header">Manutenção do catálogo</summary><div class="card-body"><div class="form-grid"><label>Caminho do repositório atual<input id="atomicSourcePath" placeholder="/opt/atomic-red-team/atomics"></label></div><div class="detail-actions"><button class="btn primary btn-sm" id="atomicImportBtn" type="button">Importar catálogo</button><button class="btn secondary btn-sm" id="atomicRefreshBtn" type="button">Atualizar lista</button></div><pre id="atomicImportResult" class="result-box">Aguardando importação.</pre></div></details>
     </section>
 
+
+    <section id="repositoriesSection" class="report-section" hidden>
+      <div class="toolbar"><div><div class="title">Repositórios</div><p class="section-subtitle">Catálogos de validação e checks defensivos disponíveis no MAGI.</p></div><button class="btn secondary btn-sm" id="repositoriesSyncBtn" type="button">Sincronizar</button></div>
+      <div class="mini-stats alert-stats"><div class="mini-stat"><small>Repositórios</small><strong id="repoCount">0</strong></div><div class="mini-stat"><small>Disponíveis</small><strong id="repoAvailable">0</strong></div><div class="mini-stat"><small>Tarefas</small><strong id="repoTasks">0</strong></div><div class="mini-stat"><small>Ativas</small><strong id="repoEnabledTasks">0</strong></div></div>
+      <div class="card alerts-card"><div class="card-header">Providers</div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Repositório</th><th>Provider</th><th>Status</th><th>Tarefas</th><th>Descrição</th></tr></thead><tbody id="repositoriesTable"></tbody></table></div></div></div>
+      <div class="card alerts-card" style="margin-top:16px"><div class="card-header">MAGI Security Checks</div><div class="card-body"><div class="form-grid"><label>Target<input id="magiCheckTarget" placeholder="Ex.: 192.168.0.100 ou HOST01"></label><label>Buscar<input id="magiCheckSearch" placeholder="RDP, SMB, WinRM..."></label></div><div class="table-wrap"><table><thead><tr><th>Check</th><th>Categoria</th><th>Plataforma</th><th>Impacto</th><th>Detecção</th><th>Remediação</th><th>Ação</th></tr></thead><tbody id="magiChecksTable"></tbody></table></div><pre id="magiCheckResult" class="result-box">Selecione um check para planejar ou executar.</pre></div></div>
+    </section>
+
     <section id="historySection" class="report-section" hidden>
       <div class="toolbar"><div><div class="title">Histórico</div><p class="section-subtitle">Histórico separado dos jobs enviados ao Runner.</p></div><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar histórico</button></div>
       <div class="card alerts-card"><div class="card-body">
