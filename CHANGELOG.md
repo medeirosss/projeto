@@ -115,3 +115,8 @@
 - Preserva portas abertas desconhecidas e metadados Nmap (OS hint, CPE, tunnel e fingerprint).
 - Adiciona artefatos de troubleshooting e teste de regressão do parser.
 - Runner 2.12.1; Alembic 20260807_0021.
+
+## Sprint 4.0.1 - migration hotfix
+- Corrige falha PostgreSQL/Alembic na migration 0025 causada pelo identificador reservado `references`.
+- Mantém o nome lógico/API `references`, usando identificador SQL corretamente delimitado (`"references"`).
+- Corrige também o fallback `ensure_validation_schema()` e o UPSERT de `validation_tasks` para impedir recorrência após o startup.

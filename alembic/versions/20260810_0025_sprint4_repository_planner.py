@@ -43,7 +43,7 @@ def upgrade():
       enabled BOOLEAN NOT NULL DEFAULT TRUE,
       detection JSONB NOT NULL DEFAULT '{}'::jsonb,
       remediation TEXT,
-      references JSONB NOT NULL DEFAULT '[]'::jsonb,
+      "references" JSONB NOT NULL DEFAULT '[]'::jsonb,
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
