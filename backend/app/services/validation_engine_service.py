@@ -53,6 +53,37 @@ def _iso_sort_value(value):
     return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
 
+def _atomic_confirmation_status(row:dict):
+    evidence=row.get("evidence") or {}
+    meta=evidence.get("metadata") or {}
+    explicit=evidence.get("confirmation_status") or meta.get("confirmation_status")
+    if explicit:
+        return explicit
+    status=str(row.get("status") or "").lower()
+    if status in {"failed","error","timeout","blocked"}:
+        return "error"
+    if bool(row.get("executed_real_test")) and status=="success":
+        return "executed_unverified"
+    return None
+
+def _atomic_confirmation_message(row:dict):
+    evidence=row.get("evidence") or {}
+    meta=evidence.get("metadata") or {}
+    confirmation=_atomic_confirmation_status(row)
+    scope=evidence.get("execution_scope") or meta.get("execution_scope")
+    requested=evidence.get("requested_target") or meta.get("requested_target") or row.get("target_host")
+    if confirmation=="executed_unverified":
+        if scope=="runner_local":
+            return f"Atomic executado no Runner; efeito não confirmado no target solicitado {requested or '--'}."
+        return "Atomic executado; efeito pós-execução ainda não confirmado por evidência independente."
+    if confirmation=="confirmed":
+        return "Efeito da técnica confirmado por evidência pós-execução."
+    if confirmation=="not_confirmed":
+        return "Comando executado, mas o efeito esperado não foi confirmado."
+    if confirmation=="error":
+        return row.get("error_message") or "Execução Atomic falhou ou foi interrompida."
+    return None
+
 def _normalize_atomic(row:dict):
     return {
         "source":"atomic", "source_label":"Atomic Red Team", "id":row.get("id"),
@@ -60,8 +91,10 @@ def _normalize_atomic(row:dict):
         "atomic_test_number":row.get("atomic_test_number"), "task_key":row.get("technique_id"),
         "task_name":row.get("atomic_name"), "executor":row.get("executor_name") or "atomic",
         "runner_id":row.get("runner_id"), "runner_job_id":row.get("runner_job_id"),
-        "target":row.get("target_host"), "status":row.get("status"), "finding_status":None,
-        "finding_message":None, "requested_by":row.get("requested_by"), "approved_by":row.get("approved_by"),
+        "target":row.get("target_host"), "status":row.get("status"),
+        "finding_status":_atomic_confirmation_status(row),
+        "finding_message":_atomic_confirmation_message(row),
+        "requested_by":row.get("requested_by"), "approved_by":row.get("approved_by"),
         "created_at":row.get("created_at"), "started_at":row.get("started_at"), "finished_at":row.get("finished_at"),
         "duration_seconds":row.get("duration_seconds"), "executed_real_test":bool(row.get("executed_real_test")),
         "error":row.get("error_message") or row.get("block_reason"), "evidence":row.get("evidence") or {},

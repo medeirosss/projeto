@@ -74,6 +74,12 @@ class JobScheduler:
                 "finished_at": result.finished_at,
                 "duration_seconds": result.duration_seconds,
                 "metadata": result.metadata,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "executed_real_test": bool((result.metadata or {}).get("executed_real_test")),
+                "confirmation_status": (result.metadata or {}).get("confirmation_status"),
+                "execution_scope": (result.metadata or {}).get("execution_scope"),
+                "requested_target": (result.metadata or {}).get("requested_target"),
                 "evidence_summary": summarize_evidence(evidence),
             }
             self.artifacts.write_json(job_dir, "metadata.json", summary)

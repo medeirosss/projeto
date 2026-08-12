@@ -177,7 +177,13 @@ function buildHistoryUrl(){
 
 function findingBadge(row){
   const finding=String(row.finding_status||'').toLowerCase();
-  if(row.source==='atomic') return row.executed_real_test ? '<span class="badge badge-ok">EXECUTADO</span>' : '<span class="badge badge-muted">SEM CONFIRMAÇÃO REAL</span>';
+  if(row.source==='atomic'){
+    if(finding==='confirmed') return '<span class="badge badge-ok">CONFIRMADO</span>';
+    if(finding==='not_confirmed') return '<span class="badge badge-danger">NÃO CONFIRMADO</span>';
+    if(finding==='executed_unverified') return '<span class="badge badge-muted">EXECUTADO / NÃO VERIFICADO</span>';
+    if(finding==='error') return '<span class="badge badge-danger">ERRO</span>';
+    return row.executed_real_test ? '<span class="badge badge-muted">EXECUTADO / NÃO VERIFICADO</span>' : '<span class="badge badge-muted">PENDENTE</span>';
+  }
   if(finding==='detected') return '<span class="badge badge-danger">DETECTADO</span>';
   if(finding==='not_detected') return '<span class="badge badge-ok">NÃO DETECTADO</span>';
   if(finding==='error') return '<span class="badge badge-danger">ERRO</span>';
@@ -240,6 +246,10 @@ async function showExecutionDetail(source, executionId){
       finished_at: row.finished_at,
       duration_seconds: row.duration_seconds,
       executed_real_test: row.executed_real_test,
+      confirmation_status: row.finding_status,
+      confirmation_message: row.finding_message,
+      execution_scope: row.evidence?.execution_scope || row.evidence?.metadata?.execution_scope || null,
+      requested_target: row.evidence?.requested_target || row.evidence?.metadata?.requested_target || row.target,
       evidence: row.evidence,
       remediation: row.remediation,
       error: row.error,

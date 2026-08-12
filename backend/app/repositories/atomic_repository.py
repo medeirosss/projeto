@@ -474,7 +474,12 @@ def update_atomic_execution_from_runner_job(runner_job_id: int, runner_id: str, 
             "stdout": result.get("stdout"),
             "stderr": result.get("stderr"),
             "error_message": error or result.get("error_message"),
-            "executed_real_test": bool(result.get("executed_real_test") or result.get("mode") == "execute_lab" or result.get("allow_real_execution")),
+            "executed_real_test": bool(
+                result.get("executed_real_test")
+                or (result.get("metadata") or {}).get("executed_real_test")
+                or result.get("mode") == "execute_lab"
+                or result.get("allow_real_execution")
+            ),
             "evidence": _json(result),
             "now": datetime.utcnow(),
         }).mappings().first()

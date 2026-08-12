@@ -1,3 +1,11 @@
+## v000.9.0-sprint4.0.3 — Atomic Evidence Engine hardening
+
+- Atomic agora preserva stdout/stderr no retorno do Runner.
+- `executed_real_test` passa a refletir a execução real do Atomic.
+- Novo estado `executed_unverified` evita tratar exit code 0 como confirmação de efeito.
+- Evidência explicita `execution_scope=runner_local` e target solicitado.
+- Sem migration de banco.
+
 # Changelog
 
 ## v000.9.0-sprint4.0.2 — Unified Validation History
