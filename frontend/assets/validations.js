@@ -155,8 +155,8 @@ async function executeTask(testId){
 }
 
 function buildHistoryUrl(){
-  const url = new URL('/api/validations/atomic/executions', window.location.origin);
-  url.searchParams.set('limit', '50');
+  const url = new URL('/api/repositories/executions', window.location.origin);
+  url.searchParams.set('limit', '100');
   const fields = [
     ['historySearch', 'search'],
     ['historyTechnique', 'technique_id'],
@@ -165,6 +165,7 @@ function buildHistoryUrl(){
     ['historyRequestedBy', 'requested_by'],
     ['historyDateFrom', 'date_from'],
     ['historyDateTo', 'date_to'],
+    ['historySource', 'source'],
   ];
   fields.forEach(([id, param]) => {
     const el = document.getElementById(id);
@@ -174,60 +175,75 @@ function buildHistoryUrl(){
   return url;
 }
 
+function findingBadge(row){
+  const finding=String(row.finding_status||'').toLowerCase();
+  if(row.source==='atomic') return row.executed_real_test ? '<span class="badge badge-ok">EXECUTADO</span>' : '<span class="badge badge-muted">SEM CONFIRMAÇÃO REAL</span>';
+  if(finding==='detected') return '<span class="badge badge-danger">DETECTADO</span>';
+  if(finding==='not_detected') return '<span class="badge badge-ok">NÃO DETECTADO</span>';
+  if(finding==='error') return '<span class="badge badge-danger">ERRO</span>';
+  return '<span class="badge badge-muted">PENDENTE</span>';
+}
+
 async function loadAtomicExecutions(){
   const data = await fetchJson(buildHistoryUrl().toString());
   const tbody = document.getElementById('atomicExecutionsTable');
   const rows = data.executions || [];
   const meta = document.getElementById('atomicHistoryMeta');
-  if(meta) meta.textContent = `Histórico de validações: ${data.total || rows.length || 0} registro(s). Exibindo ${rows.length}.`;
-  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="10">Nenhuma execução encontrada para os filtros atuais.</td></tr>'; return; }
-  tbody.innerHTML = rows.map(row => `
-    <tr>
-      <td><strong>${row.id}</strong><br><small>${safeText(row.execution_uuid)}</small></td>
-      <td>${safeText(row.technique_id)} #${safeText(row.atomic_test_number)}</td>
-      <td><strong>${safeText(row.atomic_name)}</strong><br><small>${safeText(row.executor_name)}</small></td>
+  if(meta) meta.textContent = `Histórico unificado: ${data.total || rows.length || 0} registro(s). Exibindo ${rows.length}.`;
+  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="12">Nenhuma execução encontrada para os filtros atuais.</td></tr>'; return; }
+  tbody.innerHTML = rows.map(row => {
+    const technique = row.source === 'atomic'
+      ? `${safeText(row.technique_id)} #${safeText(row.atomic_test_number)}`
+      : safeText(row.task_key);
+    const sourceLabel = row.source === 'atomic' ? 'Atomic Red Team' : 'MAGI';
+    return `<tr>
+      <td><strong>${safeText(row.id)}</strong><br><small>${safeText(row.execution_uuid)}</small></td>
+      <td><span class="badge ${row.source==='magi'?'badge-ok':'badge-muted'}">${escapeHtml(sourceLabel)}</span></td>
+      <td>${escapeHtml(technique)}</td>
+      <td><strong>${escapeHtml(row.task_name||'--')}</strong><br><small>${escapeHtml(row.executor||'--')}</small></td>
       <td>${safeText(row.runner_id)}${row.runner_job_id ? `<br><small>Job ${safeText(row.runner_job_id)}</small>` : ''}</td>
-      <td>${safeText(row.target_host)}</td>
-      <td>${statusBadge(row.status)}${row.executed_real_test ? '<br><span class="badge badge-ok">REAL</span>' : ''}${row.block_reason ? `<br><small>${escapeHtml(row.block_reason)}</small>` : ''}${row.error_message ? `<br><small>${escapeHtml(row.error_message)}</small>` : ''}</td>
+      <td>${safeText(row.target)}</td>
+      <td>${statusBadge(row.status)}${row.error ? `<br><small>${escapeHtml(row.error)}</small>` : ''}</td>
+      <td>${findingBadge(row)}${row.finding_message ? `<br><small>${escapeHtml(row.finding_message)}</small>` : ''}</td>
       <td>${formatDuration(row.duration_seconds)}</td>
       <td>${safeText(row.requested_by)}${row.approved_by ? `<br><small>Aprovado por ${safeText(row.approved_by)}</small>` : ''}</td>
       <td>${formatDateTime(row.created_at)}</td>
-      <td class="action-cell">
-        <button class="btn secondary btn-sm execution-detail" data-id="${row.id}">Detalhes</button>
-      </td>
-    </tr>`).join('');
-  document.querySelectorAll('.execution-detail').forEach(btn => btn.addEventListener('click', () => showExecutionDetail(btn.dataset.id)));
+      <td class="action-cell"><button class="btn secondary btn-sm execution-detail" data-source="${row.source}" data-id="${row.id}">Detalhes</button></td>
+    </tr>`;
+  }).join('');
+  document.querySelectorAll('.execution-detail').forEach(btn => btn.addEventListener('click', () => showExecutionDetail(btn.dataset.source, btn.dataset.id)));
 }
 
-async function showExecutionDetail(executionId){
+async function showExecutionDetail(source, executionId){
   const result = document.getElementById('historyExecutionResult') || document.getElementById('atomicExecutionResult');
   result.textContent = `Carregando detalhes da execução ${executionId}...`;
   try{
-    const data = await fetchJson(`/api/validations/atomic/executions/${executionId}`);
+    const data = await fetchJson(`/api/repositories/executions/${encodeURIComponent(source)}/${executionId}`);
     const row = data.execution || {};
-    const evidence = row.evidence || {};
     result.textContent = jsonPretty({
+      source: row.source_label || row.source,
       id: row.id,
       execution_uuid: row.execution_uuid,
-      technique: `${row.technique_id} #${row.atomic_test_number}`,
-      atomic_name: row.atomic_name,
+      technique_or_check: row.source === 'atomic' ? `${row.technique_id || '--'} #${row.atomic_test_number || '--'}` : row.task_key,
+      task_name: row.task_name,
+      executor: row.executor,
       status: row.status,
+      finding_status: row.finding_status,
+      finding_message: row.finding_message,
       runner_id: row.runner_id,
       runner_job_id: row.runner_job_id,
+      target: row.target,
       requested_by: row.requested_by,
       approved_by: row.approved_by,
       created_at: row.created_at,
       started_at: row.started_at,
       finished_at: row.finished_at,
       duration_seconds: row.duration_seconds,
-      exit_code: row.exit_code,
-      command_preview: row.command_preview,
-      stdout: row.stdout,
-      stderr: row.stderr,
-      error_message: row.error_message,
       executed_real_test: row.executed_real_test,
-      evidence,
-      payload: row.payload
+      evidence: row.evidence,
+      remediation: row.remediation,
+      error: row.error,
+      raw: row.raw
     });
   }catch(err){ result.textContent = err.message; }
 }
@@ -250,27 +266,51 @@ async function importAtomicCatalog(){
 }
 
 
+async function loadRepositories(){
+  const data=await fetchJson('/api/repositories/summary'); const summary=data.summary||{};
+  document.getElementById('repoCount').textContent=summary.repositories||0; document.getElementById('repoAvailable').textContent=summary.available_repositories||0; document.getElementById('repoTasks').textContent=summary.tasks||0; document.getElementById('repoEnabledTasks').textContent=summary.enabled_tasks||0;
+  const tbody=document.getElementById('repositoriesTable'); const rows=data.repositories||[];
+  tbody.innerHTML=rows.map(r=>`<tr><td><strong>${escapeHtml(r.name)}</strong><br><small>${escapeHtml(r.repository_key)}</small></td><td>${escapeHtml(r.provider)}</td><td>${r.available?'<span class="badge badge-ok">Disponível</span>':'<span class="badge badge-muted">Preparado</span>'}</td><td>${r.task_count||0}</td><td>${escapeHtml(r.description||'--')}</td></tr>`).join('')||'<tr><td colspan="5">Nenhum repositório.</td></tr>';
+}
+async function loadMagiChecks(){
+  const search=document.getElementById('magiCheckSearch')?.value.trim()||''; const url=new URL('/api/repositories/tasks',window.location.origin); url.searchParams.set('repository_key','magi'); if(search)url.searchParams.set('search',search);
+  const data=await fetchJson(url); const tbody=document.getElementById('magiChecksTable'); const rows=data.tasks||[];
+  tbody.innerHTML=rows.map(r=>`<tr><td><strong>${escapeHtml(r.task_key)} - ${escapeHtml(r.name)}</strong><br><small>${escapeHtml(r.description||'')}</small></td><td>${escapeHtml(r.category||'--')}</td><td>${escapeHtml(r.platform||'--')}</td><td>${riskBadge(r.impact)}</td><td><code>${escapeHtml(JSON.stringify(r.detection||{}))}</code></td><td>${escapeHtml(r.remediation||'--')}</td><td class="action-cell"><button class="btn secondary btn-sm magi-plan" data-id="${r.id}">Planejar</button> <button class="btn primary btn-sm magi-execute" data-id="${r.id}">Executar</button></td></tr>`).join('')||'<tr><td colspan="7">Nenhum check.</td></tr>';
+  document.querySelectorAll('.magi-plan').forEach(b=>b.addEventListener('click',()=>runMagiCheck(b.dataset.id,true))); document.querySelectorAll('.magi-execute').forEach(b=>b.addEventListener('click',()=>runMagiCheck(b.dataset.id,false)));
+}
+async function runMagiCheck(id,planOnly){
+  const target=document.getElementById('magiCheckTarget').value.trim(), out=document.getElementById('magiCheckResult'); if(!target){out.textContent='Target obrigatório.';return;}
+  if(!planOnly&&!confirm(`Executar check defensivo em ${target}?`))return; out.textContent=planOnly?'Montando plano...':'Enviando ao Runner...';
+  try{const data=await fetchJson(`/api/repositories/tasks/${id}/${planOnly?'plan':'execute'}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target})});out.textContent=jsonPretty(data);}catch(e){out.textContent=e.message;}
+}
+async function syncRepositories(){const out=document.getElementById('magiCheckResult');out.textContent='Sincronizando...';try{const d=await fetchJson('/api/repositories/sync',{method:'POST'});out.textContent=jsonPretty(d);await loadRepositories();await loadMagiChecks();}catch(e){out.textContent=e.message;}}
+
 function showValidationSection(key){
   const tasks = document.getElementById('tasksSection');
   const history = document.getElementById('historySection');
-  if(tasks) tasks.hidden = key === 'history';
+  const repositories = document.getElementById('repositoriesSection');
+  if(tasks) tasks.hidden = key !== 'tasks';
   if(history) history.hidden = key !== 'history';
+  if(repositories) repositories.hidden = key !== 'repositories';
   if(key === 'history') loadAtomicExecutions().catch(()=>{});
+  if(key === 'repositories'){ loadRepositories().catch(()=>{}); loadMagiChecks().catch(()=>{}); }
 }
 
 function bindValidationsUi(){
   buildHeader('validations');
   initializeBranding();
-  renderModuleSidebar('validationsSidebar', [{title:'Tarefas', items:[{key:'tasks', label:'Tarefas'},{key:'history', label:'Histórico'}]}], showValidationSection);
+  renderModuleSidebar('validationsSidebar', [{title:'Validação', items:[{key:'tasks', label:'Tarefas'},{key:'repositories', label:'Repositórios'},{key:'history', label:'Histórico'}]}], showValidationSection);
+  document.getElementById('repositoriesSyncBtn')?.addEventListener('click', syncRepositories);
+  document.getElementById('magiCheckSearch')?.addEventListener('input', ()=>{clearTimeout(window.__magiCheckTimer);window.__magiCheckTimer=setTimeout(loadMagiChecks,250);});
   document.getElementById('atomicImportBtn')?.addEventListener('click', importAtomicCatalog);
   document.getElementById('atomicRefreshBtn')?.addEventListener('click', async ()=>{ await loadAtomicSummary(); await loadAtomicTechniques(); if(selectedTechniqueId) await selectTechnique(selectedTechniqueId); });
   document.getElementById('atomicExecutionsRefreshBtn')?.addEventListener('click', loadAtomicExecutions);
-  ['historySearch','historyTechnique','historyRunner','historyStatus','historyRequestedBy','historyDateFrom','historyDateTo'].forEach(id => {
+  ['historySearch','historyTechnique','historyRunner','historyStatus','historyRequestedBy','historyDateFrom','historyDateTo','historySource'].forEach(id => {
     const el = document.getElementById(id); if(!el) return;
     el.addEventListener('input', ()=>{ clearTimeout(window.__atomicHistoryTimer); window.__atomicHistoryTimer = setTimeout(loadAtomicExecutions, 350); });
     el.addEventListener('change', loadAtomicExecutions);
   });
-  document.getElementById('historyClearBtn')?.addEventListener('click', ()=>{ ['historySearch','historyTechnique','historyRunner','historyStatus','historyRequestedBy','historyDateFrom','historyDateTo'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; }); loadAtomicExecutions(); });
+  document.getElementById('historyClearBtn')?.addEventListener('click', ()=>{ ['historySearch','historyTechnique','historyRunner','historyStatus','historyRequestedBy','historyDateFrom','historyDateTo','historySource'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; }); loadAtomicExecutions(); });
   document.getElementById('atomicSearch')?.addEventListener('input', ()=>{ clearTimeout(window.__atomicSearchTimer); window.__atomicSearchTimer = setTimeout(loadAtomicTechniques, 250); });
   showValidationSection('tasks');
   loadAtomicSummary().catch(()=>{});

@@ -1,5 +1,12 @@
 # Changelog
 
+## v000.9.0-sprint4.0.2 — Unified Validation History
+
+- Histórico unificado de execuções MAGI Security Checks e Atomic Red Team.
+- Filtro por origem e identificação explícita do provider.
+- Resultado de security checks (`detected`/`not_detected`) visível no histórico.
+- Detalhes unificados com evidence e remediation.
+- Sem alteração de schema/migration.
 ## v000.9.0-sprint4.0 — Repository / Planner / Evidence / Remediation
 - Novo Repository Engine com providers MAGI, Atomic Red Team e Nuclei (provider Nuclei preparado, não habilitado para execução nesta build).
 - Novo catálogo nativo MAGI Security Checks.

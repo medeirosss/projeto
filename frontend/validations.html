@@ -27,17 +27,17 @@
     </section>
 
     <section id="historySection" class="report-section" hidden>
-      <div class="toolbar"><div><div class="title">Histórico</div><p class="section-subtitle">Histórico separado dos jobs enviados ao Runner.</p></div><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar histórico</button></div>
+      <div class="toolbar"><div><div class="title">Histórico</div><p class="section-subtitle">Histórico unificado das execuções MAGI Security Checks e Atomic Red Team enviadas ao Runner.</p></div><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar histórico</button></div>
       <div class="card alerts-card"><div class="card-body">
         <div class="history-filters">
           <input id="historySearch" placeholder="Buscar por UUID, técnica, tarefa, runner, host ou solicitante">
-          <input id="historyTechnique" placeholder="Técnica ex: T1059">
+          <select id="historySource"><option value="">Todas as origens</option><option value="magi">MAGI</option><option value="atomic">Atomic Red Team</option></select><input id="historyTechnique" placeholder="Técnica/Check ex: T1059 ou MAGI-NET-001">
           <input id="historyRunner" placeholder="Runner ID">
           <select id="historyStatus"><option value="">Todos os status</option><option value="queued">queued</option><option value="running">running</option><option value="success">success</option><option value="failed">failed</option><option value="error">error</option><option value="timeout">timeout</option><option value="blocked">blocked</option></select>
           <input id="historyRequestedBy" placeholder="Solicitante"><input id="historyDateFrom" type="date" title="Data inicial"><input id="historyDateTo" type="date" title="Data final"><button class="btn secondary btn-sm" id="historyClearBtn" type="button">Limpar filtros</button>
         </div>
         <div class="history-meta" id="atomicHistoryMeta">Histórico de tarefas: 0 registros.</div>
-        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Técnica</th><th>Tarefa</th><th>Runner</th><th>Target</th><th>Status</th><th>Duração</th><th>Solicitante</th><th>Data</th><th>Ações</th></tr></thead><tbody id="atomicExecutionsTable"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Origem</th><th>Técnica/Check</th><th>Tarefa</th><th>Runner</th><th>Target</th><th>Status</th><th>Resultado</th><th>Duração</th><th>Solicitante</th><th>Data</th><th>Ações</th></tr></thead><tbody id="atomicExecutionsTable"></tbody></table></div>
         <pre id="historyExecutionResult" class="result-box">Selecione um job para visualizar os detalhes.</pre>
       </div></div>
     </section>

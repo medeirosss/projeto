@@ -1,8 +1,9 @@
 from __future__ import annotations
 import socket
 from typing import Any
-from app.repositories.validation_repository import upsert_repository,upsert_task,list_repositories,list_tasks,get_task,create_execution,list_executions
+from app.repositories.validation_repository import upsert_repository,upsert_task,list_repositories,list_tasks,get_task,create_execution,list_executions,get_execution
 from app.repositories.runner_repository import get_single_online_runner,create_runner_job
+from app.repositories.atomic_repository import list_atomic_executions, get_atomic_execution_by_id
 
 BUILTIN_TASKS=[
  {"task_key":"MAGI-NET-001","name":"RDP exposto","description":"Verifica se TCP/3389 está acessível a partir do Runner.","category":"Remote Access","platform":"Windows","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":3389,"finding_when":"open"},"remediation":"Restrinja RDP por firewall/VPN, limite origens autorizadas e mantenha NLA/MFA conforme a política do ambiente."},
@@ -45,5 +46,87 @@ def execute_task(task_id:int,target:str,requested_by:str='ui'):
     job=create_runner_job(plan['runner_id'],'security_check',target,payload)
     execution=create_execution(task,plan['runner_id'],job['id'],target,requested_by,plan)
     return {"success":True,"plan":plan,"runner_job":job,"execution":execution}
+
+def _iso_sort_value(value):
+    if value is None:
+        return ""
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+
+def _normalize_atomic(row:dict):
+    return {
+        "source":"atomic", "source_label":"Atomic Red Team", "id":row.get("id"),
+        "execution_uuid":row.get("execution_uuid"), "technique_id":row.get("technique_id"),
+        "atomic_test_number":row.get("atomic_test_number"), "task_key":row.get("technique_id"),
+        "task_name":row.get("atomic_name"), "executor":row.get("executor_name") or "atomic",
+        "runner_id":row.get("runner_id"), "runner_job_id":row.get("runner_job_id"),
+        "target":row.get("target_host"), "status":row.get("status"), "finding_status":None,
+        "finding_message":None, "requested_by":row.get("requested_by"), "approved_by":row.get("approved_by"),
+        "created_at":row.get("created_at"), "started_at":row.get("started_at"), "finished_at":row.get("finished_at"),
+        "duration_seconds":row.get("duration_seconds"), "executed_real_test":bool(row.get("executed_real_test")),
+        "error":row.get("error_message") or row.get("block_reason"), "evidence":row.get("evidence") or {},
+        "remediation":None,
+    }
+
+
+def _normalize_magi(row:dict):
+    duration=None
+    if row.get("started_at") and row.get("finished_at"):
+        try: duration=int((row["finished_at"]-row["started_at"]).total_seconds())
+        except Exception: duration=None
+    return {
+        "source":"magi", "source_label":"MAGI", "id":row.get("id"),
+        "execution_uuid":row.get("execution_uuid"), "technique_id":None, "atomic_test_number":None,
+        "task_key":row.get("task_key"), "task_name":row.get("task_name") or row.get("task_key"),
+        "executor":row.get("executor") or "security_check", "runner_id":row.get("runner_id"),
+        "runner_job_id":row.get("runner_job_id"), "target":row.get("target"), "status":row.get("status"),
+        "finding_status":row.get("finding_status"), "finding_message":row.get("finding_message"),
+        "requested_by":row.get("requested_by"), "approved_by":None, "created_at":row.get("created_at"),
+        "started_at":row.get("started_at"), "finished_at":row.get("finished_at"), "duration_seconds":duration,
+        "executed_real_test":True if row.get("finished_at") else False, "error":row.get("error"),
+        "evidence":row.get("evidence") or {}, "remediation":row.get("remediation"),
+    }
+
+
+def unified_execution_history(limit=100, search=None, technique_id=None, runner_id=None, status=None, requested_by=None, date_from=None, date_to=None, source=None):
+    fetch_limit=max(200, min(int(limit or 100)*5, 1000))
+    atomic=list_atomic_executions(limit=fetch_limit, offset=0).get("items", [])
+    magi=list_executions(limit=fetch_limit)
+    rows=[_normalize_atomic(x) for x in atomic]+[_normalize_magi(x) for x in magi]
+    def match(row):
+        if source and row.get("source") != source: return False
+        if status and str(row.get("status") or "").lower() != str(status).lower(): return False
+        if runner_id and str(runner_id).lower() not in str(row.get("runner_id") or "").lower(): return False
+        if requested_by and str(requested_by).lower() not in str(row.get("requested_by") or "").lower(): return False
+        if technique_id:
+            needle=str(technique_id).lower()
+            if needle not in str(row.get("technique_id") or "").lower() and needle not in str(row.get("task_key") or "").lower(): return False
+        hay=" ".join(str(row.get(k) or "") for k in ["execution_uuid","technique_id","task_key","task_name","runner_id","target","requested_by","finding_message"]).lower()
+        if search and str(search).lower() not in hay: return False
+        created=_iso_sort_value(row.get("created_at"))[:10]
+        if date_from and created and created < str(date_from): return False
+        if date_to and created and created > str(date_to): return False
+        return True
+    rows=[r for r in rows if match(r)]
+    rows.sort(key=lambda r:(_iso_sort_value(r.get("created_at")), int(r.get("id") or 0)), reverse=True)
+    total=len(rows)
+    return {"success":True,"executions":rows[:max(1,min(int(limit or 100),500))],"total":total}
+
+
+def execution_detail(source:str, execution_id:int):
+    if source == "atomic":
+        row=get_atomic_execution_by_id(execution_id)
+        if not row: raise ValueError("Atomic execution not found")
+        normalized=_normalize_atomic(row)
+        normalized["raw"] = row
+        return {"success":True,"execution":normalized}
+    if source == "magi":
+        row=get_execution(execution_id)
+        if not row: raise ValueError("MAGI execution not found")
+        normalized=_normalize_magi(row)
+        normalized["raw"] = row
+        return {"success":True,"execution":normalized}
+    raise ValueError("Unknown execution source")
+
 
 def execution_history(): return {"success":True,"executions":list_executions()}

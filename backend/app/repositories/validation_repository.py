@@ -70,4 +70,25 @@ def ingest_execution_result(runner_job_id:int,status:str,result:dict,error:str|N
 
 def list_executions(limit=100):
     with SessionLocal() as db:
-        rows=db.execute(text("SELECT * FROM validation_task_executions ORDER BY id DESC LIMIT :limit"),{"limit":limit}).mappings().all(); return [dict(x) for x in rows]
+        rows=db.execute(text("""
+            SELECT e.*, t.name AS task_name, t.category, t.platform, t.executor
+            FROM validation_task_executions e
+            LEFT JOIN validation_tasks t ON t.id=e.validation_task_id
+            ORDER BY e.created_at DESC, e.id DESC
+            LIMIT :limit
+        """),{"limit":limit}).mappings().all()
+        return [dict(x) for x in rows]
+
+
+def get_execution(execution_id:int):
+    with SessionLocal() as db:
+        row=db.execute(text("""
+            SELECT e.*, t.name AS task_name, t.description AS task_description,
+                   t.category, t.platform, t.executor, t.detection,
+                   t."references" AS "references"
+            FROM validation_task_executions e
+            LEFT JOIN validation_tasks t ON t.id=e.validation_task_id
+            WHERE e.id=:id
+            LIMIT 1
+        """), {"id":execution_id}).mappings().first()
+        return dict(row) if row else None
