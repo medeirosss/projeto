@@ -179,6 +179,7 @@ function findingBadge(row){
   const finding=String(row.finding_status||'').toLowerCase();
   if(row.source==='atomic'){
     if(finding==='confirmed') return '<span class="badge badge-ok">CONFIRMADO</span>';
+    if(finding==='prevented') return '<span class="badge badge-ok">PREVENIDO / INTERROMPIDO</span>';
     if(finding==='not_confirmed') return '<span class="badge badge-danger">NÃO CONFIRMADO</span>';
     if(finding==='executed_unverified') return '<span class="badge badge-muted">EXECUTADO / NÃO VERIFICADO</span>';
     if(finding==='error') return '<span class="badge badge-danger">ERRO</span>';

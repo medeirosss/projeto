@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -15,6 +16,8 @@ def run_subprocess(args: list[str], workdir: str, timeout_seconds: int, shell: b
             cwd=workdir,
             capture_output=True,
             text=True,
+            encoding="cp850" if os.name == "nt" else None,
+            errors="replace",
             timeout=timeout_seconds,
             shell=shell,
         )

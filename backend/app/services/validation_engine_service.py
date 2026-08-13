@@ -72,6 +72,12 @@ def _atomic_confirmation_message(row:dict):
     confirmation=_atomic_confirmation_status(row)
     scope=evidence.get("execution_scope") or meta.get("execution_scope")
     requested=evidence.get("requested_target") or meta.get("requested_target") or row.get("target_host")
+    if confirmation=="prevented":
+        signals=(evidence.get("outcome_signals") or meta.get("outcome_signals") or [])
+        signal_text=", ".join(signals) if signals else "controle de segurança"
+        if scope=="runner_local":
+            return f"Atomic executado no Runner e houve evidência de prevenção/interferência ({signal_text}); efeito não foi atribuído ao target solicitado {requested or '--'}."
+        return f"Atomic executado e houve evidência de prevenção/interferência ({signal_text})."
     if confirmation=="executed_unverified":
         if scope=="runner_local":
             return f"Atomic executado no Runner; efeito não confirmado no target solicitado {requested or '--'}."
