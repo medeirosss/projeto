@@ -86,7 +86,7 @@ def heartbeat_v2_service(data: dict, headers, remote_addr: str | None = None):
 def get_next_job_v2_service(headers):
     runner_id = _auth_runner_from_headers(headers)
     job = get_next_job(runner_id)
-    if job and job.get("job_type") in {"credential_validate","deep_inventory"}:
+    if job and job.get("job_type") in {"credential_validate","deep_inventory","atomic_validation"}:
         # Inject plaintext only into the transient HTTP response. runner_jobs stores only credential_id.
         from app.services.credentials_service import get_credential_by_id
         payload = dict(job.get("payload") or {})
@@ -94,8 +94,14 @@ def get_next_job_v2_service(headers):
         if not cred or not cred.get("password"):
             # Do not strand a job in running when a credential was removed after scheduling.
             failed = save_job_result(int(job["job_id"]), runner_id, "failed", {"status":"failed","error":"Credencial indisponível."}, "Credencial indisponível.")
-            if failed:
+            if failed and job.get("job_type") == "credential_validate":
                 ingest_runner_credential_result(int(job["job_id"]), runner_id, "failed", {"status":"failed","error":"Credencial indisponível."}, "Credencial indisponível.")
+            if failed and job.get("job_type") == "atomic_validation":
+                update_atomic_execution_from_runner_job(
+                    runner_job_id=int(job["job_id"]), runner_id=runner_id, status="failed",
+                    result={"status":"failed","error":"Credencial indisponível.","confirmation_status":"error","execution_scope":"target_remote"},
+                    error="Credencial indisponível.",
+                )
             return {"success": True, "runner_id": runner_id, "job": None}
         payload["credential"] = {
             "id": cred.get("id"), "name": cred.get("name"), "type": cred.get("type"),

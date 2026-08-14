@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ipaddress
+import re
+
 import json
 import os
 from datetime import datetime
@@ -253,6 +256,23 @@ def prepare_atomic_execution_preview(test_id: int, payload: dict[str, Any] | Non
 
 
 
+_HOST_RE = re.compile(r"^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+
+def _validate_atomic_target(value: str) -> str:
+    target=(value or "").strip()
+    if not target:
+        raise ValueError("Target não preenchido. Informe um IP ou hostname.")
+    if "," in target or "/" in target or " " in target:
+        raise ValueError("Target inválido. Informe um único IP ou hostname válido.")
+    try:
+        ipaddress.ip_address(target)
+        return target
+    except ValueError:
+        pass
+    if not _HOST_RE.fullmatch(target):
+        raise ValueError("Target inválido. Informe um único IP ou hostname válido.")
+    return target
+
 def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     """Cria execução real controlada de Atomic em LAB.
 
@@ -262,9 +282,17 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
     payload = payload or {}
     user = _current_user_from_payload(payload)
 
-    target_host = str(payload.get("target_host") or "").strip()
-    if not target_host:
-        raise ValueError("Target não preenchido. Informe um IP ou hostname.")
+    target_host = _validate_atomic_target(str(payload.get("target_host") or ""))
+    credential_id = payload.get("credential_id")
+    if credential_id in (None, ""):
+        raise ValueError("Credencial Windows/WinRM é obrigatória para execução Atomic remota.")
+    from app.services.credentials_service import get_credential_by_id
+    credential = get_credential_by_id(credential_id, include_secret=False)
+    if not credential:
+        raise ValueError("Credencial selecionada não existe ou está desabilitada.")
+    credential_type = str(credential.get("type") or credential.get("credential_type") or "").lower()
+    if credential_type not in {"windows", "winrm", "wmi"}:
+        raise ValueError("Atomic remoto nesta versão requer credencial do tipo Windows/WinRM.")
 
     online_runner = get_single_online_runner()
     if not online_runner:
@@ -299,6 +327,10 @@ def execute_atomic_lab_test(test_id: int, payload: dict[str, Any] | None = None)
         "risk_level": str(test.get("risk_level") or "low").lower(),
         "command_preview": command_preview,
         "target_host": target_host,
+        "credential_id": int(credential_id),
+        "credential_type": credential_type,
+        "execution_scope": "target_remote",
+        "remote_transport": "winrm",
         "approved_for_execution": True,
         "approved_for_lab": True,
         "allow_real_execution": True,

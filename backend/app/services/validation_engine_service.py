@@ -72,6 +72,16 @@ def _atomic_confirmation_message(row:dict):
     confirmation=_atomic_confirmation_status(row)
     scope=evidence.get("execution_scope") or meta.get("execution_scope")
     requested=evidence.get("requested_target") or meta.get("requested_target") or row.get("target_host")
+    if confirmation=="target_unreachable":
+        return f"Target {requested or '--'} sem conectividade WinRM; execução remota não iniciada."
+    if confirmation=="remote_transport_error":
+        return f"Falha ao abrir sessão remota WinRM com {requested or '--'}."
+    if confirmation=="authentication_failed":
+        return f"Falha de autenticação no target {requested or '--'}; execução remota não iniciada."
+    if confirmation=="dependency_missing":
+        return "Atomic não pôde ser concluído porque uma dependência/pré-requisito está ausente."
+    if confirmation=="runner_dependency_error":
+        return "Runner não possui os componentes necessários para preparar o Atomic remoto."
     if confirmation=="prevented":
         signals=(evidence.get("outcome_signals") or meta.get("outcome_signals") or [])
         signal_text=", ".join(signals) if signals else "controle de segurança"

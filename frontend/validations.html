@@ -7,8 +7,11 @@
       <div class="toolbar"><div><div class="title">Tarefas</div><p class="section-subtitle">Selecione uma técnica, informe o alvo e envie a execução ao Runner online.</p></div></div>
       <div class="mini-stats alert-stats"><div class="mini-stat"><small>Técnicas</small><strong id="atomicTechniquesCount">0</strong></div><div class="mini-stat"><small>Testes</small><strong id="atomicTestsCount">0</strong></div><div class="mini-stat"><small>Disponíveis</small><strong id="atomicApprovedCount">0</strong></div><div class="mini-stat"><small>Com dependências</small><strong id="atomicDependenciesCount">0</strong></div></div>
       <div class="card alerts-card"><div class="card-header">Alvo da execução</div><div class="card-body">
-        <div class="form-grid"><label>Target <small>(IP ou hostname)</small><input id="atomicTargetHost" placeholder="Ex.: 192.168.0.100 ou HOST01"></label></div>
-        <div class="atomic-target-warning">O target é obrigatório. Suporte a CIDR e intervalos de IP será adicionado em uma etapa futura.</div>
+        <div class="form-grid">
+          <label>Target <small>(IP ou hostname)</small><input id="atomicTargetHost" placeholder="Ex.: 192.168.0.100 ou HOST01"></label>
+          <label>Credencial Windows/WinRM <small>(obrigatória)</small><select id="atomicCredentialId"><option value="">Carregando credenciais...</option></select></label>
+        </div>
+        <div class="atomic-target-warning">Atomic é executado no target remoto via WinRM. Target e credencial Windows/WinRM são obrigatórios. Não existe fallback para execução local.</div>
         <pre id="atomicExecutionResult" class="result-box">Aguardando execução.</pre>
       </div></div>
       <div class="alerts-workspace">

@@ -134,21 +134,50 @@ async function selectTechnique(techniqueId){
   document.querySelectorAll('.execute-task').forEach(btn => btn.addEventListener('click', () => executeTask(btn.dataset.id)));
 }
 
+
+async function loadAtomicCredentials(){
+  const select=document.getElementById('atomicCredentialId');
+  if(!select) return;
+  try{
+    const data=await fetchJson('/api/actions/credentials');
+    const rows=(data.credentials||[]).filter(c=>['windows','winrm','wmi'].includes(String(c.type||c.credential_type||'').toLowerCase()) && c.has_password);
+    select.innerHTML='<option value="">Selecione uma credencial</option>'+rows.map(c=>{
+      const identity=[c.domain,c.username].filter(Boolean).join('\\\\') || c.username || '--';
+      return `<option value="${escapeHtml(String(c.id))}">${escapeHtml(c.name||'Credencial')} — ${escapeHtml(identity)} (${escapeHtml(c.type||c.credential_type||'windows')})</option>`;
+    }).join('');
+    if(rows.length===1) select.value=String(rows[0].id);
+    if(!rows.length) select.innerHTML='<option value="">Nenhuma credencial Windows/WinRM disponível</option>';
+  }catch(e){
+    select.innerHTML='<option value="">Erro ao carregar credenciais</option>';
+  }
+}
+
 async function executeTask(testId){
   const result = document.getElementById('atomicExecutionResult');
   const targetHost = document.getElementById('atomicTargetHost').value.trim();
+  const credentialId = document.getElementById('atomicCredentialId')?.value || '';
   if(!targetHost){
     result.textContent = 'Target não preenchido. Informe um IP ou hostname antes de executar.';
     alert('Target não preenchido.');
     document.getElementById('atomicTargetHost').focus();
     return;
   }
-  if(!confirm(`Executar a tarefa no target ${targetHost}?`)) return;
+  if(targetHost.includes(',') || targetHost.includes('/') || targetHost.includes(' ')){
+    result.textContent = 'Target inválido. Informe um único IP ou hostname.';
+    alert('Target inválido.');
+    return;
+  }
+  if(!credentialId){
+    result.textContent = 'Selecione uma credencial Windows/WinRM para execução remota.';
+    alert('Credencial obrigatória para Atomic remoto.');
+    return;
+  }
+  if(!confirm(`Executar a tarefa remotamente no target ${targetHost}?`)) return;
   result.textContent = `Enviando tarefa ${testId} para o Runner online...`;
   try{
     const data = await fetchJson(`/api/validations/atomic/tests/${testId}/execute-lab`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({target_host: targetHost, requested_by:'ui'})
+      body: JSON.stringify({target_host: targetHost, credential_id: credentialId, requested_by:'ui'})
     });
     result.textContent = jsonPretty(data);
   }catch(err){ result.textContent = err.message; }
@@ -179,6 +208,11 @@ function findingBadge(row){
   const finding=String(row.finding_status||'').toLowerCase();
   if(row.source==='atomic'){
     if(finding==='confirmed') return '<span class="badge badge-ok">CONFIRMADO</span>';
+    if(finding==='target_unreachable') return '<span class="badge badge-danger">TARGET INACESSÍVEL</span>';
+    if(finding==='authentication_failed') return '<span class="badge badge-danger">FALHA DE AUTENTICAÇÃO</span>';
+    if(finding==='remote_transport_error') return '<span class="badge badge-danger">FALHA WINRM</span>';
+    if(finding==='dependency_missing') return '<span class="badge badge-danger">DEPENDÊNCIA AUSENTE</span>';
+    if(finding==='runner_dependency_error') return '<span class="badge badge-danger">RUNNER SEM DEPENDÊNCIA</span>';
     if(finding==='prevented') return '<span class="badge badge-ok">PREVENIDO / INTERROMPIDO</span>';
     if(finding==='not_confirmed') return '<span class="badge badge-danger">NÃO CONFIRMADO</span>';
     if(finding==='executed_unverified') return '<span class="badge badge-muted">EXECUTADO / NÃO VERIFICADO</span>';
@@ -326,5 +360,6 @@ function bindValidationsUi(){
   showValidationSection('tasks');
   loadAtomicSummary().catch(()=>{});
   loadAtomicTechniques().catch(()=>{});
+  loadAtomicCredentials().catch(()=>{});
 }
 document.addEventListener('DOMContentLoaded', bindValidationsUi);
