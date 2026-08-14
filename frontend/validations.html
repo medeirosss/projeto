@@ -10,7 +10,8 @@
         <div class="card-body">
           <div class="form-grid">
             <label>Target <small>(IP ou hostname)</small><input id="magiCheckTarget" placeholder="Ex.: 192.168.0.100 ou HOST01"></label>
-            <label>Buscar check<input id="magiCheckSearch" placeholder="RDP, SMB, WinRM, SSH..."></label>
+            <label>Provider<select id="validationRepository"><option value="magi">MAGI Checks</option><option value="nuclei">Nuclei Validations</option></select></label>
+            <label>Buscar check<input id="magiCheckSearch" placeholder="RDP, SMB, CVE, HTTP..."></label>
           </div>
           <div class="atomic-target-warning">Fluxo principal da versão 4.0: checks nativos e validações defensivas. Atomic Red Team permanece congelado para uma fase futura de pós-ataque/pós-comprometimento.</div>
           <div class="table-wrap"><table><thead><tr><th>Check</th><th>Categoria</th><th>Plataforma</th><th>Impacto</th><th>Detecção</th><th>Remediação</th><th>Ação</th></tr></thead><tbody id="magiChecksTable"></tbody></table></div>

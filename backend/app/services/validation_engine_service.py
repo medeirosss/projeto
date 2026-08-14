@@ -4,6 +4,7 @@ from typing import Any
 from app.repositories.validation_repository import upsert_repository,upsert_task,list_repositories,list_tasks,get_task,create_execution,list_executions,get_execution
 from app.repositories.runner_repository import get_single_online_runner,create_runner_job
 from app.repositories.atomic_repository import list_atomic_executions, get_atomic_execution_by_id
+from app.services.nuclei_service import as_validation_tasks
 
 BUILTIN_TASKS=[
  {"task_key":"MAGI-NET-001","name":"RDP exposto","description":"Verifica se TCP/3389 está acessível a partir do Runner.","category":"Remote Access","platform":"Windows","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":3389,"finding_when":"open"},"remediation":"Restrinja RDP por firewall/VPN, limite origens autorizadas e mantenha NLA/MFA conforme a política do ambiente."},
@@ -15,11 +16,13 @@ BUILTIN_TASKS=[
 ]
 
 def sync_repositories()->dict[str,Any]:
-    upsert_repository({"repository_key":"magi","name":"MAGI Security Checks","provider":"magi","description":"Checks defensivos nativos do MAGI.","available":True,"metadata":{"execution":"native","version":"4.0"}})
+    upsert_repository({"repository_key":"magi","name":"MAGI Security Checks","provider":"magi","description":"Checks defensivos nativos do MAGI.","available":True,"metadata":{"execution":"native","version":"4.1"}})
     upsert_repository({"repository_key":"atomic","name":"Atomic Red Team","provider":"atomic_red_team","description":"Integração preservada, congelada na 4.0 e reservada para pós-ataque/pós-comprometimento.","available":False,"metadata":{"execution":"atomic","lifecycle":"frozen","phase":"post_attack"}})
-    upsert_repository({"repository_key":"nuclei","name":"Nuclei Templates","provider":"nuclei","description":"Provider preparado para integração de templates Nuclei em sprint posterior.","available":False,"metadata":{"execution":"planned","reason":"binary/template sync not enabled in 4.0"}})
+    upsert_repository({"repository_key":"nuclei","name":"Nuclei Templates","provider":"nuclei","description":"Validações Nuclei executadas remotamente pelo Runner com catálogo controlado pelo MAGI.","available":True,"metadata":{"execution":"runner","version":"4.1","catalog":"curated","binary_owner":"runner"}})
     for task in BUILTIN_TASKS: upsert_task({"repository_key":"magi",**task,"approved":True,"enabled":True,"requires_admin":False})
-    return {"success":True,"repositories":list_repositories(),"magi_tasks":len(BUILTIN_TASKS)}
+    nuclei_tasks=as_validation_tasks()
+    for task in nuclei_tasks: upsert_task(task)
+    return {"success":True,"repositories":list_repositories(),"magi_tasks":len(BUILTIN_TASKS),"nuclei_tasks":len(nuclei_tasks)}
 
 def repository_summary():
     repos=list_repositories(); tasks=list_tasks(limit=1000)
@@ -37,13 +40,18 @@ def plan_task(task_id:int,target:str)->dict[str,Any]:
     runner=get_single_online_runner()
     if not runner: raise ValueError('Nenhum Runner online disponível.')
     detection=task.get('detection') or {}
-    plan={"task_id":task_id,"task_key":task['task_key'],"repository":task['repository_key'],"target":target,"runner_id":runner['runner_id'],"executor":task['executor'],"impact":task.get('impact'),"requires_admin":bool(task.get('requires_admin')),"detection":detection,"remediation":task.get('remediation'),"ready":True}
+    metadata=task.get('metadata') or {}
+    plan={"task_id":task_id,"task_key":task['task_key'],"repository":task['repository_key'],"target":target,"runner_id":runner['runner_id'],"executor":task['executor'],"impact":task.get('impact'),"requires_admin":bool(task.get('requires_admin')),"detection":detection,"metadata":metadata,"remediation":task.get('remediation'),"ready":True}
     return {"success":True,"plan":plan,"task":task}
 
 def execute_task(task_id:int,target:str,requested_by:str='ui'):
     prepared=plan_task(task_id,target); plan=prepared['plan']; task=prepared['task']
-    payload={"executor":task['executor'],"validation_type":"security_check","task_id":task_id,"task_key":task['task_key'],"repository_key":task['repository_key'],"target":target,"detection":task.get('detection') or {},"impact":task.get('impact'),"remediation":task.get('remediation')}
-    job=create_runner_job(plan['runner_id'],'security_check',target,payload)
+    metadata=task.get('metadata') or {}
+    validation_type="nuclei" if task.get("executor")=="nuclei" else "security_check"
+    payload={"executor":task['executor'],"validation_type":validation_type,"task_id":task_id,"task_key":task['task_key'],"repository_key":task['repository_key'],"target":target,"detection":task.get('detection') or {},"impact":task.get('impact'),"remediation":task.get('remediation')}
+    if validation_type=="nuclei":
+        payload.update({"template":metadata.get("template") or (task.get("detection") or {}).get("template"),"severity":metadata.get("severity"),"tags":metadata.get("tags") or []})
+    job=create_runner_job(plan['runner_id'],validation_type,target,payload)
     execution=create_execution(task,plan['runner_id'],job['id'],target,requested_by,plan)
     return {"success":True,"plan":plan,"runner_job":job,"execution":execution}
 

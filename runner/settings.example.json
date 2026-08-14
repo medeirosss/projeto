@@ -21,7 +21,8 @@
     "service_discovery",
     "credential_validate",
     "deep_inventory",
-    "security_check"
+    "security_check",
+    "nuclei"
   ],
   "offline_jobs_file": "./offline_jobs.json",
   "update_enabled": false,
@@ -29,5 +30,6 @@
   "update_check_interval_seconds": 3600,
   "update_auto_apply": false,
   "update_download_timeout_seconds": 120,
-  "nmap_path": null
+  "nmap_path": null,
+  "nuclei_path": null
 }
