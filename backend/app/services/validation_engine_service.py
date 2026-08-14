@@ -16,7 +16,7 @@ BUILTIN_TASKS=[
 
 def sync_repositories()->dict[str,Any]:
     upsert_repository({"repository_key":"magi","name":"MAGI Security Checks","provider":"magi","description":"Checks defensivos nativos do MAGI.","available":True,"metadata":{"execution":"native","version":"4.0"}})
-    upsert_repository({"repository_key":"atomic","name":"Atomic Red Team","provider":"atomic_red_team","description":"Catálogo Atomic Red Team já integrado ao MAGI.","available":True,"metadata":{"execution":"atomic"}})
+    upsert_repository({"repository_key":"atomic","name":"Atomic Red Team","provider":"atomic_red_team","description":"Integração preservada, congelada na 4.0 e reservada para pós-ataque/pós-comprometimento.","available":False,"metadata":{"execution":"atomic","lifecycle":"frozen","phase":"post_attack"}})
     upsert_repository({"repository_key":"nuclei","name":"Nuclei Templates","provider":"nuclei","description":"Provider preparado para integração de templates Nuclei em sprint posterior.","available":False,"metadata":{"execution":"planned","reason":"binary/template sync not enabled in 4.0"}})
     for task in BUILTIN_TASKS: upsert_task({"repository_key":"magi",**task,"approved":True,"enabled":True,"requires_admin":False})
     return {"success":True,"repositories":list_repositories(),"magi_tasks":len(BUILTIN_TASKS)}

@@ -315,7 +315,7 @@ async function loadRepositories(){
   const data=await fetchJson('/api/repositories/summary'); const summary=data.summary||{};
   document.getElementById('repoCount').textContent=summary.repositories||0; document.getElementById('repoAvailable').textContent=summary.available_repositories||0; document.getElementById('repoTasks').textContent=summary.tasks||0; document.getElementById('repoEnabledTasks').textContent=summary.enabled_tasks||0;
   const tbody=document.getElementById('repositoriesTable'); const rows=data.repositories||[];
-  tbody.innerHTML=rows.map(r=>`<tr><td><strong>${escapeHtml(r.name)}</strong><br><small>${escapeHtml(r.repository_key)}</small></td><td>${escapeHtml(r.provider)}</td><td>${r.available?'<span class="badge badge-ok">Disponível</span>':'<span class="badge badge-muted">Preparado</span>'}</td><td>${r.task_count||0}</td><td>${escapeHtml(r.description||'--')}</td></tr>`).join('')||'<tr><td colspan="5">Nenhum repositório.</td></tr>';
+  tbody.innerHTML=rows.map(r=>{const lifecycle=(r.metadata||{}).lifecycle; const state=lifecycle==='frozen'?'<span class="badge badge-muted">Congelado / pós-ataque</span>':(r.available?'<span class="badge badge-ok">Disponível</span>':'<span class="badge badge-muted">Preparado</span>'); return `<tr><td><strong>${escapeHtml(r.name)}</strong><br><small>${escapeHtml(r.repository_key)}</small></td><td>${escapeHtml(r.provider)}</td><td>${state}</td><td>${r.task_count||0}</td><td>${escapeHtml(r.description||'--')}</td></tr>`;}).join('')||'<tr><td colspan="5">Nenhum repositório.</td></tr>';
 }
 async function loadMagiChecks(){
   const search=document.getElementById('magiCheckSearch')?.value.trim()||''; const url=new URL('/api/repositories/tasks',window.location.origin); url.searchParams.set('repository_key','magi'); if(search)url.searchParams.set('search',search);
@@ -338,7 +338,8 @@ function showValidationSection(key){
   if(history) history.hidden = key !== 'history';
   if(repositories) repositories.hidden = key !== 'repositories';
   if(key === 'history') loadAtomicExecutions().catch(()=>{});
-  if(key === 'repositories'){ loadRepositories().catch(()=>{}); loadMagiChecks().catch(()=>{}); }
+  if(key === 'tasks') loadMagiChecks().catch(()=>{});
+  if(key === 'repositories') loadRepositories().catch(()=>{});
 }
 
 function bindValidationsUi(){
@@ -358,8 +359,6 @@ function bindValidationsUi(){
   document.getElementById('historyClearBtn')?.addEventListener('click', ()=>{ ['historySearch','historyTechnique','historyRunner','historyStatus','historyRequestedBy','historyDateFrom','historyDateTo','historySource'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; }); loadAtomicExecutions(); });
   document.getElementById('atomicSearch')?.addEventListener('input', ()=>{ clearTimeout(window.__atomicSearchTimer); window.__atomicSearchTimer = setTimeout(loadAtomicTechniques, 250); });
   showValidationSection('tasks');
-  loadAtomicSummary().catch(()=>{});
-  loadAtomicTechniques().catch(()=>{});
-  loadAtomicCredentials().catch(()=>{});
+  loadMagiChecks().catch(()=>{});
 }
 document.addEventListener('DOMContentLoaded', bindValidationsUi);

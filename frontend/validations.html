@@ -4,21 +4,26 @@
   <aside class="report-sidebar" id="validationsSidebar"></aside>
   <main class="report-content settings-content alerts-content">
     <section id="tasksSection" class="report-section">
-      <div class="toolbar"><div><div class="title">Tarefas</div><p class="section-subtitle">Selecione uma técnica, informe o alvo e envie a execução ao Runner online.</p></div></div>
-      <div class="mini-stats alert-stats"><div class="mini-stat"><small>Técnicas</small><strong id="atomicTechniquesCount">0</strong></div><div class="mini-stat"><small>Testes</small><strong id="atomicTestsCount">0</strong></div><div class="mini-stat"><small>Disponíveis</small><strong id="atomicApprovedCount">0</strong></div><div class="mini-stat"><small>Com dependências</small><strong id="atomicDependenciesCount">0</strong></div></div>
-      <div class="card alerts-card"><div class="card-header">Alvo da execução</div><div class="card-body">
-        <div class="form-grid">
-          <label>Target <small>(IP ou hostname)</small><input id="atomicTargetHost" placeholder="Ex.: 192.168.0.100 ou HOST01"></label>
-          <label>Credencial Windows/WinRM <small>(obrigatória)</small><select id="atomicCredentialId"><option value="">Carregando credenciais...</option></select></label>
+      <div class="toolbar"><div><div class="title">Tarefas</div><p class="section-subtitle">Execute checks defensivos nativos do MAGI contra o alvo selecionado.</p></div></div>
+      <div class="card alerts-card">
+        <div class="card-header">MAGI Security Checks</div>
+        <div class="card-body">
+          <div class="form-grid">
+            <label>Target <small>(IP ou hostname)</small><input id="magiCheckTarget" placeholder="Ex.: 192.168.0.100 ou HOST01"></label>
+            <label>Buscar check<input id="magiCheckSearch" placeholder="RDP, SMB, WinRM, SSH..."></label>
+          </div>
+          <div class="atomic-target-warning">Fluxo principal da versão 4.0: checks nativos e validações defensivas. Atomic Red Team permanece congelado para uma fase futura de pós-ataque/pós-comprometimento.</div>
+          <div class="table-wrap"><table><thead><tr><th>Check</th><th>Categoria</th><th>Plataforma</th><th>Impacto</th><th>Detecção</th><th>Remediação</th><th>Ação</th></tr></thead><tbody id="magiChecksTable"></tbody></table></div>
+          <pre id="magiCheckResult" class="result-box">Selecione um check para planejar ou executar.</pre>
         </div>
-        <div class="atomic-target-warning">Atomic é executado no target remoto via WinRM. Target e credencial Windows/WinRM são obrigatórios. Não existe fallback para execução local.</div>
-        <pre id="atomicExecutionResult" class="result-box">Aguardando execução.</pre>
-      </div></div>
-      <div class="alerts-workspace">
-        <div class="card alerts-card alerts-list-card"><div class="card-header">Técnicas MITRE</div><div class="card-body"><input id="atomicSearch" placeholder="Buscar técnica, nome ou tática"><div class="table-wrap"><table><thead><tr><th>Técnica</th><th>Nome</th><th>Tática</th><th>Testes</th><th>Plataformas</th><th>Executores</th></tr></thead><tbody id="atomicTechniquesTable"></tbody></table></div></div></div>
-        <aside class="card alerts-card alert-detail-card"><div class="card-header">Tarefas da técnica</div><div class="card-body"><div id="atomicSelectedTitle" class="section-subtitle">Selecione uma técnica para visualizar as tarefas.</div><div class="table-wrap"><table><thead><tr><th>Tarefa</th><th>Plataformas</th><th>Executor</th><th>Admin</th><th>Dependências</th><th>Risco</th><th>Uso</th><th>Reboot</th><th>Ação</th></tr></thead><tbody id="atomicTestsTable"></tbody></table></div></div></aside>
       </div>
-      <details class="card alerts-card" style="margin-top:16px"><summary class="card-header">Manutenção do catálogo</summary><div class="card-body"><div class="form-grid"><label>Caminho do repositório atual<input id="atomicSourcePath" placeholder="/opt/atomic-red-team/atomics"></label></div><div class="detail-actions"><button class="btn primary btn-sm" id="atomicImportBtn" type="button">Importar catálogo</button><button class="btn secondary btn-sm" id="atomicRefreshBtn" type="button">Atualizar lista</button></div><pre id="atomicImportResult" class="result-box">Aguardando importação.</pre></div></details>
+      <div class="card alerts-card" style="margin-top:16px">
+        <div class="card-header">Atomic Red Team</div>
+        <div class="card-body">
+          <span class="badge badge-muted">CONGELADO — PÓS-ATAQUE</span>
+          <p class="section-subtitle">A integração existente foi preservada no código e no histórico, mas novas execuções Atomic ficam desabilitadas por padrão nesta versão.</p>
+        </div>
+      </div>
     </section>
 
 
@@ -26,11 +31,10 @@
       <div class="toolbar"><div><div class="title">Repositórios</div><p class="section-subtitle">Catálogos de validação e checks defensivos disponíveis no MAGI.</p></div><button class="btn secondary btn-sm" id="repositoriesSyncBtn" type="button">Sincronizar</button></div>
       <div class="mini-stats alert-stats"><div class="mini-stat"><small>Repositórios</small><strong id="repoCount">0</strong></div><div class="mini-stat"><small>Disponíveis</small><strong id="repoAvailable">0</strong></div><div class="mini-stat"><small>Tarefas</small><strong id="repoTasks">0</strong></div><div class="mini-stat"><small>Ativas</small><strong id="repoEnabledTasks">0</strong></div></div>
       <div class="card alerts-card"><div class="card-header">Providers</div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Repositório</th><th>Provider</th><th>Status</th><th>Tarefas</th><th>Descrição</th></tr></thead><tbody id="repositoriesTable"></tbody></table></div></div></div>
-      <div class="card alerts-card" style="margin-top:16px"><div class="card-header">MAGI Security Checks</div><div class="card-body"><div class="form-grid"><label>Target<input id="magiCheckTarget" placeholder="Ex.: 192.168.0.100 ou HOST01"></label><label>Buscar<input id="magiCheckSearch" placeholder="RDP, SMB, WinRM..."></label></div><div class="table-wrap"><table><thead><tr><th>Check</th><th>Categoria</th><th>Plataforma</th><th>Impacto</th><th>Detecção</th><th>Remediação</th><th>Ação</th></tr></thead><tbody id="magiChecksTable"></tbody></table></div><pre id="magiCheckResult" class="result-box">Selecione um check para planejar ou executar.</pre></div></div>
     </section>
 
     <section id="historySection" class="report-section" hidden>
-      <div class="toolbar"><div><div class="title">Histórico</div><p class="section-subtitle">Histórico unificado das execuções MAGI Security Checks e Atomic Red Team enviadas ao Runner.</p></div><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar histórico</button></div>
+      <div class="toolbar"><div><div class="title">Histórico</div><p class="section-subtitle">Histórico unificado das execuções MAGI e das execuções Atomic preservadas de fases anteriores.</p></div><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar histórico</button></div>
       <div class="card alerts-card"><div class="card-body">
         <div class="history-filters">
           <input id="historySearch" placeholder="Buscar por UUID, técnica, tarefa, runner, host ou solicitante">

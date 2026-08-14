@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import os
 
 from fastapi import APIRouter, Body, HTTPException, Request
 
@@ -20,6 +21,15 @@ from app.services.atomic_service import (
 )
 
 router = APIRouter(prefix="/api/validations", tags=["validations"])
+
+ATOMIC_POST_ATTACK_ENABLED = os.getenv("ATOMIC_POST_ATTACK_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+def _require_atomic_post_attack_enabled() -> None:
+    if not ATOMIC_POST_ATTACK_ENABLED:
+        raise HTTPException(
+            status_code=409,
+            detail="Atomic Red Team está congelado na versão 4.0 e reservado para a futura fase de pós-ataque/pós-comprometimento."
+        )
 
 
 @router.get("/atomic/summary")
@@ -92,6 +102,7 @@ async def api_atomic_test_flags(test_id: int, payload: dict[str, Any] | None = B
 
 @router.post("/atomic/tests/{test_id}/execute-lab")
 async def api_atomic_execute_lab(test_id: int, request: Request, payload: dict[str, Any] | None = Body(default=None)):
+    _require_atomic_post_attack_enabled()
     try:
         payload = payload or {}
         user_state = getattr(request.state, "user", {}) or {}
@@ -106,6 +117,7 @@ async def api_atomic_execute_lab(test_id: int, request: Request, payload: dict[s
 
 @router.post("/atomic/tests/{test_id}/prepare-execution")
 async def api_atomic_prepare_execution(test_id: int, payload: dict[str, Any] | None = Body(default=None)):
+    _require_atomic_post_attack_enabled()
     try:
         return prepare_atomic_execution_preview(test_id, payload or {})
     except Exception as exc:
@@ -148,6 +160,7 @@ async def api_atomic_execution_detail(execution_id: int):
 
 @router.post("/atomic/executions/{execution_id}/dispatch")
 async def api_atomic_dispatch_execution(execution_id: int, payload: dict[str, Any] | None = Body(default=None)):
+    _require_atomic_post_attack_enabled()
     try:
         return dispatch_atomic_execution_to_runner(execution_id, payload or {})
     except Exception as exc:
