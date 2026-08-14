@@ -65,7 +65,7 @@ function formatDuration(seconds){
 
 function statusBadge(status){
   const st = String(status || 'unknown').toLowerCase();
-  const cls = ['success'].includes(st) ? 'badge-ok' : ['failed','error','timeout','blocked'].includes(st) ? 'badge-danger' : 'badge-muted';
+  const cls = ['success'].includes(st) ? 'badge-ok' : ['failed','error','timeout','blocked','target_unreachable'].includes(st) ? 'badge-danger' : 'badge-muted';
   return `<span class="badge ${cls}">${escapeHtml(st)}</span>`;
 }
 
@@ -219,6 +219,7 @@ function findingBadge(row){
     if(finding==='error') return '<span class="badge badge-danger">ERRO</span>';
     return row.executed_real_test ? '<span class="badge badge-muted">EXECUTADO / NÃO VERIFICADO</span>' : '<span class="badge badge-muted">PENDENTE</span>';
   }
+  if(finding==='not_evaluated') return '<span class="badge badge-muted">NÃO AVALIADO / TARGET INACESSÍVEL</span>';
   if(finding==='detected') return '<span class="badge badge-danger">DETECTADO</span>';
   if(finding==='not_detected') return '<span class="badge badge-ok">NÃO DETECTADO</span>';
   if(finding==='error') return '<span class="badge badge-danger">ERRO</span>';

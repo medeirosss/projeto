@@ -1,23 +1,353 @@
 from __future__ import annotations
-import json,socket,time
-from datetime import datetime,timezone
+
+import ipaddress
+import json
+import os
+import re
+import socket
+import subprocess
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
 from .base import ExecutionResult
 
+
+DEFAULT_REACHABILITY_PORTS = (22, 80, 135, 139, 443, 445, 3389, 5985, 5986)
+
+
+def _resolve_target(target: str) -> tuple[str | None, str | None]:
+    """Return (resolved_ip, error)."""
+    value = (target or "").strip()
+    if not value:
+        return None, "empty_target"
+    try:
+        return str(ipaddress.ip_address(value)), None
+    except ValueError:
+        pass
+
+    # Conservative hostname validation before DNS.
+    if len(value) > 253 or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?", value):
+        return None, "invalid_target"
+    try:
+        infos = socket.getaddrinfo(value, None, type=socket.SOCK_STREAM)
+        ips = []
+        for info in infos:
+            ip = info[4][0]
+            if ip not in ips:
+                ips.append(ip)
+        return (ips[0], None) if ips else (None, "dns_no_address")
+    except socket.gaierror as exc:
+        return None, f"dns_error:{exc}"
+
+
+def _icmp_probe(ip: str) -> dict[str, Any]:
+    started = time.monotonic()
+    try:
+        if os.name == "nt":
+            cmd = ["ping", "-n", "1", "-w", "1000", ip]
+        else:
+            cmd = ["ping", "-c", "1", "-W", "1", ip]
+        cp = subprocess.run(cmd, capture_output=True, text=True, timeout=2.5)
+        return {
+            "method": "icmp",
+            "reachable": cp.returncode == 0,
+            "latency_ms": round((time.monotonic() - started) * 1000, 2),
+            "returncode": cp.returncode,
+        }
+    except Exception as exc:
+        return {
+            "method": "icmp",
+            "reachable": False,
+            "latency_ms": round((time.monotonic() - started) * 1000, 2),
+            "error": str(exc),
+        }
+
+
+def _arp_probe(ip: str) -> dict[str, Any]:
+    """ARP is high-value for same-L2 targets. A valid MAC is evidence that the host answered L2."""
+    started = time.monotonic()
+    try:
+        cp = subprocess.run(["arp", "-a", ip], capture_output=True, text=True, timeout=2.0)
+        output = f"{cp.stdout or ''}\n{cp.stderr or ''}"
+        mac_match = re.search(r"(?i)\b(?:[0-9a-f]{2}[-:]){5}[0-9a-f]{2}\b", output)
+        reachable = bool(mac_match) and "incomplete" not in output.lower()
+        return {
+            "method": "arp",
+            "reachable": reachable,
+            "latency_ms": round((time.monotonic() - started) * 1000, 2),
+            "mac": mac_match.group(0) if mac_match else None,
+        }
+    except Exception as exc:
+        return {
+            "method": "arp",
+            "reachable": False,
+            "latency_ms": round((time.monotonic() - started) * 1000, 2),
+            "error": str(exc),
+        }
+
+
+def _tcp_probe(ip: str, port: int, timeout: float) -> dict[str, Any]:
+    started = time.monotonic()
+    try:
+        with socket.create_connection((ip, int(port)), timeout=timeout):
+            return {
+                "method": "tcp",
+                "port": int(port),
+                "state": "open",
+                "reachable": True,
+                "latency_ms": round((time.monotonic() - started) * 1000, 2),
+                "error": None,
+            }
+    except ConnectionRefusedError as exc:
+        # A refusal is positive proof that the IP stack is alive and the port is closed.
+        return {
+            "method": "tcp",
+            "port": int(port),
+            "state": "closed",
+            "reachable": True,
+            "latency_ms": round((time.monotonic() - started) * 1000, 2),
+            "error": str(exc),
+        }
+    except OSError as exc:
+        # Windows can surface WSAECONNREFUSED as generic OSError.
+        if getattr(exc, "winerror", None) == 10061 or getattr(exc, "errno", None) in {111, 61}:
+            return {
+                "method": "tcp",
+                "port": int(port),
+                "state": "closed",
+                "reachable": True,
+                "latency_ms": round((time.monotonic() - started) * 1000, 2),
+                "error": str(exc),
+            }
+        return {
+            "method": "tcp",
+            "port": int(port),
+            "state": "filtered_or_unreachable",
+            "reachable": False,
+            "latency_ms": round((time.monotonic() - started) * 1000, 2),
+            "error": str(exc),
+        }
+    except Exception as exc:
+        return {
+            "method": "tcp",
+            "port": int(port),
+            "state": "filtered_or_unreachable",
+            "reachable": False,
+            "latency_ms": round((time.monotonic() - started) * 1000, 2),
+            "error": str(exc),
+        }
+
+
+def _reachability_preflight(target: str, check_port: int, timeout_seconds: int) -> dict[str, Any]:
+    resolved_ip, resolve_error = _resolve_target(target)
+    if not resolved_ip:
+        return {
+            "status": "unreachable",
+            "reachable": False,
+            "target": target,
+            "resolved_ip": None,
+            "confidence": "high",
+            "reason": resolve_error or "resolution_failed",
+            "signals": [],
+        }
+
+    # First use the actual check port. Open or refused both prove reachability.
+    check_probe = _tcp_probe(resolved_ip, check_port, min(2.0, max(0.5, timeout_seconds / 10)))
+    signals: list[dict[str, Any]] = [check_probe]
+    if check_probe["reachable"]:
+        return {
+            "status": "reachable",
+            "reachable": True,
+            "target": target,
+            "resolved_ip": resolved_ip,
+            "confidence": "high",
+            "reason": f"tcp_{check_probe['state']}:{check_port}",
+            "signals": signals,
+            "check_probe": check_probe,
+        }
+
+    icmp = _icmp_probe(resolved_ip)
+    signals.append(icmp)
+    if icmp["reachable"]:
+        return {
+            "status": "reachable",
+            "reachable": True,
+            "target": target,
+            "resolved_ip": resolved_ip,
+            "confidence": "high",
+            "reason": "icmp_reply",
+            "signals": signals,
+            "check_probe": check_probe,
+        }
+
+    arp = _arp_probe(resolved_ip)
+    signals.append(arp)
+    if arp["reachable"]:
+        return {
+            "status": "reachable",
+            "reachable": True,
+            "target": target,
+            "resolved_ip": resolved_ip,
+            "confidence": "high",
+            "reason": "arp_response",
+            "signals": signals,
+            "check_probe": check_probe,
+        }
+
+    # Routed networks or ICMP-blocked hosts may still expose another known service.
+    for probe_port in DEFAULT_REACHABILITY_PORTS:
+        if probe_port == check_port:
+            continue
+        probe = _tcp_probe(resolved_ip, probe_port, 0.45)
+        signals.append(probe)
+        if probe["reachable"]:
+            return {
+                "status": "reachable",
+                "reachable": True,
+                "target": target,
+                "resolved_ip": resolved_ip,
+                "confidence": "medium",
+                "reason": f"alternate_tcp_{probe['state']}:{probe_port}",
+                "signals": signals,
+                "check_probe": check_probe,
+            }
+
+    return {
+        "status": "unreachable",
+        "reachable": False,
+        "target": target,
+        "resolved_ip": resolved_ip,
+        "confidence": "medium",
+        "reason": "no_reachability_evidence",
+        "signals": signals,
+        "check_probe": check_probe,
+    }
+
+
 class SecurityCheckExecutor:
-    name='security_check'
-    def run(self,job:dict[str,Any],workdir:str,timeout_seconds:int)->ExecutionResult:
-        started=datetime.now(timezone.utc); payload=job.get('payload') or {}; target=str(payload.get('target') or job.get('target') or '').strip(); detection=payload.get('detection') or {}
-        if not target: raise ValueError('security_check requer target')
-        if detection.get('type')!='tcp_port': raise ValueError(f"Tipo de check não suportado: {detection.get('type')}")
-        port=int(detection.get('port')); connect_timeout=min(5,max(1,timeout_seconds)); t0=time.monotonic(); opened=False; error=''
-        try:
-            with socket.create_connection((target,port),timeout=connect_timeout): opened=True
-        except Exception as exc: error=str(exc)
-        latency_ms=round((time.monotonic()-t0)*1000,2); finding_when=detection.get('finding_when','open'); detected=opened if finding_when=='open' else not opened
-        state='open' if opened else 'closed_or_filtered'; message=f"TCP/{port} {state} em {target}."; finding={'detected':detected,'status':'detected' if detected else 'not_detected','message':message}
-        evidence={'check_type':'tcp_port','target':target,'port':port,'state':state,'latency_ms':latency_ms,'error':error or None,'observed_from':'runner'}
-        finished=datetime.now(timezone.utc); metadata={'task_key':payload.get('task_key'),'repository_key':payload.get('repository_key'),'finding':finding,'evidence':evidence,'message':message,'remediation':payload.get('remediation')}
-        Path(workdir,'security_check.json').write_text(json.dumps(metadata,indent=2,ensure_ascii=False),encoding='utf-8')
-        return ExecutionResult(status='success',exit_code=0,stdout=message,stderr='',started_at=started.isoformat(),finished_at=finished.isoformat(),duration_seconds=(finished-started).total_seconds(),metadata=metadata)
+    name = "security_check"
+
+    def run(self, job: dict[str, Any], workdir: str, timeout_seconds: int) -> ExecutionResult:
+        started = datetime.now(timezone.utc)
+        payload = job.get("payload") or {}
+        target = str(payload.get("target") or job.get("target") or "").strip()
+        detection = payload.get("detection") or {}
+
+        if not target:
+            raise ValueError("security_check requer target")
+        if detection.get("type") != "tcp_port":
+            raise ValueError(f"Tipo de check não suportado: {detection.get('type')}")
+
+        port = int(detection.get("port"))
+        preflight = _reachability_preflight(target, port, timeout_seconds)
+
+        # No host evidence -> the security condition was NOT evaluated.
+        if not preflight["reachable"]:
+            message = (
+                f"Target {target} sem evidência de reachability a partir do Runner; "
+                f"TCP/{port} não foi avaliado."
+            )
+            finding = {
+                "detected": None,
+                "status": "not_evaluated",
+                "confirmation_status": "target_unreachable",
+                "message": message,
+            }
+            evidence = {
+                "check_type": "tcp_port",
+                "target": target,
+                "resolved_ip": preflight.get("resolved_ip"),
+                "port": port,
+                "state": "not_evaluated",
+                "observed_from": "runner",
+                "reachability": preflight,
+            }
+            finished = datetime.now(timezone.utc)
+            metadata = {
+                "task_key": payload.get("task_key"),
+                "repository_key": payload.get("repository_key"),
+                "finding": finding,
+                "evidence": evidence,
+                "message": message,
+                "remediation": payload.get("remediation"),
+                "confirmation_status": "target_unreachable",
+                "execution_scope": "runner_to_target",
+                "requested_target": target,
+                "executed_real_test": True,
+            }
+            Path(workdir, "security_check.json").write_text(
+                json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            return ExecutionResult(
+                status="target_unreachable",
+                exit_code=2,
+                stdout=message,
+                stderr="",
+                started_at=started.isoformat(),
+                finished_at=finished.isoformat(),
+                duration_seconds=(finished - started).total_seconds(),
+                metadata=metadata,
+            )
+
+        check_probe = preflight.get("check_probe") or {}
+        opened = check_probe.get("state") == "open"
+
+        # If preflight established host reachability through another signal, retry the
+        # actual check port once with the normal timeout so closed/filtered is meaningful.
+        if not opened and not check_probe.get("reachable"):
+            check_probe = _tcp_probe(
+                preflight["resolved_ip"], port, min(5.0, max(1.0, timeout_seconds))
+            )
+            opened = check_probe.get("state") == "open"
+
+        finding_when = detection.get("finding_when", "open")
+        detected = opened if finding_when == "open" else not opened
+        state = "open" if opened else (
+            "closed" if check_probe.get("state") == "closed" else "closed_or_filtered"
+        )
+        message = f"TCP/{port} {state} em {target}."
+        finding = {
+            "detected": detected,
+            "status": "detected" if detected else "not_detected",
+            "confirmation_status": "detected" if detected else "not_detected",
+            "message": message,
+        }
+        evidence = {
+            "check_type": "tcp_port",
+            "target": target,
+            "resolved_ip": preflight.get("resolved_ip"),
+            "port": port,
+            "state": state,
+            "latency_ms": check_probe.get("latency_ms"),
+            "error": check_probe.get("error"),
+            "observed_from": "runner",
+            "reachability": preflight,
+        }
+        finished = datetime.now(timezone.utc)
+        metadata = {
+            "task_key": payload.get("task_key"),
+            "repository_key": payload.get("repository_key"),
+            "finding": finding,
+            "evidence": evidence,
+            "message": message,
+            "remediation": payload.get("remediation"),
+            "confirmation_status": finding["confirmation_status"],
+            "execution_scope": "runner_to_target",
+            "requested_target": target,
+            "executed_real_test": True,
+        }
+        Path(workdir, "security_check.json").write_text(
+            json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        return ExecutionResult(
+            status="success",
+            exit_code=0,
+            stdout=message,
+            stderr="",
+            started_at=started.isoformat(),
+            finished_at=finished.isoformat(),
+            duration_seconds=(finished - started).total_seconds(),
+            metadata=metadata,
+        )
