@@ -45,6 +45,25 @@ def _stop_requested(stop_event: Any | None) -> bool:
         return bool(getattr(stop_event, "is_set", lambda: False)())
 
 
+
+def _flush_result_spool(api: MagiApiClient, state: LocalState, logger) -> None:
+    """Retry results that were executed but not acknowledged by the backend."""
+    for item in state.list_spooled_results():
+        job_id = str(item.get("job_id") or "")
+        result = item.get("result")
+        if not job_id or not isinstance(result, dict):
+            if job_id:
+                state.remove_spooled_result(job_id)
+            continue
+        try:
+            api.send_result(job_id, result)
+            state.remove_spooled_result(job_id)
+            state.mark_completed(job_id)
+            logger.info("Previously spooled result delivered for job %s", job_id)
+        except Exception as exc:
+            logger.warning("Result delivery retry still pending for job %s: %s", job_id, exc)
+
+
 def run_runner(config_path: Path, once: bool = False, stop_event: Any | None = None) -> None:
     ensure_settings(config_path)
     config = load_config(config_path)
@@ -81,6 +100,7 @@ def run_runner(config_path: Path, once: bool = False, stop_event: Any | None = N
                     time.sleep(config.poll_interval_seconds)
                     continue
                 result = scheduler.run_job(job)
+                state.mark_completed(str(job.get("job_id") or job.get("id")))
                 print(json.dumps(result, indent=2, ensure_ascii=False))
                 if once:
                     break
@@ -130,10 +150,23 @@ def run_runner(config_path: Path, once: bool = False, stop_event: Any | None = N
                         if update_result.get("restart_required"):
                             logger.info("Update applied. Restart required; exiting runner loop.")
                             break
+                    _flush_result_spool(api, state, logger)
                     job = api.get_job()
                     if job:
+                        job_id = str(job.get("job_id") or job.get("id"))
                         result = scheduler.run_job(job)
-                        api.send_result(str(job.get("job_id") or job.get("id")), result)
+                        try:
+                            api.send_result(job_id, result)
+                            state.remove_spooled_result(job_id)
+                            state.mark_completed(job_id)
+                        except Exception as exc:
+                            state.spool_result(job_id, result)
+                            logger.warning(
+                                "Result for job %s was executed but not acknowledged; "
+                                "saved to durable retry spool. error=%s",
+                                job_id,
+                                exc,
+                            )
                 except Exception as exc:
                     logger.exception("Runner loop iteration failed: %s", exc)
                 if once:

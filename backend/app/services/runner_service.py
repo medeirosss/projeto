@@ -115,8 +115,11 @@ def get_next_job_v2_service(headers):
 def job_result_v2_service(job_id: int, data: dict, headers):
     runner_id = _auth_runner_from_headers(headers)
     status = data.get("status")
-    if status not in ["success", "failed", "error", "timeout"]:
-        raise ValueError("status must be success, failed, error or timeout")
+    allowed_statuses = ["success", "failed", "error", "timeout", "target_unreachable"]
+    if status not in allowed_statuses:
+        raise ValueError(
+            "status must be success, failed, error, timeout or target_unreachable"
+        )
     result = save_job_result(
         job_id=int(job_id),
         runner_id=runner_id,
@@ -282,8 +285,11 @@ def job_result_service(job_id: int, data: dict):
     if not runner_id:
         raise ValueError("runner_id is required")
 
-    if status not in ["success", "failed", "error", "timeout"]:
-        raise ValueError("status must be success, failed, error or timeout")
+    allowed_statuses = ["success", "failed", "error", "timeout", "target_unreachable"]
+    if status not in allowed_statuses:
+        raise ValueError(
+            "status must be success, failed, error, timeout or target_unreachable"
+        )
 
     result_payload = data.get("result") or data
 

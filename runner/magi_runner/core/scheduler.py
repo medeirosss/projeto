@@ -87,13 +87,11 @@ class JobScheduler:
             summary["artifact_zip"] = str(zip_path)
             summary["artifact_sha256"] = sha256_file(Path(zip_path))
             self.artifacts.write_json(job_dir, "result.json", summary)
-            self.state.mark_completed(job_id)
             return summary
         except Exception as exc:
             self.logger.exception("Job %s failed before normal result generation", job_id)
             failed = {"job_id": job_id, "status": "error", "error": str(exc)}
             self.artifacts.write_json(job_dir, "result.json", failed)
-            self.state.mark_completed(job_id)
             return failed
 
 
