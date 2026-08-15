@@ -17,8 +17,8 @@ def _find_nuclei(payload: dict[str, Any]) -> str | None:
         payload.get("nuclei_path"),
         os.environ.get("MAGI_NUCLEI_PATH"),
         shutil.which("nuclei"),
-        r"C:\Program Files\Magi\Runner\tools\nuclei.exe",
-        r"C:\Program Files\Magi Runner\tools\nuclei.exe",
+        r"C:\Program Files\Magi\Runner\tools\nuclei\nuclei.exe",
+        r"C:\Program Files\Magi Runner\tools\nuclei\nuclei.exe",
     ]
     for item in candidates:
         if item and Path(item).exists():
@@ -49,6 +49,7 @@ class NucleiExecutor:
         payload = job.get("payload") or {}
         target = str(payload.get("target") or job.get("target") or "").strip()
         template = str(payload.get("template") or payload.get("template_id") or "").strip()
+        template_root = str(payload.get("nuclei_templates_path") or os.environ.get("MAGI_NUCLEI_TEMPLATES") or r"C:\Program Files\Magi\Runner\tools\nuclei\templates")
         if not target:
             raise ValueError("nuclei requer target")
         if not template:
@@ -57,10 +58,10 @@ class NucleiExecutor:
         binary = _find_nuclei(payload)
         if not binary:
             finished = datetime.now(timezone.utc)
-            message = "Nuclei não encontrado no Runner."
+            message = "Nuclei Engine indisponível no Runner."
             metadata = {
                 "finding": {"detected": None, "status": "not_evaluated", "message": message},
-                "evidence": {"provider": "nuclei", "target": target, "template_id": template, "reason": "binary_missing"},
+                "evidence": {"provider": "nuclei", "target": target, "template_id": template, "reason": "engine_unavailable", "infrastructure_status": "engine_unavailable"},
                 "message": message,
                 "confirmation_status": "not_evaluated",
                 "execution_scope": "runner_to_target",
@@ -73,7 +74,22 @@ class NucleiExecutor:
                 duration_seconds=(finished-started).total_seconds(), metadata=metadata
             )
 
-        args = [binary, "-u", target, "-t", template, "-jsonl", "-silent", "-no-color"]
+        template_path = Path(template)
+        if not template_path.is_absolute():
+            template_path = Path(template_root) / template
+        if not template_path.exists():
+            finished = datetime.now(timezone.utc)
+            message = f"Template Nuclei indisponível no Runner: {template}"
+            metadata = {
+                "finding": {"detected": None, "status": "not_evaluated", "message": message},
+                "evidence": {"provider": "nuclei", "target": target, "template_id": template, "reason": "template_unavailable", "template_path": str(template_path), "infrastructure_status": "template_unavailable"},
+                "message": message, "confirmation_status": "not_evaluated",
+                "execution_scope": "runner_to_target", "requested_target": target, "executed_real_test": False,
+            }
+            return ExecutionResult(status="failed",exit_code=66,stdout="",stderr=message,
+                started_at=started.isoformat(),finished_at=finished.isoformat(),
+                duration_seconds=(finished-started).total_seconds(),metadata=metadata)
+        args = [binary, "-u", target, "-t", str(template_path), "-jsonl", "-silent", "-no-color", "-duc"]
         severity = payload.get("severity")
         if severity:
             args += ["-severity", str(severity)]

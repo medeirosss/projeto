@@ -219,7 +219,14 @@ function findingBadge(row){
     if(finding==='error') return '<span class="badge badge-danger">ERRO</span>';
     return row.executed_real_test ? '<span class="badge badge-muted">EXECUTADO / NÃO VERIFICADO</span>' : '<span class="badge badge-muted">PENDENTE</span>';
   }
-  if(finding==='not_evaluated') return '<span class="badge badge-muted">NÃO AVALIADO / TARGET INACESSÍVEL</span>';
+  if(finding==='not_evaluated'){
+    const evidence=row.evidence||row.raw?.evidence||{};
+    const reason=String(evidence.reason||evidence.infrastructure_status||'').toLowerCase();
+    if(reason==='engine_unavailable') return '<span class="badge badge-danger">NÃO AVALIADO / ENGINE INDISPONÍVEL</span>';
+    if(reason==='template_unavailable') return '<span class="badge badge-danger">NÃO AVALIADO / TEMPLATE INDISPONÍVEL</span>';
+    if(String(row.status||'').toLowerCase()==='target_unreachable') return '<span class="badge badge-muted">NÃO AVALIADO / TARGET INACESSÍVEL</span>';
+    return '<span class="badge badge-muted">NÃO AVALIADO</span>';
+  }
   if(finding==='detected') return '<span class="badge badge-danger">DETECTADO</span>';
   if(finding==='not_detected') return '<span class="badge badge-ok">NÃO DETECTADO</span>';
   if(finding==='error') return '<span class="badge badge-danger">ERRO</span>';

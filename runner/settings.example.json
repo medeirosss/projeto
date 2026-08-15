@@ -31,5 +31,6 @@
   "update_auto_apply": false,
   "update_download_timeout_seconds": 120,
   "nmap_path": null,
-  "nuclei_path": null
+  "nuclei_path": "C:\\Program Files\\Magi\\Runner\\tools\\nuclei\\nuclei.exe",
+  "nuclei_templates_path": "C:\\Program Files\\Magi\\Runner\\tools\\nuclei\\templates"
 }

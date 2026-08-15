@@ -115,3 +115,20 @@ try {
     Write-Host "  .\scripts\configure_runner.ps1"
 }
 finally { Pop-Location }
+
+
+# --- MAGI Sprint 4.1: Nuclei runtime provisioning ---
+$nucleiInstaller = Join-Path $InstallDir "tools\nuclei\install_nuclei.ps1"
+$nucleiExe = Join-Path $InstallDir "tools\nuclei\nuclei.exe"
+if (-not (Test-Path $nucleiExe)) {
+    if (Test-Path $nucleiInstaller) {
+        try {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $nucleiInstaller
+            Write-Host "[OK] Nuclei Runtime provisionado."
+        } catch {
+            Write-Warning "Falha ao provisionar Nuclei: $($_.Exception.Message)"
+            Write-Warning "Jobs Nuclei permanecerão NÃO AVALIADOS até o runtime estar disponível."
+        }
+    }
+}
+# --- end Nuclei provisioning ---
