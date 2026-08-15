@@ -10,20 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from .base import ExecutionResult
+from magi_runner.core.nuclei_capability import nuclei_capability
 
 
 def _find_nuclei(payload: dict[str, Any]) -> str | None:
-    candidates = [
-        payload.get("nuclei_path"),
-        os.environ.get("MAGI_NUCLEI_PATH"),
-        shutil.which("nuclei"),
-        r"C:\Program Files\Magi\Runner\tools\nuclei\nuclei.exe",
-        r"C:\Program Files\Magi Runner\tools\nuclei\nuclei.exe",
-    ]
-    for item in candidates:
-        if item and Path(item).exists():
-            return str(Path(item))
-    return None
+    cap = nuclei_capability(payload.get("nuclei_path"))
+    return cap.get("binary_path")
 
 
 def _parse_jsonl(text: str) -> list[dict[str, Any]]:
@@ -56,12 +48,13 @@ class NucleiExecutor:
             raise ValueError("nuclei requer template/template_id")
 
         binary = _find_nuclei(payload)
+        capability = nuclei_capability(payload.get("nuclei_path"), template_root)
         if not binary:
             finished = datetime.now(timezone.utc)
             message = "Nuclei Engine indisponível no Runner."
             metadata = {
                 "finding": {"detected": None, "status": "not_evaluated", "message": message},
-                "evidence": {"provider": "nuclei", "target": target, "template_id": template, "reason": "engine_unavailable", "infrastructure_status": "engine_unavailable"},
+                "evidence": {"provider": "nuclei", "target": target, "template_id": template, "reason": "engine_unavailable", "infrastructure_status": "engine_unavailable", "searched_paths": capability.get("searched_paths", [])},
                 "message": message,
                 "confirmation_status": "not_evaluated",
                 "execution_scope": "runner_to_target",

@@ -11,6 +11,7 @@ from typing import Any
 from magi_runner.core.security import security_report
 from magi_runner.core.version import __version__
 from magi_runner.executors.nmap_discovery import nmap_capability
+from magi_runner.core.nuclei_capability import nuclei_capability
 
 
 def _exists(cmd: str) -> bool:
@@ -31,6 +32,9 @@ def run_doctor(config_path: Path) -> dict[str, Any]:
     add("config_file", config_path.exists(), str(config_path))
     nmap = nmap_capability()
     add("nmap", bool(nmap.get("available")), nmap.get("path") or nmap.get("message", ""))
+    nuclei = nuclei_capability()
+    add("nuclei_engine", bool(nuclei.get("engine_available")), nuclei.get("binary_path") or "searched: " + "; ".join(nuclei.get("searched_paths", [])))
+    add("nuclei_templates", bool(nuclei.get("templates_available")), nuclei.get("templates_path", ""))
 
     sec = security_report(config_path)
     add("config_hardening", sec["status"] != "failed", sec["status"])

@@ -99,9 +99,29 @@ try {
     if ($Offline) { $cfg.offline_mode = $true } else { if (-not $ServerUrl) { throw "ServerUrl é obrigatório quando Offline não está habilitado." }; $cfg.server_url = $ServerUrl.TrimEnd('/'); $cfg.offline_mode = $false }
     if ($InsecureNoTlsVerify) { $cfg.verify_tls = $false }
     Write-Utf8NoBom -Path ".\settings.json" -Content ($cfg | ConvertTo-Json -Depth 30)
+
+    Write-Step "Validando/provisionando Nuclei Runtime"
+    $nucleiInstaller = Join-Path $InstallDir "tools\nuclei\install_nuclei.ps1"
+    $nucleiExe = Join-Path $InstallDir "tools\nuclei\nuclei.exe"
+    if (-not (Test-Path $nucleiExe)) {
+        if (Test-Path $nucleiInstaller) {
+            try {
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $nucleiInstaller
+                if ($LASTEXITCODE -ne 0) { throw "Provisionador Nuclei retornou exit code $LASTEXITCODE." }
+            } catch {
+                Write-Warning "Nuclei não pôde ser provisionado automaticamente: $($_.Exception.Message)"
+                Write-Warning "O Runner será instalado, mas jobs Nuclei ficarão NÃO AVALIADOS até o runtime estar disponível."
+            }
+        } else {
+            Write-Warning "Provisionador Nuclei não encontrado: $nucleiInstaller"
+        }
+    } else {
+        Write-Host "[OK] Nuclei já presente em $nucleiExe"
+    }
+
     Write-Step "Executando validação local"
     & $VenvPython -m magi_runner --config settings.json --doctor
-    if ($LASTEXITCODE -ne 0) { throw "Doctor falhou. Corrija os itens indicados antes de executar o Runner." }
+    if ($LASTEXITCODE -ne 0) { Write-Warning "Doctor encontrou capacidades indisponíveis. Consulte a saída acima; o Runner continuará instalado." }
     Write-Step "Instalação concluída"
     Write-Host "Instalado em: $InstallDir"
     Write-Host "Configuração: $(Join-Path $InstallDir 'settings.json')"
@@ -117,18 +137,3 @@ try {
 finally { Pop-Location }
 
 
-# --- MAGI Sprint 4.1: Nuclei runtime provisioning ---
-$nucleiInstaller = Join-Path $InstallDir "tools\nuclei\install_nuclei.ps1"
-$nucleiExe = Join-Path $InstallDir "tools\nuclei\nuclei.exe"
-if (-not (Test-Path $nucleiExe)) {
-    if (Test-Path $nucleiInstaller) {
-        try {
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $nucleiInstaller
-            Write-Host "[OK] Nuclei Runtime provisionado."
-        } catch {
-            Write-Warning "Falha ao provisionar Nuclei: $($_.Exception.Message)"
-            Write-Warning "Jobs Nuclei permanecerão NÃO AVALIADOS até o runtime estar disponível."
-        }
-    }
-}
-# --- end Nuclei provisioning ---

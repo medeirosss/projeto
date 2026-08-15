@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 import requests
+from requests import exceptions as request_exceptions
 
 from magi_runner.core.config import RunnerConfig
 from magi_runner.core.version import __version__
@@ -13,12 +14,23 @@ class MagiApiClient:
     def __init__(self, config: RunnerConfig, logger: logging.Logger) -> None:
         self.config = config
         self.logger = logger.getChild("api")
-        self.session = requests.Session()
-        self.session.verify = config.verify_tls
-        if config.runner_secret:
-            self.session.headers.update({"X-Runner-Secret": config.runner_secret})
-        if config.runner_id:
-            self.session.headers.update({"X-Runner-ID": config.runner_id})
+        self.session = self._new_session()
+
+    def _new_session(self) -> requests.Session:
+        session = requests.Session()
+        session.verify = self.config.verify_tls
+        if self.config.runner_secret:
+            session.headers.update({"X-Runner-Secret": self.config.runner_secret})
+        if self.config.runner_id:
+            session.headers.update({"X-Runner-ID": self.config.runner_id})
+        return session
+
+    def reset_session(self) -> None:
+        try:
+            self.session.close()
+        except Exception:
+            pass
+        self.session = self._new_session()
 
     def _url(self, path: str) -> str:
         return f"{self.config.server_url.rstrip('/')}{path}"

@@ -4,6 +4,7 @@ import argparse
 import json
 import shutil
 import time
+import requests
 from pathlib import Path
 from typing import Any
 
@@ -167,6 +168,18 @@ def run_runner(config_path: Path, once: bool = False, stop_event: Any | None = N
                                 job_id,
                                 exc,
                             )
+                except requests.RequestException as exc:
+                    logger.warning("Backend connection lost during polling: %s", exc)
+                    try:
+                        api.reset_session()
+                    except Exception:
+                        pass
+                    if once:
+                        raise
+                    retry_seconds = max(2, min(30, int(config.poll_interval_seconds)))
+                    logger.info("Retrying backend connection in %s seconds...", retry_seconds)
+                    time.sleep(retry_seconds)
+                    continue
                 except Exception as exc:
                     logger.exception("Runner loop iteration failed: %s", exc)
                 if once:
