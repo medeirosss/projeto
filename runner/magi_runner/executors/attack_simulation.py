@@ -232,34 +232,51 @@ $s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force
 $c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s)
 $artifact=$env:MAGI_ARTIFACT
 $token=$env:MAGI_TOKEN
-$resultA=Invoke-Command -ComputerName $env:MAGI_HOST_A -Credential $c -ArgumentList $artifact,$token -ScriptBlock {
- param($artifact,$token)
- $dir=Split-Path $artifact -Parent
- New-Item -ItemType Directory -Path $dir -Force | Out-Null
- Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.1 evidence " + $token) -Encoding ASCII
- $verified=Test-Path $artifact
- $content=if($verified){Get-Content $artifact -Raw}else{''}
- Remove-Item $artifact -Force -ErrorAction SilentlyContinue
- $cleaned=-not (Test-Path $artifact)
- [pscustomobject]@{hostname=$env:COMPUTERNAME;artifact_created=$verified;artifact_verified=($content -like "*${token}*");cleanup_success=$cleaned}
+$trustedPath='WSMan:\localhost\Client\TrustedHosts'
+$trustedOriginal=$null
+$trustedChanged=$false
+$transport='winrm_http_negotiate'
+try {
+  $trustedOriginal=(Get-Item $trustedPath -ErrorAction Stop).Value
+  $items=@()
+  if($trustedOriginal){$items=@($trustedOriginal -split ',' | ForEach-Object {$_.Trim()} | Where-Object {$_})}
+  if(-not ($items -contains $env:MAGI_HOST_A)){
+    $newItems=@($items + $env:MAGI_HOST_A | Select-Object -Unique)
+    Set-Item $trustedPath -Value ($newItems -join ',') -Force -ErrorAction Stop
+    $trustedChanged=$true
+  }
+  $resultA=Invoke-Command -ComputerName $env:MAGI_HOST_A -Authentication Negotiate -Credential $c -ArgumentList $artifact,$token -ScriptBlock {
+   param($artifact,$token)
+   $dir=Split-Path $artifact -Parent
+   New-Item -ItemType Directory -Path $dir -Force | Out-Null
+   Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.1.1 evidence " + $token) -Encoding ASCII
+   $verified=Test-Path $artifact
+   $content=if($verified){Get-Content $artifact -Raw}else{''}
+   Remove-Item $artifact -Force -ErrorAction SilentlyContinue
+   $cleaned=-not (Test-Path $artifact)
+   [pscustomobject]@{hostname=$env:COMPUTERNAME;artifact_created=$verified;artifact_verified=($content -like "*${token}*");cleanup_success=$cleaned}
+  }
+  $resultB=Invoke-Command -ComputerName $env:MAGI_HOST_A -Authentication Negotiate -Credential $c -ArgumentList $env:MAGI_HOST_B,$env:MAGI_USER,$env:MAGI_SECRET,$artifact,$token -ScriptBlock {
+   param($hostB,$user,$secret,$artifact,$token)
+   $s2=ConvertTo-SecureString $secret -AsPlainText -Force
+   $c2=New-Object System.Management.Automation.PSCredential($user,$s2)
+   Invoke-Command -ComputerName $hostB -Authentication Negotiate -Credential $c2 -ArgumentList $artifact,$token -ScriptBlock {
+    param($artifact,$token)
+    $dir=Split-Path $artifact -Parent
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.1.1 lateral evidence " + $token) -Encoding ASCII
+    $verified=Test-Path $artifact
+    $content=if($verified){Get-Content $artifact -Raw}else{''}
+    Remove-Item $artifact -Force -ErrorAction SilentlyContinue
+    $cleaned=-not (Test-Path $artifact)
+    [pscustomobject]@{hostname=$env:COMPUTERNAME;artifact_created=$verified;artifact_verified=($content -like "*${token}*");cleanup_success=$cleaned}
+   }
+  }
+  [pscustomobject]@{host_a=$resultA;host_b=$resultB;path=($env:MAGI_HOST_A+" -> "+$env:MAGI_HOST_B);transport=$transport;trustedhosts_temporary=$trustedChanged} | ConvertTo-Json -Depth 6 -Compress
 }
-$resultB=Invoke-Command -ComputerName $env:MAGI_HOST_A -Credential $c -ArgumentList $env:MAGI_HOST_B,$env:MAGI_USER,$env:MAGI_SECRET,$artifact,$token -ScriptBlock {
- param($hostB,$user,$secret,$artifact,$token)
- $s2=ConvertTo-SecureString $secret -AsPlainText -Force
- $c2=New-Object System.Management.Automation.PSCredential($user,$s2)
- Invoke-Command -ComputerName $hostB -Credential $c2 -ArgumentList $artifact,$token -ScriptBlock {
-  param($artifact,$token)
-  $dir=Split-Path $artifact -Parent
-  New-Item -ItemType Directory -Path $dir -Force | Out-Null
-  Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.1 lateral evidence " + $token) -Encoding ASCII
-  $verified=Test-Path $artifact
-  $content=if($verified){Get-Content $artifact -Raw}else{''}
-  Remove-Item $artifact -Force -ErrorAction SilentlyContinue
-  $cleaned=-not (Test-Path $artifact)
-  [pscustomobject]@{hostname=$env:COMPUTERNAME;artifact_created=$verified;artifact_verified=($content -like "*${token}*");cleanup_success=$cleaned}
- }
+finally {
+  if($trustedChanged){ try { Set-Item $trustedPath -Value $trustedOriginal -Force -ErrorAction Stop } catch {} }
 }
-[pscustomobject]@{host_a=$resultA;host_b=$resultB;path=($env:MAGI_HOST_A+" -> "+$env:MAGI_HOST_B)} | ConvertTo-Json -Depth 6 -Compress
 '''
 
     try:
@@ -311,7 +328,7 @@ $resultB=Invoke-Command -ComputerName $env:MAGI_HOST_A -Credential $c -ArgumentL
 
 
 class AttackSimulationExecutor:
-    """MAGI Attack Simulator 5.1.
+    """MAGI Attack Simulator 5.1.1.
 
     Protocol tests prove only exposure/preconditions. The authenticated 5.1 path
     can prove one authorized WinRM lateral hop with a benign artifact + cleanup.
@@ -348,7 +365,7 @@ class AttackSimulationExecutor:
             )
             metadata = {
                 "engine": "magi_attack_simulator",
-                "engine_version": "5.1",
+                "engine_version": "5.1.1",
                 "scenario": scenario,
                 "category": payload.get("attack_category"),
                 "simulation_type": sim_type,
@@ -418,7 +435,7 @@ class AttackSimulationExecutor:
         finding = {"status": attack_result, "detected": observed, "message": message}
         metadata = {
             "engine": "magi_attack_simulator",
-            "engine_version": "5.1",
+            "engine_version": "5.1.1",
             "scenario": scenario,
             "category": payload.get("attack_category"),
             "simulation_type": sim_type,
@@ -458,7 +475,7 @@ class AttackSimulationExecutor:
         if not preserve_metadata:
             metadata = {
                 "engine": "magi_attack_simulator",
-                "engine_version": "5.1",
+                "engine_version": "5.1.1",
                 "simulation_type": sim_type,
                 "safe_mode": True,
                 "destructive": False,
