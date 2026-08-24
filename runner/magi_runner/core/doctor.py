@@ -35,6 +35,8 @@ def run_doctor(config_path: Path) -> dict[str, Any]:
     nuclei = nuclei_capability()
     add("nuclei_engine", bool(nuclei.get("engine_available")), nuclei.get("binary_path") or "searched: " + "; ".join(nuclei.get("searched_paths", [])))
     add("nuclei_templates", bool(nuclei.get("templates_available")), nuclei.get("templates_path", ""))
+    integrity=nuclei.get("runtime_integrity") or {}
+    add("nuclei_runtime_integrity", integrity.get("status")=="ok", integrity.get("status","unknown"))
 
     sec = security_report(config_path)
     add("config_hardening", sec["status"] != "failed", sec["status"])

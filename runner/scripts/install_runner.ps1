@@ -100,23 +100,13 @@ try {
     if ($InsecureNoTlsVerify) { $cfg.verify_tls = $false }
     Write-Utf8NoBom -Path ".\settings.json" -Content ($cfg | ConvertTo-Json -Depth 30)
 
-    Write-Step "Validando/provisionando Nuclei Runtime"
-    $nucleiInstaller = Join-Path $InstallDir "tools\nuclei\install_nuclei.ps1"
-    $nucleiExe = Join-Path $InstallDir "tools\nuclei\nuclei.exe"
-    if (-not (Test-Path $nucleiExe)) {
-        if (Test-Path $nucleiInstaller) {
-            try {
-                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $nucleiInstaller
-                if ($LASTEXITCODE -ne 0) { throw "Provisionador Nuclei retornou exit code $LASTEXITCODE." }
-            } catch {
-                Write-Warning "Nuclei não pôde ser provisionado automaticamente: $($_.Exception.Message)"
-                Write-Warning "O Runner será instalado, mas jobs Nuclei ficarão NÃO AVALIADOS até o runtime estar disponível."
-            }
-        } else {
-            Write-Warning "Provisionador Nuclei não encontrado: $nucleiInstaller"
-        }
+    Write-Step "Validando Nuclei Runtime bundled"
+    $nucleiVerifier = Join-Path $InstallDir "tools\nuclei\install_nuclei.ps1"
+    if (Test-Path $nucleiVerifier) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $nucleiVerifier
+        if ($LASTEXITCODE -ne 0) { Write-Warning "Validação do runtime Nuclei retornou exit code $LASTEXITCODE." }
     } else {
-        Write-Host "[OK] Nuclei já presente em $nucleiExe"
+        Write-Warning "Verificador Nuclei não encontrado: $nucleiVerifier"
     }
 
     Write-Step "Executando validação local"

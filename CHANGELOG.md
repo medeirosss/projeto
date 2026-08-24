@@ -1,3 +1,22 @@
+# MAGI 4.0 Consolidada
+
+- Consolida 4.0.1–4.0.5 como versão oficial 4.0.
+- MAGI Security Checks tornam-se o fluxo principal de Tarefas.
+- Atomic Red Team congelado por padrão e reservado para pós-ataque.
+- Histórico Atomic anterior permanece disponível.
+- Nenhuma nova migration.
+
+# Sprint 4.0.5
+
+- Atomic Remote Execution real via WinRM/PSSession.
+- Credencial obrigatória e segredo transitório.
+- Target validation.
+- Target unreachable/authentication/transport states.
+- Prerequisite preparation on remote target.
+- Atomic inner exit-code parsing.
+- No local fallback for Atomic execution.
+- Runner 2.15.0.
+
 ## v000.9.0-sprint4.0.3 — Atomic Evidence Engine hardening
 
 - Atomic agora preserva stdout/stderr no retorno do Runner.

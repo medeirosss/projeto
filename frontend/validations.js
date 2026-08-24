@@ -227,6 +227,7 @@ function findingBadge(row){
     if(String(row.status||'').toLowerCase()==='target_unreachable') return '<span class="badge badge-muted">NÃO AVALIADO / TARGET INACESSÍVEL</span>';
     return '<span class="badge badge-muted">NÃO AVALIADO</span>';
   }
+  if(finding==='not_applicable') return '<span class="badge badge-muted">NÃO APLICÁVEL</span>';
   if(finding==='detected') return '<span class="badge badge-danger">DETECTADO</span>';
   if(finding==='not_detected') return '<span class="badge badge-ok">NÃO DETECTADO</span>';
   if(finding==='error') return '<span class="badge badge-danger">ERRO</span>';

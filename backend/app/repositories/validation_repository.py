@@ -61,7 +61,10 @@ def mark_execution_running(runner_job_id:int):
 
 
 def ingest_execution_result(runner_job_id:int,status:str,result:dict,error:str|None=None):
-    meta=(result or {}).get('metadata') or {}; finding=meta.get('finding') or {}; evidence=meta.get('evidence') or meta
+    meta=(result or {}).get('metadata') or {}; finding=meta.get('finding') or {}; evidence=dict(meta.get('evidence') or meta)
+    for key in ('executed_real_test','execution_scope','requested_target','confirmation_status'):
+        if key in meta and key not in evidence:
+            evidence[key]=meta.get(key)
     finding_status=finding.get('status') or ('detected' if finding.get('detected') else 'not_detected' if status=='success' else 'error')
     message=finding.get('message') or meta.get('message')
     with SessionLocal() as db:
