@@ -86,7 +86,7 @@ def heartbeat_v2_service(data: dict, headers, remote_addr: str | None = None):
 def get_next_job_v2_service(headers):
     runner_id = _auth_runner_from_headers(headers)
     job = get_next_job(runner_id)
-    if job and job.get("job_type") in {"credential_validate","deep_inventory","atomic_validation"}:
+    if job and job.get("job_type") in {"credential_validate","deep_inventory","atomic_validation","attack_simulation"} and (job.get("payload") or {}).get("credential_id"):
         # Inject plaintext only into the transient HTTP response. runner_jobs stores only credential_id.
         from app.services.credentials_service import get_credential_by_id
         payload = dict(job.get("payload") or {})
@@ -102,6 +102,9 @@ def get_next_job_v2_service(headers):
                     result={"status":"failed","error":"Credencial indisponível.","confirmation_status":"error","execution_scope":"target_remote"},
                     error="Credencial indisponível.",
                 )
+            if failed and job.get("job_type") == "attack_simulation":
+                from app.repositories.validation_repository import ingest_execution_result
+                ingest_execution_result(int(job["job_id"]), "failed", {"status":"failed","error":"Credencial indisponível.","metadata":{"execution_status":"failed","attack_result":"not_evaluated","payload_status":"not_executed","authentication_status":"credential_unavailable","lateral_movement_status":"not_confirmed","detection_status":"not_evaluated","confirmation_status":"credential_unavailable","finding":{"status":"error","detected":False,"message":"Credential Profile indisponível."}}}, "Credencial indisponível.")
             return {"success": True, "runner_id": runner_id, "job": None}
         payload["credential"] = {
             "id": cred.get("id"), "name": cred.get("name"), "type": cred.get("type"),

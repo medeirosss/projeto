@@ -36,7 +36,18 @@ def repository_summary():
 
 def task_catalog(repository_key=None,search=None,category=None): return {"success":True,"tasks":list_tasks(repository_key,search,category)}
 
-def plan_task(task_id:int,target:str)->dict[str,Any]:
+def _attack_scope(options:dict[str,Any]|None,target:str)->dict[str,Any]:
+    options=options or {}
+    host_b=str(options.get("host_b") or options.get("secondary_target") or "").strip()
+    def bounded(name,default,minimum,maximum):
+        try: value=int(options.get(name,default))
+        except Exception: value=default
+        return max(minimum,min(maximum,value))
+    networks=options.get("allowed_networks") or []
+    if isinstance(networks,str): networks=[x.strip() for x in networks.replace(";",",").split(",") if x.strip()]
+    return {"initial_target":target,"secondary_target":host_b or None,"allowed_networks":networks,"allowed_hosts":[x for x in [target,host_b] if x],"max_hops":bounded("max_hops",3,1,5),"hard_max_hops":5,"max_branches_per_host":bounded("max_branches_per_host",3,1,10),"max_total_hosts":bounded("max_total_hosts",15,2,50),"max_job_duration_minutes":bounded("max_job_duration_minutes",30,1,60),"discovery_enabled":False,"mode":"manual_path_5_1"}
+
+def plan_task(task_id:int,target:str,options:dict[str,Any]|None=None)->dict[str,Any]:
     target=(target or '').strip()
     if not target: raise ValueError('Target é obrigatório.')
     task=get_task(task_id)
@@ -48,15 +59,22 @@ def plan_task(task_id:int,target:str)->dict[str,Any]:
     detection=task.get('detection') or {}
     metadata=task.get('metadata') or {}
     plan={"task_id":task_id,"task_key":task['task_key'],"repository":task['repository_key'],"target":target,"runner_id":runner['runner_id'],"executor":task['executor'],"impact":task.get('impact'),"requires_admin":bool(task.get('requires_admin')),"detection":detection,"metadata":metadata,"remediation":task.get('remediation'),"ready":True}
+    if task.get("repository_key")=="magi_attack":
+        scope=_attack_scope(options,target); plan["scope"]=scope
+        if metadata.get("secondary_target_required") and not scope.get("secondary_target"): raise ValueError("Host B / Destination é obrigatório para esta simulação.")
+        if metadata.get("credential_required") and not (options or {}).get("credential_id"): raise ValueError("Credential Profile é obrigatório para esta simulação.")
+        if (options or {}).get("credential_id"): plan["credential_id"]=(options or {}).get("credential_id")
     return {"success":True,"plan":plan,"task":task}
 
-def execute_task(task_id:int,target:str,requested_by:str='ui'):
-    prepared=plan_task(task_id,target); plan=prepared['plan']; task=prepared['task']
+def execute_task(task_id:int,target:str,requested_by:str='ui',options:dict[str,Any]|None=None):
+    prepared=plan_task(task_id,target,options=options); plan=prepared['plan']; task=prepared['task']
     metadata=task.get('metadata') or {}
     validation_type="nuclei" if task.get("executor")=="nuclei" else "attack_simulation" if task.get("executor")=="attack_simulation" else "security_check"
     payload={"executor":task['executor'],"validation_type":validation_type,"task_id":task_id,"task_key":task['task_key'],"repository_key":task['repository_key'],"target":target,"detection":task.get('detection') or {},"impact":task.get('impact'),"remediation":task.get('remediation')}
     if validation_type=="attack_simulation":
-        payload.update({"simulation":task.get("detection") or {},"scenario_name":task.get("name"),"attack_category":task.get("category"),"attack_metadata":metadata,"safe_mode":True,"destructive":False})
+        payload.update({"simulation":task.get("detection") or {},"scenario_name":task.get("name"),"attack_category":task.get("category"),"attack_metadata":metadata,"safe_mode":True,"destructive":False,"scope":plan.get("scope") or {}})
+        if (options or {}).get("credential_id"): payload["credential_id"]=(options or {}).get("credential_id")
+        if (plan.get("scope") or {}).get("secondary_target"): payload["host_b"]=plan["scope"]["secondary_target"]
     if validation_type=="nuclei":
         payload.update({"template":metadata.get("template") or (task.get("detection") or {}).get("template"),"severity":metadata.get("severity"),"tags":metadata.get("tags") or [],"profile_name":metadata.get("profile_name") or task.get("name"),"protocol":metadata.get("protocol"),"ports":metadata.get("ports") or (task.get("detection") or {}).get("ports") or []})
     job=create_runner_job(plan['runner_id'],validation_type,target,payload)
@@ -151,6 +169,13 @@ def _normalize_magi(row:dict):
         "executed_real_test":bool((row.get("evidence") or {}).get("executed_real_test")),
         "execution_scope":(row.get("evidence") or {}).get("execution_scope"),
         "requested_target":(row.get("evidence") or {}).get("requested_target") or row.get("target"),
+        "secondary_target":(row.get("evidence") or {}).get("secondary_target"),
+        "execution_status":(row.get("evidence") or {}).get("execution_status") or row.get("status"),
+        "attack_result":(row.get("evidence") or {}).get("attack_result") or row.get("finding_status"),
+        "payload_status":(row.get("evidence") or {}).get("payload_status"),
+        "authentication_status":(row.get("evidence") or {}).get("authentication_status"),
+        "lateral_movement_status":(row.get("evidence") or {}).get("lateral_movement_status"),
+        "detection_status":(row.get("evidence") or {}).get("detection_status"),
         "confirmation_status":(row.get("evidence") or {}).get("confirmation_status") or row.get("finding_status"),
         "error":row.get("error"), "evidence":row.get("evidence") or {}, "remediation":row.get("remediation"),
     }

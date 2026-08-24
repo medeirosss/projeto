@@ -50,6 +50,8 @@ def test_http_canary_is_non_destructive(tmp_path):
         assert result.metadata["destructive"] is False
         assert result.metadata["executed_real_test"] is True
         assert result.metadata["finding"]["detected"] is True
+        assert result.metadata["attack_result"] == "precondition_confirmed"
+        assert result.metadata["payload_status"] == "not_executed"
         assert result.metadata["evidence"]["status_code"] == 404
     finally:
         srv.shutdown()
@@ -76,4 +78,25 @@ def test_closed_port_returns_not_detected(tmp_path):
     result = AttackSimulationExecutor().run(job, str(tmp_path), 5)
     assert result.status == "success"
     assert result.metadata["finding"]["detected"] is False
-    assert result.metadata["confirmation_status"] == "control_not_reachable"
+    assert result.metadata["confirmation_status"] == "precondition_not_confirmed"
+
+
+def test_manual_lateral_path_respects_scope_and_requires_credential(tmp_path):
+    job = {
+        "job_id": "3",
+        "target": "192.0.2.10",
+        "payload": {
+            "task_key": "MAGI-ATK-END-101",
+            "scenario_name": "WinRM Lateral Movement Path Validation",
+            "attack_category": "Endpoint",
+            "host_b": "192.0.2.11",
+            "scope": {"allowed_hosts": ["192.0.2.10", "192.0.2.11"], "max_hops": 1, "hard_max_hops": 5},
+            "credential": {},
+            "simulation": {"type": "winrm_lateral_path", "port": 5985},
+        },
+    }
+    result = AttackSimulationExecutor().run(job, str(tmp_path), 5)
+    assert result.status == "success"
+    assert result.metadata["attack_result"] == "lateral_movement_not_confirmed"
+    assert result.metadata["evidence"]["stop_reason"] == "credential_missing"
+    assert result.metadata["lateral_movement_status"] == "not_confirmed"

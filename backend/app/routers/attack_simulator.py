@@ -18,10 +18,10 @@ def summary():
         categories[key] = categories.get(key, 0) + 1
     return {
         "success": True,
-        "version": "5.0",
+        "version": "5.1",
         "safe_mode": True,
         "destructive": False,
-        "credential_execution": False,
+        "credential_execution": True,
         "simulations": len(sims),
         "categories": categories,
     }
@@ -40,7 +40,7 @@ def catalog(search: str | None = None, category: str | None = None):
 @router.post("/simulations/{task_id}/plan")
 def plan(task_id: int, payload: dict = Body(...)):
     try:
-        result = plan_task(task_id, payload.get("target"))
+        result = plan_task(task_id, payload.get("target"), options=payload)
         if result.get("task", {}).get("repository_key") != "magi_attack":
             raise ValueError("A tarefa informada não pertence ao MAGI Attack Simulator.")
         return result
@@ -51,12 +51,12 @@ def plan(task_id: int, payload: dict = Body(...)):
 @router.post("/simulations/{task_id}/execute")
 def execute(task_id: int, request: Request, payload: dict = Body(...)):
     try:
-        planned = plan_task(task_id, payload.get("target"))
+        planned = plan_task(task_id, payload.get("target"), options=payload)
         if planned.get("task", {}).get("repository_key") != "magi_attack":
             raise ValueError("A tarefa informada não pertence ao MAGI Attack Simulator.")
         u = getattr(request.state, "user", {}) or {}
         requested = u.get("sub") or u.get("username") or "ui"
-        return execute_task(task_id, payload.get("target"), requested)
+        return execute_task(task_id, payload.get("target"), requested, options=payload)
     except Exception as exc:
         raise HTTPException(400, str(exc))
 

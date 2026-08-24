@@ -8,7 +8,7 @@ from app.repositories.validation_repository import list_executions, list_tasks, 
 ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     {
         "task_key": "MAGI-ATK-END-001",
-        "name": "RDP Lateral Movement Surface",
+        "name": "RDP Protocol Reachability",
         "description": "Simula a primeira etapa de movimento lateral via RDP realizando somente negociação de protocolo, sem autenticação e sem abertura de sessão.",
         "category": "Endpoint",
         "platform": "Windows",
@@ -20,7 +20,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-END-002",
-        "name": "WinRM HTTP Lateral Movement Surface",
+        "name": "WinRM HTTP Protocol Reachability",
         "description": "Simula descoberta de uma superfície de administração WinRM usando WS-Management Identify, sem autenticar ou executar comandos.",
         "category": "Endpoint",
         "platform": "Windows",
@@ -32,7 +32,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-END-003",
-        "name": "WinRM HTTPS Lateral Movement Surface",
+        "name": "WinRM HTTPS Protocol Reachability",
         "description": "Simula descoberta de WinRM HTTPS via WS-Management Identify, sem autenticação e sem execução remota.",
         "category": "Endpoint",
         "platform": "Windows",
@@ -44,7 +44,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-END-004",
-        "name": "SMB Lateral Movement Surface",
+        "name": "SMB Protocol Reachability",
         "description": "Simula reconhecimento de uma rota potencial de movimento lateral confirmando somente a superfície TCP/445. Não monta compartilhamentos nem grava arquivos.",
         "category": "Endpoint",
         "platform": "Windows",
@@ -56,7 +56,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-AD-001",
-        "name": "LDAP Domain Services Surface",
+        "name": "LDAP Protocol Reachability",
         "description": "Simula reconhecimento inicial de serviços de diretório confirmando a disponibilidade do LDAP sem consulta de objetos e sem bind autenticado.",
         "category": "Active Directory",
         "platform": "Domain Controller",
@@ -68,7 +68,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-AD-002",
-        "name": "LDAPS Domain Services Surface",
+        "name": "LDAPS Protocol Reachability",
         "description": "Simula reconhecimento do canal LDAPS apenas pela disponibilidade da porta, sem consultas ao diretório.",
         "category": "Active Directory",
         "platform": "Domain Controller",
@@ -80,7 +80,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-AD-003",
-        "name": "Kerberos Authentication Surface",
+        "name": "Kerberos Protocol Reachability",
         "description": "Simula reconhecimento de infraestrutura Kerberos confirmando a disponibilidade TCP/88 sem solicitar tickets ou testar credenciais.",
         "category": "Active Directory",
         "platform": "Domain Controller",
@@ -92,7 +92,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-NET-001",
-        "name": "SSH Lateral Movement Surface",
+        "name": "SSH Protocol Reachability",
         "description": "Simula reconhecimento de uma rota potencial de movimento lateral lendo somente o banner inicial do SSH, sem autenticação.",
         "category": "Network Node",
         "platform": "Linux/Network",
@@ -104,7 +104,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-NET-002",
-        "name": "Telnet Legacy Management Surface",
+        "name": "Telnet Protocol Reachability",
         "description": "Simula reconhecimento de gerenciamento legado lendo somente a resposta inicial do serviço Telnet, quando disponível.",
         "category": "Network Node",
         "platform": "Network",
@@ -116,7 +116,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-APP-001",
-        "name": "HTTP Attack Telemetry Canary",
+        "name": "HTTP Telemetry Canary",
         "description": "Envia uma requisição HTTP benigna identificada como MAGI para validar visibilidade de WAF, proxy, aplicação e telemetria de segurança. Não contém exploit.",
         "category": "Application",
         "platform": "Web",
@@ -128,7 +128,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-APP-002",
-        "name": "HTTPS Attack Telemetry Canary",
+        "name": "HTTPS Telemetry Canary",
         "description": "Envia uma requisição HTTPS benigna marcada como MAGI para validar a cadeia de observabilidade sem explorar a aplicação.",
         "category": "Application",
         "platform": "Web",
@@ -140,7 +140,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-APP-003",
-        "name": "HTTP Method Discovery Simulation",
+        "name": "HTTP Method Discovery",
         "description": "Executa OPTIONS em uma rota canário para simular reconhecimento de métodos HTTP, sem alteração de estado.",
         "category": "Application",
         "platform": "Web",
@@ -152,7 +152,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     },
     {
         "task_key": "MAGI-ATK-APP-004",
-        "name": "HTTPS Benign POST Simulation",
+        "name": "HTTPS Benign POST Telemetry",
         "description": "Envia um POST JSON inofensivo para uma rota canário, permitindo validar observabilidade de tráfego de aplicação sem executar payload malicioso.",
         "category": "Application",
         "platform": "Web",
@@ -162,6 +162,19 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
         "remediation": "Valide logging, WAF e controles de método/rota para requisições inesperadas.",
         "metadata": {"attack_phase": "execution_telemetry", "safe_mode": True, "credential_required": False},
     },
+    {
+        "task_key": "MAGI-ATK-END-101",
+        "name": "WinRM Lateral Movement Path Validation",
+        "description": "Valida um salto lateral controlado Host A → Host B. O Runner autentica no Host A, cria/verifica/remove um artefato benigno e então o Host A inicia uma nova sessão WinRM para o Host B, repetindo a evidência e o cleanup.",
+        "category": "Endpoint",
+        "platform": "Windows",
+        "executor": "attack_simulation",
+        "impact": "medium",
+        "requires_admin": True,
+        "detection": {"type": "winrm_lateral_path", "port": 5985, "tls": False},
+        "remediation": "Restrinja WinRM e administração remota por segmentação, firewall, JEA/PAM e contas administrativas separadas; impeça reutilização de credenciais administrativas entre endpoints.",
+        "metadata": {"attack_phase": "lateral_movement", "safe_mode": True, "credential_required": True, "secondary_target_required": True, "creates_benign_artifact": True, "automatic_cleanup": True, "scope_engine": "5.1"},
+    },
 ]
 
 
@@ -170,19 +183,19 @@ def sync_attack_simulator() -> dict[str, Any]:
         "repository_key": "magi_attack",
         "name": "MAGI Attack Simulator",
         "provider": "magi",
-        "description": "Catálogo nativo de simulações remotas, controladas e não destrutivas do MAGI 5.0.",
+        "description": "Catálogo nativo de simulações remotas, controladas e não destrutivas do MAGI 5.1.",
         "available": True,
         "metadata": {
             "execution": "runner",
-            "version": "5.0",
+            "version": "5.1",
             "semantics": "attack_simulation",
             "safe_mode": True,
             "destructive": False,
-            "credential_execution": False,
+            "credential_execution": True,
         },
     })
     for task in ATTACK_SIMULATIONS:
-        upsert_task({"repository_key": "magi_attack", **task, "approved": True, "enabled": True, "requires_admin": False})
+        upsert_task({"repository_key": "magi_attack", **task, "approved": True, "enabled": True, "requires_admin": bool(task.get("requires_admin", False))})
     return {"success": True, "simulations": len(ATTACK_SIMULATIONS)}
 
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>MAGI Attack Simulator 5.0</title>
+  <title>MAGI Attack Simulator 5.1</title>
   <link rel="stylesheet" href="/assets/style.css" />
 </head>
 <body class="centric-page">
@@ -14,7 +14,7 @@
   <main class="page-content">
     <section class="page-heading">
       <div>
-        <p class="eyebrow">BUILD 5.0</p>
+        <p class="eyebrow">BUILD 5.1</p>
         <h1>MAGI Attack Simulator</h1>
         <p>Simulações remotas controladas para validar exposição, caminhos de movimento lateral e telemetria de aplicação sem exploração destrutiva.</p>
       </div>
@@ -25,18 +25,31 @@
       <article class="metric-card"><span>Simulações</span><strong id="attackSimulationCount">--</strong></article>
       <article class="metric-card"><span>Modo</span><strong>SAFE</strong></article>
       <article class="metric-card"><span>Execução</span><strong>Runner remoto</strong></article>
-      <article class="metric-card"><span>Alteração no alvo</span><strong>Nenhuma</strong></article>
+      <article class="metric-card"><span>Modo</span><strong>Safe + evidência benigna</strong></article>
     </section>
 
     <section class="panel">
       <div class="panel-header">
-        <div><h2>Catálogo 5.0</h2><p>Endpoint, Active Directory, nó de rede e aplicação.</p></div>
+        <div><h2>Catálogo 5.1</h2><p>Endpoint, Active Directory, nó de rede e aplicação.</p></div>
       </div>
       <div class="form-grid">
-        <label>Target<input id="attackTarget" placeholder="192.168.0.10 ou host.exemplo.local" /></label>
+        <label>Host A / Initial Target<input id="attackTarget" placeholder="192.168.0.10 ou host-a.exemplo.local" /></label>
+        <label>Host B / Destination<input id="attackHostB" placeholder="Usado no Lateral Movement Path" /></label>
+        <label>Credential Profile<select id="attackCredential"><option value="">Nenhuma / não necessária</option></select></label>
         <label>Categoria<select id="attackCategory"><option value="">Todas</option><option>Endpoint</option><option>Active Directory</option><option>Network Node</option><option>Application</option></select></label>
         <label>Buscar<input id="attackSearch" placeholder="RDP, WinRM, HTTP..." /></label>
       </div>
+      <details class="scope-box" open>
+        <summary><strong>Attack Scope 5.1</strong> — limites nativos de exploração</summary>
+        <div class="form-grid">
+          <label>Maximum Hops<input id="attackMaxHops" type="number" min="1" max="5" value="3" /></label>
+          <label>Branches por host<input id="attackMaxBranches" type="number" min="1" max="10" value="3" /></label>
+          <label>Máximo total de hosts<input id="attackMaxHosts" type="number" min="2" max="50" value="15" /></label>
+          <label>Tempo máximo (min)<input id="attackMaxMinutes" type="number" min="1" max="60" value="30" /></label>
+          <label>Redes autorizadas<input id="attackAllowedNetworks" placeholder="Opcional: 192.168.0.0/24,10.10.0.0/24" /></label>
+        </div>
+        <p><small>5 saltos é o limite absoluto do MAGI. Na 5.1 o caminho é manual A → B; descoberta automática permanece desativada.</small></p>
+      </details>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Simulação</th><th>Categoria</th><th>Fase</th><th>Impacto</th><th>Comportamento</th><th>Ação</th></tr></thead>
@@ -50,7 +63,7 @@
       <div class="panel-header"><div><h2>Histórico de simulações</h2><p>Evidências produzidas pelo Runner e normalizadas pelo MAGI.</p></div><button id="refreshAttackHistory" class="btn secondary">Atualizar</button></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>ID</th><th>Simulação</th><th>Categoria</th><th>Target</th><th>Status</th><th>Finding</th><th>Executado em</th></tr></thead>
+          <thead><tr><th>ID</th><th>Simulação</th><th>Categoria</th><th>Target</th><th>Execução</th><th>Resultado do ataque</th><th>Executado em</th></tr></thead>
           <tbody id="attackHistoryTable"><tr><td colspan="7">Nenhuma execução carregada.</td></tr></tbody>
         </table>
       </div>

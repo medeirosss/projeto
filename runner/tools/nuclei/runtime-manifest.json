@@ -1,0 +1,16 @@
+{
+  "runtime_policy": "fixed_bundled",
+  "source": "user_supplied_homologated_bundle",
+  "auto_update": false,
+  "nuclei_exe": {
+    "path": "tools/nuclei/nuclei.exe",
+    "size_bytes": 144920576,
+    "sha256": "73d5e5b0dde9ea5d5fc15dcc34c756148ccae20dc431a21e611af11b8649b480"
+  },
+  "templates": {
+    "path": "tools/nuclei/templates",
+    "yaml_count": 13510,
+    "bundle_file_count": 13840,
+    "templates_checksum_file_sha256": "ae377ae86df3ae1e251552b747ae968230089d91a7c1c78f7f003eee119802fd"
+  }
+}
