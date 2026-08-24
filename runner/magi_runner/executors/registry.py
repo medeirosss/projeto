@@ -12,11 +12,12 @@ from .credential_validate import CredentialValidateExecutor
 from .deep_inventory import DeepInventoryExecutor
 from .security_check import SecurityCheckExecutor
 from .nuclei import NucleiExecutor
+from .attack_simulation import AttackSimulationExecutor
 
 
 class ExecutorRegistry:
     def __init__(self, allowed: list[str]) -> None:
-        executors = [CmdExecutor(), PowerShellExecutor(), PythonExecutor(), AtomicExecutor(), NmapDiscoveryExecutor(), ServiceDiscoveryExecutor(), CredentialValidateExecutor(), DeepInventoryExecutor(), SecurityCheckExecutor(), NucleiExecutor()]
+        executors = [CmdExecutor(), PowerShellExecutor(), PythonExecutor(), AtomicExecutor(), NmapDiscoveryExecutor(), ServiceDiscoveryExecutor(), CredentialValidateExecutor(), DeepInventoryExecutor(), SecurityCheckExecutor(), NucleiExecutor(), AttackSimulationExecutor()]
         self._executors = {e.name: e for e in executors if e.name in allowed}
         self._executors["ps"] = self._executors.get("powershell")
         self._executors["pwsh"] = self._executors.get("powershell")

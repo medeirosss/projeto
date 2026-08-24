@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MAGI Attack Simulator 5.0</title>
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body class="centric-page">
+  <header class="topbar">
+    <div class="brand"><img id="brandLogo" class="brand-logo" src="/assets/logo.png" alt="MAGI"/><span data-brand-name>MAGI</span></div>
+    <nav id="mainMenu" class="main-menu"></nav>
+  </header>
+  <main class="page-content">
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">BUILD 5.0</p>
+        <h1>MAGI Attack Simulator</h1>
+        <p>Simulações remotas controladas para validar exposição, caminhos de movimento lateral e telemetria de aplicação sem exploração destrutiva.</p>
+      </div>
+      <button id="syncAttackCatalog" class="btn secondary">Sincronizar catálogo</button>
+    </section>
+
+    <section class="grid-cards" id="attackSummaryCards">
+      <article class="metric-card"><span>Simulações</span><strong id="attackSimulationCount">--</strong></article>
+      <article class="metric-card"><span>Modo</span><strong>SAFE</strong></article>
+      <article class="metric-card"><span>Execução</span><strong>Runner remoto</strong></article>
+      <article class="metric-card"><span>Alteração no alvo</span><strong>Nenhuma</strong></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div><h2>Catálogo 5.0</h2><p>Endpoint, Active Directory, nó de rede e aplicação.</p></div>
+      </div>
+      <div class="form-grid">
+        <label>Target<input id="attackTarget" placeholder="192.168.0.10 ou host.exemplo.local" /></label>
+        <label>Categoria<select id="attackCategory"><option value="">Todas</option><option>Endpoint</option><option>Active Directory</option><option>Network Node</option><option>Application</option></select></label>
+        <label>Buscar<input id="attackSearch" placeholder="RDP, WinRM, HTTP..." /></label>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Simulação</th><th>Categoria</th><th>Fase</th><th>Impacto</th><th>Comportamento</th><th>Ação</th></tr></thead>
+          <tbody id="attackCatalogTable"><tr><td colspan="6">Carregando...</td></tr></tbody>
+        </table>
+      </div>
+      <pre id="attackResult" class="result-box">Selecione uma simulação para planejar ou executar.</pre>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header"><div><h2>Histórico de simulações</h2><p>Evidências produzidas pelo Runner e normalizadas pelo MAGI.</p></div><button id="refreshAttackHistory" class="btn secondary">Atualizar</button></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Simulação</th><th>Categoria</th><th>Target</th><th>Status</th><th>Finding</th><th>Executado em</th></tr></thead>
+          <tbody id="attackHistoryTable"><tr><td colspan="7">Nenhuma execução carregada.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script src="/assets/common.js"></script>
+  <script src="/assets/attack-simulator.js"></script>
+</body>
+</html>

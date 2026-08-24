@@ -22,7 +22,8 @@
     "credential_validate",
     "deep_inventory",
     "security_check",
-    "nuclei"
+    "nuclei",
+    "attack_simulation"
   ],
   "offline_jobs_file": "./offline_jobs.json",
   "update_enabled": false,

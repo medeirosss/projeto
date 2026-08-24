@@ -154,3 +154,13 @@
 - Corrige falha PostgreSQL/Alembic na migration 0025 causada pelo identificador reservado `references`.
 - Mantém o nome lógico/API `references`, usando identificador SQL corretamente delimitado (`"references"`).
 - Corrige também o fallback `ensure_validation_schema()` e o UPSERT de `validation_tasks` para impedir recorrência após o startup.
+
+## v000.9.0-sprint5.0 — MAGI Attack Simulator Foundation
+- Novo executor Runner `attack_simulation` em safe mode.
+- Novo repositório `magi_attack` com 13 simulações iniciais.
+- Categorias Endpoint, Active Directory, Network Node e Application.
+- Simulações de superfície de movimento lateral para RDP, WinRM, SMB e SSH sem autenticação ou execução remota.
+- Canary HTTP/HTTPS para validação de telemetria de WAF/proxy/aplicação.
+- Nova API `/api/attack-simulator` e página `/attack-simulator`.
+- Histórico reutiliza Evidence Engine existente.
+- Atomic permanece congelado para pós-comprometimento; Nuclei continua na trilha de Vulnerability Validation.

@@ -67,6 +67,14 @@ async def exposures_page():
     return serve_frontend_file("exposures.html")
 
 
+
+
+@router.get("/attack-simulator", response_class=HTMLResponse)
+@router.get("/simulador-de-ataques", response_class=HTMLResponse)
+async def attack_simulator_page():
+    return serve_frontend_file("attack-simulator.html")
+
+
 @router.get("/configuracoes", response_class=HTMLResponse)
 async def settings_page():
     return serve_frontend_file("settings.html")

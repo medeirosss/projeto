@@ -24,3 +24,8 @@ Este roadmap é a referência oficial do projeto até a Golden Image 1.0. Novas 
 - Docker sobe sem alteração manual não documentada.
 - Changelog, upgrade e plano de testes atualizados.
 - Ambiente de homologação validado antes da próxima sprint.
+
+## Atualização após Build 4.2
+- Build 4.x: Vulnerability Validation / Nuclei — base estabilizada.
+- Build 5.0: MAGI Attack Simulator Foundation — catálogo nativo remoto, não destrutivo, dividido em Endpoint, Active Directory, Network Node e Application.
+- Próximas 5.x: evolução incremental de simulações autenticadas benignas, evidência de detecção/prevenção e encadeamento controlado de caminhos de ataque.

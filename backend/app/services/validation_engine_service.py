@@ -5,6 +5,7 @@ from app.repositories.validation_repository import upsert_repository,upsert_task
 from app.repositories.runner_repository import get_single_online_runner,create_runner_job
 from app.repositories.atomic_repository import list_atomic_executions, get_atomic_execution_by_id
 from app.services.nuclei_service import as_validation_tasks
+from app.services.attack_simulator_service import sync_attack_simulator
 
 BUILTIN_TASKS=[
  {"task_key":"MAGI-NET-001","name":"RDP acessível — TCP/3389","description":"Verifica se TCP/3389 está acessível a partir do Runner.","category":"Remote Access","platform":"Windows","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":3389,"finding_when":"open"},"remediation":"Restrinja RDP por firewall/VPN, limite origens autorizadas e mantenha NLA/MFA conforme a política do ambiente."},
@@ -24,9 +25,10 @@ def sync_repositories()->dict[str,Any]:
     upsert_repository({"repository_key":"atomic","name":"Atomic Red Team","provider":"atomic_red_team","description":"Integração preservada, congelada na 4.0 e reservada para pós-ataque/pós-comprometimento.","available":False,"metadata":{"execution":"atomic","lifecycle":"frozen","phase":"post_attack"}})
     upsert_repository({"repository_key":"nuclei","name":"Nuclei Templates","provider":"nuclei","description":"Validações Nuclei executadas remotamente pelo Runner com catálogo controlado pelo MAGI.","available":True,"metadata":{"execution":"runner","version":"4.2","catalog":"curated_profiles","runtime_policy":"fixed_bundled","binary_owner":"magi_runner"}})
     for task in BUILTIN_TASKS: upsert_task({"repository_key":"magi",**task,"approved":True,"enabled":True,"requires_admin":False})
+    attack_sync=sync_attack_simulator()
     nuclei_tasks=as_validation_tasks()
     for task in nuclei_tasks: upsert_task(task)
-    return {"success":True,"repositories":list_repositories(),"magi_tasks":len(BUILTIN_TASKS),"nuclei_tasks":len(nuclei_tasks)}
+    return {"success":True,"repositories":list_repositories(),"magi_tasks":len(BUILTIN_TASKS),"attack_simulations":attack_sync.get("simulations",0),"nuclei_tasks":len(nuclei_tasks)}
 
 def repository_summary():
     repos=list_repositories(); tasks=list_tasks(limit=1000)
@@ -51,8 +53,10 @@ def plan_task(task_id:int,target:str)->dict[str,Any]:
 def execute_task(task_id:int,target:str,requested_by:str='ui'):
     prepared=plan_task(task_id,target); plan=prepared['plan']; task=prepared['task']
     metadata=task.get('metadata') or {}
-    validation_type="nuclei" if task.get("executor")=="nuclei" else "security_check"
+    validation_type="nuclei" if task.get("executor")=="nuclei" else "attack_simulation" if task.get("executor")=="attack_simulation" else "security_check"
     payload={"executor":task['executor'],"validation_type":validation_type,"task_id":task_id,"task_key":task['task_key'],"repository_key":task['repository_key'],"target":target,"detection":task.get('detection') or {},"impact":task.get('impact'),"remediation":task.get('remediation')}
+    if validation_type=="attack_simulation":
+        payload.update({"simulation":task.get("detection") or {},"scenario_name":task.get("name"),"attack_category":task.get("category"),"attack_metadata":metadata,"safe_mode":True,"destructive":False})
     if validation_type=="nuclei":
         payload.update({"template":metadata.get("template") or (task.get("detection") or {}).get("template"),"severity":metadata.get("severity"),"tags":metadata.get("tags") or [],"profile_name":metadata.get("profile_name") or task.get("name"),"protocol":metadata.get("protocol"),"ports":metadata.get("ports") or (task.get("detection") or {}).get("ports") or []})
     job=create_runner_job(plan['runner_id'],validation_type,target,payload)

@@ -19,6 +19,7 @@ from app.routers.ai_chat import router as ai_chat_router
 from app.routers.targets import router as targets_router
 from app.routers.exposures import router as exposures_router
 from app.routers.repositories import router as repositories_router
+from app.routers.attack_simulator import router as attack_simulator_router
 from app.license.license_middleware import LicenseMiddleware
 from app.security.auth_middleware import AuthMiddleware
 from app.auth.auth_router import router as auth_router
@@ -70,6 +71,7 @@ app.include_router(ai_chat_router)
 app.include_router(targets_router)
 app.include_router(exposures_router)
 app.include_router(repositories_router)
+app.include_router(attack_simulator_router)
 
 if __name__ == "__main__":
     import uvicorn

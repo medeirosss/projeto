@@ -62,6 +62,7 @@ function buildHeader(activeKey){
     { key:'actions', href:'/instalador', label:'Ações' },
     { key:'alerts', href:'/alertas', label:'Alertas' },
     { key:'validations', href:'/validacoes', label:'Tarefas' },
+    { key:'attack', href:'/attack-simulator', label:'Attack Simulator' },
     { key:'targets', href:'/ativos', label:'Ativos' },
     { key:'exposures', href:'/exposicoes', label:'Exposições' },
     { key:'settings', href:'/configuracoes', label:'Configurações' }
