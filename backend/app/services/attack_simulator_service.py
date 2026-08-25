@@ -173,7 +173,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
         "requires_admin": True,
         "detection": {"type": "winrm_lateral_path", "port": 5985, "tls": False},
         "remediation": "Restrinja WinRM e administração remota por segmentação, firewall, JEA/PAM e contas administrativas separadas; impeça reutilização de credenciais administrativas entre endpoints.",
-        "metadata": {"attack_phase": "lateral_movement", "safe_mode": True, "credential_required": True, "secondary_target_required": True, "creates_benign_artifact": True, "automatic_cleanup": True, "scope_engine": "5.1.1"},
+        "metadata": {"attack_phase": "lateral_movement", "safe_mode": True, "credential_required": True, "secondary_target_required": True, "creates_benign_artifact": True, "automatic_cleanup": True, "scope_engine": "5.1.2"},
     },
 ]
 

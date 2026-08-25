@@ -3,18 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>MAGI Attack Simulator 5.1</title>
+  <title>MAGI Attack Simulator 5.1.2</title>
   <link rel="stylesheet" href="/assets/style.css" />
 </head>
 <body class="centric-page">
-  <header class="topbar">
-    <div class="brand"><img id="brandLogo" class="brand-logo" src="/assets/logo.png" alt="MAGI"/><span data-brand-name>MAGI</span></div>
-    <nav id="mainMenu" class="main-menu"></nav>
-  </header>
+  <div class="topbar modern-topbar">
+    <div class="top-left">
+      <div class="brand"><img id="brandLogo" src="/assets/logo.png" alt="Logo"><span data-brand-name>MAGI</span></div>
+      <nav class="menu" id="mainMenu"></nav>
+    </div>
+    <div class="top-right"><span>Attack Simulation</span></div>
+  </div>
   <main class="page-content">
     <section class="page-heading">
       <div>
-        <p class="eyebrow">BUILD 5.1</p>
+        <p class="eyebrow">BUILD 5.1.2</p>
         <h1>MAGI Attack Simulator</h1>
         <p>Simulações remotas controladas para validar exposição, caminhos de movimento lateral e telemetria de aplicação sem exploração destrutiva.</p>
       </div>
@@ -30,7 +33,7 @@
 
     <section class="panel">
       <div class="panel-header">
-        <div><h2>Catálogo 5.1</h2><p>Endpoint, Active Directory, nó de rede e aplicação.</p></div>
+        <div><h2>Catálogo 5.1.2</h2><p>Endpoint, Active Directory, nó de rede e aplicação.</p></div>
       </div>
       <div class="form-grid">
         <label>Host A / Initial Target<input id="attackTarget" placeholder="192.168.0.10 ou host-a.exemplo.local" /></label>
@@ -40,7 +43,7 @@
         <label>Buscar<input id="attackSearch" placeholder="RDP, WinRM, HTTP..." /></label>
       </div>
       <details class="scope-box" open>
-        <summary><strong>Attack Scope 5.1</strong> — limites nativos de exploração</summary>
+        <summary><strong>Attack Scope 5.1.2</strong> — limites nativos de exploração</summary>
         <div class="form-grid">
           <label>Maximum Hops<input id="attackMaxHops" type="number" min="1" max="5" value="3" /></label>
           <label>Branches por host<input id="attackMaxBranches" type="number" min="1" max="10" value="3" /></label>
@@ -48,7 +51,7 @@
           <label>Tempo máximo (min)<input id="attackMaxMinutes" type="number" min="1" max="60" value="30" /></label>
           <label>Redes autorizadas<input id="attackAllowedNetworks" placeholder="Opcional: 192.168.0.0/24,10.10.0.0/24" /></label>
         </div>
-        <p><small>5 saltos é o limite absoluto do MAGI. Na 5.1 o caminho é manual A → B; descoberta automática permanece desativada.</small></p>
+        <p><small>5 saltos é o limite absoluto do MAGI. Na 5.1.2 o caminho é manual A → B; descoberta automática permanece desativada.</small></p>
       </details>
       <div class="table-wrap">
         <table>

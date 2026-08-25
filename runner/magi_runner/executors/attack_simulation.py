@@ -232,52 +232,121 @@ $s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force
 $c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s)
 $artifact=$env:MAGI_ARTIFACT
 $token=$env:MAGI_TOKEN
-$trustedPath='WSMan:\localhost\Client\TrustedHosts'
-$trustedOriginal=$null
-$trustedChanged=$false
+$stage='runner_preflight'
 $transport='winrm_http_negotiate'
-try {
-  $trustedOriginal=(Get-Item $trustedPath -ErrorAction Stop).Value
-  $items=@()
-  if($trustedOriginal){$items=@($trustedOriginal -split ',' | ForEach-Object {$_.Trim()} | Where-Object {$_})}
-  if(-not ($items -contains $env:MAGI_HOST_A)){
-    $newItems=@($items + $env:MAGI_HOST_A | Select-Object -Unique)
-    Set-Item $trustedPath -Value ($newItems -join ',') -Force -ErrorAction Stop
-    $trustedChanged=$true
+$runnerTrustedState=$null
+$runnerTrustedChanged=$false
+
+function Get-MagiTrustedState {
+  $wsmanPath='WSMan:\localhost\Client\TrustedHosts'
+  try {
+    if(Test-Path $wsmanPath){
+      return [pscustomobject]@{method='wsman_provider'; value=((Get-Item $wsmanPath -ErrorAction Stop).Value -as [string]); existed=$true}
+    }
+  } catch {}
+  $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'
+  $prop=$null
+  try { $prop=Get-ItemProperty -Path $regPath -Name 'trusted_hosts' -ErrorAction Stop } catch {}
+  if($null -ne $prop){ return [pscustomobject]@{method='registry'; value=($prop.trusted_hosts -as [string]); existed=$true} }
+  return [pscustomobject]@{method='registry'; value=''; existed=$false}
+}
+function Set-MagiTrustedValue([object]$state,[string]$value) {
+  if($state.method -eq 'wsman_provider'){ Set-Item 'WSMan:\localhost\Client\TrustedHosts' -Value $value -Force -ErrorAction Stop; return }
+  $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'
+  if(-not (Test-Path $regPath)){ New-Item -Path $regPath -Force | Out-Null }
+  New-ItemProperty -Path $regPath -Name 'trusted_hosts' -PropertyType String -Value $value -Force | Out-Null
+}
+function Restore-MagiTrustedValue([object]$state) {
+  if($state.method -eq 'wsman_provider'){ Set-Item 'WSMan:\localhost\Client\TrustedHosts' -Value ($state.value -as [string]) -Force -ErrorAction Stop; return }
+  $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'
+  if($state.existed){
+    if(-not (Test-Path $regPath)){ New-Item -Path $regPath -Force | Out-Null }
+    New-ItemProperty -Path $regPath -Name 'trusted_hosts' -PropertyType String -Value ($state.value -as [string]) -Force | Out-Null
+  } else { Remove-ItemProperty -Path $regPath -Name 'trusted_hosts' -ErrorAction SilentlyContinue }
+}
+function Add-MagiTrustedHost([string]$hostName) {
+  $state=Get-MagiTrustedState
+  $items=@(); if($state.value){$items=@($state.value -split ',' | ForEach-Object {$_.Trim()} | Where-Object {$_})}
+  $changed=$false
+  if(-not (($items -contains '*') -or ($items -contains $hostName))){
+    $newItems=@($items + $hostName | Select-Object -Unique)
+    Set-MagiTrustedValue $state ($newItems -join ',')
+    $changed=$true
   }
+  return [pscustomobject]@{state=$state;changed=$changed;method=$state.method}
+}
+
+try {
+  $runnerTrust=Add-MagiTrustedHost $env:MAGI_HOST_A
+  $runnerTrustedState=$runnerTrust.state
+  $runnerTrustedChanged=$runnerTrust.changed
+  $stage='runner_to_host_a'
   $resultA=Invoke-Command -ComputerName $env:MAGI_HOST_A -Authentication Negotiate -Credential $c -ArgumentList $artifact,$token -ScriptBlock {
    param($artifact,$token)
    $dir=Split-Path $artifact -Parent
    New-Item -ItemType Directory -Path $dir -Force | Out-Null
-   Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.1.1 evidence " + $token) -Encoding ASCII
+   Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.1.2 evidence " + $token) -Encoding ASCII
    $verified=Test-Path $artifact
    $content=if($verified){Get-Content $artifact -Raw}else{''}
    Remove-Item $artifact -Force -ErrorAction SilentlyContinue
    $cleaned=-not (Test-Path $artifact)
    [pscustomobject]@{hostname=$env:COMPUTERNAME;artifact_created=$verified;artifact_verified=($content -like "*${token}*");cleanup_success=$cleaned}
   }
+
+  $stage='host_a_to_host_b'
   $resultB=Invoke-Command -ComputerName $env:MAGI_HOST_A -Authentication Negotiate -Credential $c -ArgumentList $env:MAGI_HOST_B,$env:MAGI_USER,$env:MAGI_SECRET,$artifact,$token -ScriptBlock {
    param($hostB,$user,$secret,$artifact,$token)
+   $ErrorActionPreference='Stop'
    $s2=ConvertTo-SecureString $secret -AsPlainText -Force
    $c2=New-Object System.Management.Automation.PSCredential($user,$s2)
-   Invoke-Command -ComputerName $hostB -Authentication Negotiate -Credential $c2 -ArgumentList $artifact,$token -ScriptBlock {
-    param($artifact,$token)
-    $dir=Split-Path $artifact -Parent
-    New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.1.1 lateral evidence " + $token) -Encoding ASCII
-    $verified=Test-Path $artifact
-    $content=if($verified){Get-Content $artifact -Raw}else{''}
-    Remove-Item $artifact -Force -ErrorAction SilentlyContinue
-    $cleaned=-not (Test-Path $artifact)
-    [pscustomobject]@{hostname=$env:COMPUTERNAME;artifact_created=$verified;artifact_verified=($content -like "*${token}*");cleanup_success=$cleaned}
+   $pivotTrustState=$null; $pivotTrustChanged=$false
+   function Get-PivotTrustedState {
+     $wsmanPath='WSMan:\localhost\Client\TrustedHosts'
+     try { if(Test-Path $wsmanPath){ return [pscustomobject]@{method='wsman_provider';value=((Get-Item $wsmanPath -ErrorAction Stop).Value -as [string]);existed=$true} } } catch {}
+     $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'; $prop=$null
+     try { $prop=Get-ItemProperty -Path $regPath -Name 'trusted_hosts' -ErrorAction Stop } catch {}
+     if($null -ne $prop){ return [pscustomobject]@{method='registry';value=($prop.trusted_hosts -as [string]);existed=$true} }
+     return [pscustomobject]@{method='registry';value='';existed=$false}
    }
+   function Set-PivotTrusted([object]$state,[string]$value){
+     if($state.method -eq 'wsman_provider'){ Set-Item 'WSMan:\localhost\Client\TrustedHosts' -Value $value -Force -ErrorAction Stop; return }
+     $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'; if(-not(Test-Path $regPath)){New-Item -Path $regPath -Force|Out-Null}
+     New-ItemProperty -Path $regPath -Name 'trusted_hosts' -PropertyType String -Value $value -Force|Out-Null
+   }
+   function Restore-PivotTrusted([object]$state){
+     if($state.method -eq 'wsman_provider'){Set-Item 'WSMan:\localhost\Client\TrustedHosts' -Value ($state.value -as [string]) -Force -ErrorAction Stop;return}
+     $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'
+     if($state.existed){New-ItemProperty -Path $regPath -Name 'trusted_hosts' -PropertyType String -Value ($state.value -as [string]) -Force|Out-Null}
+     else{Remove-ItemProperty -Path $regPath -Name 'trusted_hosts' -ErrorAction SilentlyContinue}
+   }
+   try {
+     $pivotTrustState=Get-PivotTrustedState
+     $items=@(); if($pivotTrustState.value){$items=@($pivotTrustState.value -split ','|ForEach-Object{$_.Trim()}|Where-Object{$_})}
+     if(-not (($items -contains '*') -or ($items -contains $hostB))){Set-PivotTrusted $pivotTrustState ((@($items+$hostB|Select-Object -Unique)) -join ',');$pivotTrustChanged=$true}
+     $result=Invoke-Command -ComputerName $hostB -Authentication Negotiate -Credential $c2 -ArgumentList $artifact,$token -ScriptBlock {
+      param($artifact,$token)
+      $dir=Split-Path $artifact -Parent
+      New-Item -ItemType Directory -Path $dir -Force | Out-Null
+      Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.1.2 lateral evidence " + $token) -Encoding ASCII
+      $verified=Test-Path $artifact
+      $content=if($verified){Get-Content $artifact -Raw}else{''}
+      Remove-Item $artifact -Force -ErrorAction SilentlyContinue
+      $cleaned=-not (Test-Path $artifact)
+      [pscustomobject]@{hostname=$env:COMPUTERNAME;artifact_created=$verified;artifact_verified=($content -like "*${token}*");cleanup_success=$cleaned}
+     }
+     [pscustomobject]@{result=$result;trustedhosts_method=$pivotTrustState.method;trustedhosts_temporary=$pivotTrustChanged}
+   }
+   finally { if($pivotTrustChanged -and $null -ne $pivotTrustState){try{Restore-PivotTrusted $pivotTrustState}catch{}} }
   }
-  [pscustomobject]@{host_a=$resultA;host_b=$resultB;path=($env:MAGI_HOST_A+" -> "+$env:MAGI_HOST_B);transport=$transport;trustedhosts_temporary=$trustedChanged} | ConvertTo-Json -Depth 6 -Compress
+  [pscustomobject]@{host_a=$resultA;host_b=$resultB.result;path=($env:MAGI_HOST_A+" -> "+$env:MAGI_HOST_B);transport=$transport;runner_trustedhosts_method=$runnerTrustedState.method;runner_trustedhosts_temporary=$runnerTrustedChanged;pivot_trustedhosts_method=$resultB.trustedhosts_method;pivot_trustedhosts_temporary=$resultB.trustedhosts_temporary} | ConvertTo-Json -Depth 6 -Compress
 }
-finally {
-  if($trustedChanged){ try { Set-Item $trustedPath -Value $trustedOriginal -Force -ErrorAction Stop } catch {} }
+catch {
+  [pscustomobject]@{magi_error=$_.Exception.Message;failure_stage=$stage;transport=$transport;runner_trustedhosts_method=if($null -ne $runnerTrustedState){$runnerTrustedState.method}else{'unavailable'};runner_trustedhosts_temporary=$runnerTrustedChanged} | ConvertTo-Json -Depth 4 -Compress
+  exit 11
 }
+finally { if($runnerTrustedChanged -and $null -ne $runnerTrustedState){ try { Restore-MagiTrustedValue $runnerTrustedState } catch {} } }
 '''
+
 
     try:
         proc = subprocess.run(
@@ -313,13 +382,31 @@ finally {
                 "stop_reason": "objective_reached" if completed else "evidence_not_confirmed",
             })
         else:
-            err = (proc.stderr or proc.stdout or f"PowerShell exit {proc.returncode}").strip()[-1800:]
+            raw_out = (proc.stdout or "").strip()
+            structured = {}
+            if raw_out:
+                try:
+                    structured = json.loads(raw_out.splitlines()[-1])
+                except Exception:
+                    structured = {}
+            err = str(structured.get("magi_error") or proc.stderr or proc.stdout or f"PowerShell exit {proc.returncode}").strip()[-1800:]
+            failure_stage = str(structured.get("failure_stage") or "unknown")
+            stop_reason = {
+                "runner_preflight": "runner_preflight_failed",
+                "runner_to_host_a": "host_a_authentication_or_transport_failed",
+                "host_a_to_host_b": "host_b_authentication_or_transport_failed",
+            }.get(failure_stage, "authentication_or_transport_failed")
             evidence.update({
                 "completed": False,
                 "authentication_success": False,
-                "stop_reason": "authentication_or_transport_failed",
+                "authentication_status": "not_reached" if failure_stage == "runner_preflight" else "not_confirmed",
+                "failure_stage": failure_stage,
+                "stop_reason": stop_reason,
                 "error": err,
             })
+            for key in ("transport", "runner_trustedhosts_method", "runner_trustedhosts_temporary"):
+                if key in structured:
+                    evidence[key] = structured[key]
     except subprocess.TimeoutExpired:
         evidence.update({"completed": False, "stop_reason": "job_timeout", "error": "Tempo limite atingido durante validação WinRM lateral."})
     except FileNotFoundError:
@@ -328,7 +415,7 @@ finally {
 
 
 class AttackSimulationExecutor:
-    """MAGI Attack Simulator 5.1.1.
+    """MAGI Attack Simulator 5.1.2.
 
     Protocol tests prove only exposure/preconditions. The authenticated 5.1 path
     can prove one authorized WinRM lateral hop with a benign artifact + cleanup.
@@ -365,7 +452,7 @@ class AttackSimulationExecutor:
             )
             metadata = {
                 "engine": "magi_attack_simulator",
-                "engine_version": "5.1.1",
+                "engine_version": "5.1.2",
                 "scenario": scenario,
                 "category": payload.get("attack_category"),
                 "simulation_type": sim_type,
@@ -435,7 +522,7 @@ class AttackSimulationExecutor:
         finding = {"status": attack_result, "detected": observed, "message": message}
         metadata = {
             "engine": "magi_attack_simulator",
-            "engine_version": "5.1.1",
+            "engine_version": "5.1.2",
             "scenario": scenario,
             "category": payload.get("attack_category"),
             "simulation_type": sim_type,
@@ -475,7 +562,7 @@ class AttackSimulationExecutor:
         if not preserve_metadata:
             metadata = {
                 "engine": "magi_attack_simulator",
-                "engine_version": "5.1.1",
+                "engine_version": "5.1.2",
                 "simulation_type": sim_type,
                 "safe_mode": True,
                 "destructive": False,
