@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>MAGI Attack Simulator 5.1.2</title>
+  <title>MAGI Attack Simulator 5.2</title>
   <link rel="stylesheet" href="/assets/style.css" />
 </head>
 <body class="centric-page">
@@ -17,7 +17,7 @@
   <main class="page-content">
     <section class="page-heading">
       <div>
-        <p class="eyebrow">BUILD 5.1.2</p>
+        <p class="eyebrow">BUILD 5.2</p>
         <h1>MAGI Attack Simulator</h1>
         <p>Simulações remotas controladas para validar exposição, caminhos de movimento lateral e telemetria de aplicação sem exploração destrutiva.</p>
       </div>
@@ -33,7 +33,7 @@
 
     <section class="panel">
       <div class="panel-header">
-        <div><h2>Catálogo 5.1.2</h2><p>Endpoint, Active Directory, nó de rede e aplicação.</p></div>
+        <div><h2>Catálogo 5.2</h2><p>Endpoint, Active Directory, nó de rede e aplicação.</p></div>
       </div>
       <div class="form-grid">
         <label>Host A / Initial Target<input id="attackTarget" placeholder="192.168.0.10 ou host-a.exemplo.local" /></label>
@@ -43,7 +43,7 @@
         <label>Buscar<input id="attackSearch" placeholder="RDP, WinRM, HTTP..." /></label>
       </div>
       <details class="scope-box" open>
-        <summary><strong>Attack Scope 5.1.2</strong> — limites nativos de exploração</summary>
+        <summary><strong>Attack Scope 5.2</strong> — limites nativos de exploração</summary>
         <div class="form-grid">
           <label>Maximum Hops<input id="attackMaxHops" type="number" min="1" max="5" value="3" /></label>
           <label>Branches por host<input id="attackMaxBranches" type="number" min="1" max="10" value="3" /></label>
@@ -51,7 +51,7 @@
           <label>Tempo máximo (min)<input id="attackMaxMinutes" type="number" min="1" max="60" value="30" /></label>
           <label>Redes autorizadas<input id="attackAllowedNetworks" placeholder="Opcional: 192.168.0.0/24,10.10.0.0/24" /></label>
         </div>
-        <p><small>5 saltos é o limite absoluto do MAGI. Na 5.1.2 o caminho é manual A → B; descoberta automática permanece desativada.</small></p>
+        <p><small>5 saltos é o limite absoluto do MAGI. O ataque único mantém caminho manual A → B. As Campaigns 5.2 executam exploração progressiva com ciclos limitados e política 10 → 5 → 1 → 0.</small></p>
       </details>
       <div class="table-wrap">
         <table>
@@ -60,6 +60,40 @@
         </table>
       </div>
       <pre id="attackResult" class="result-box">Selecione uma simulação para planejar ou executar.</pre>
+    </section>
+
+
+    <section class="panel" id="campaignPanel">
+      <div class="panel-header">
+        <div><h2>Attack Campaign 5.2</h2><p>Exploração progressiva por ciclos. Até 3 seeds iniciais, política 10 → 5 → 1 → 0, pausa diária e histórico de até 10 snapshots por Campaign.</p></div>
+        <button id="refreshCampaigns" class="btn secondary">Atualizar</button>
+      </div>
+      <div class="form-grid">
+        <label>Nome<input id="campaignName" placeholder="Rede Corporativa" /></label>
+        <label>Rede / máscara CIDR<input id="campaignScope" placeholder="192.168.0.0/24" /></label>
+        <label>Host A1<input id="campaignSeed1" placeholder="192.168.0.100" /></label>
+        <label>Host A2<input id="campaignSeed2" placeholder="Opcional" /></label>
+        <label>Host A3<input id="campaignSeed3" placeholder="Opcional" /></label>
+        <label>Credential Profile<select id="campaignCredential"><option value="">Selecione</option></select></label>
+        <label>Data/hora de início<input id="campaignStart" type="datetime-local" /></label>
+        <label>Data/hora de término<input id="campaignEnd" type="datetime-local" /></label>
+        <label>Janela diária - início<input id="campaignDailyStart" type="time" value="08:00" /></label>
+        <label>Janela diária - fim<input id="campaignDailyEnd" type="time" value="18:00" /></label>
+        <label>Ciclo / timeout<input value="15 minutos" disabled /></label>
+        <label>Reiniciar após (dias)<input id="campaignRecurrence" type="number" min="1" placeholder="Opcional: 5" /></label>
+      </div>
+      <div class="campaign-policy-strip">
+        <span><strong>Seeds/ciclo:</strong> 3</span><span><strong>Expansão:</strong> 10 → 5 → 1 → 0</span><span><strong>Jobs simultâneos:</strong> 5</span><span><strong>Snapshots:</strong> 10</span>
+      </div>
+      <div style="margin:12px 0"><button id="createCampaign" class="btn primary">Criar Campaign</button></div>
+      <pre id="campaignResult" class="result-box">A Campaign pode atravessar vários dias; fora da janela diária ela pausa e retoma a frontier no próximo período.</pre>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Campaign</th><th>Scope</th><th>Execution</th><th>Janela</th><th>Progresso</th><th>Próximo ciclo</th><th>Ações</th></tr></thead>
+          <tbody id="campaignTable"><tr><td colspan="7">Nenhuma Campaign carregada.</td></tr></tbody>
+        </table>
+      </div>
+      <div id="campaignDetail" class="campaign-detail"></div>
     </section>
 
     <section class="panel">

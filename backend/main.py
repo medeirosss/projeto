@@ -20,17 +20,20 @@ from app.routers.targets import router as targets_router
 from app.routers.exposures import router as exposures_router
 from app.routers.repositories import router as repositories_router
 from app.routers.attack_simulator import router as attack_simulator_router
+from app.routers.attack_campaigns import router as attack_campaigns_router
 from app.license.license_middleware import LicenseMiddleware
 from app.security.auth_middleware import AuthMiddleware
 from app.auth.auth_router import router as auth_router
 from app.license.license_router import router as license_router
 from app.license.license_scheduler import run_license_scheduler
 from app.services.discovery_scheduler import run_discovery_scheduler
+from app.services.attack_campaign_scheduler import run_attack_campaign_scheduler
 from app.license.license_service import license_service
 from app.repositories.auth_repository import ensure_local_auth_schema
 from app.repositories.runner_repository import ensure_runner_schema
 from app.repositories.target_repository import ensure_target_schema
 from app.repositories.validation_repository import ensure_validation_schema
+from app.repositories.attack_campaign_repository import ensure_attack_campaign_schema
 from app.services.validation_engine_service import sync_repositories
 
 app = FastAPI(title="Centric - UEM Backend")
@@ -47,10 +50,12 @@ async def startup_event():
     ensure_runner_schema()
     ensure_target_schema()
     ensure_validation_schema()
+    ensure_attack_campaign_schema()
     sync_repositories()
     license_service.validate()
     asyncio.create_task(run_license_scheduler())
     asyncio.create_task(run_discovery_scheduler())
+    asyncio.create_task(run_attack_campaign_scheduler())
 
 
 if FRONTEND_DIR.exists():
@@ -72,6 +77,7 @@ app.include_router(targets_router)
 app.include_router(exposures_router)
 app.include_router(repositories_router)
 app.include_router(attack_simulator_router)
+app.include_router(attack_campaigns_router)
 
 if __name__ == "__main__":
     import uvicorn

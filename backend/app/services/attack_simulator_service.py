@@ -173,7 +173,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
         "requires_admin": True,
         "detection": {"type": "winrm_lateral_path", "port": 5985, "tls": False},
         "remediation": "Restrinja WinRM e administração remota por segmentação, firewall, JEA/PAM e contas administrativas separadas; impeça reutilização de credenciais administrativas entre endpoints.",
-        "metadata": {"attack_phase": "lateral_movement", "safe_mode": True, "credential_required": True, "secondary_target_required": True, "creates_benign_artifact": True, "automatic_cleanup": True, "scope_engine": "5.1.2"},
+        "metadata": {"attack_phase": "lateral_movement", "safe_mode": True, "credential_required": True, "secondary_target_required": True, "creates_benign_artifact": True, "automatic_cleanup": True, "scope_engine": "5.2"},
     },
 ]
 
@@ -183,11 +183,11 @@ def sync_attack_simulator() -> dict[str, Any]:
         "repository_key": "magi_attack",
         "name": "MAGI Attack Simulator",
         "provider": "magi",
-        "description": "Catálogo nativo de simulações remotas, controladas e não destrutivas do MAGI 5.1.1.",
+        "description": "Catálogo nativo de simulações remotas, controladas e não destrutivas do MAGI 5.2.",
         "available": True,
         "metadata": {
             "execution": "runner",
-            "version": "5.1.1",
+            "version": "5.2",
             "semantics": "attack_simulation",
             "safe_mode": True,
             "destructive": False,
