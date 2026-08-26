@@ -1,10 +1,10 @@
 """MAGI 5.2 attack campaign engine
 
 Revision ID: 20260826_0026
-Revises: 20260810_0025
+Revises: 0025_sprint4_repository_planner
 """
 from alembic import op
-revision='20260826_0026'; down_revision='20260810_0025'; branch_labels=None; depends_on=None
+revision='20260826_0026'; down_revision='0025_sprint4_repository_planner'; branch_labels=None; depends_on=None
 
 def upgrade():
     op.execute("""
