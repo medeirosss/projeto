@@ -190,3 +190,11 @@
 - Paths persistem protocolo e tipo de relação (`access`/`discovery`).
 - Apenas acesso autenticado promove frontier; discovery SNMP permanece terminal na 5.3.
 - Migration 0027 adiciona os campos multi-protocolo preservando dados da 5.2.1.
+
+## 5.3.1
+- Attack Campaign: adiciona preflight único por candidato antes do fan-out de autenticação.
+- Não promove IP não detectado para Asset.
+- WinRM/SMB/SSH somente após service precondition correspondente.
+- SNMP v2c pode confirmar discovery no preflight e não gera teste duplicado.
+- Classifica runner_dependency_missing, transport_failed e authentication_failed separadamente.
+- Configurações existentes do Runner habilitam campaign_probe por migração forward-compatible.

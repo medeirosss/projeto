@@ -139,6 +139,28 @@ def _snmp_validate(target:str,credential:dict[str,Any],timeout:int)->tuple[bool,
     return False,None,'snmp_v2c',2,last[-1600:]
 
 
+def _failure_status(protocol: str, error: str, attempts: int) -> str:
+    msg=(error or '').lower()
+    if protocol=='ssh' and attempts==0 and ('paramiko' in msg or 'dependência' in msg or 'dependency' in msg):
+        return 'runner_dependency_missing'
+    transport_tokens=(
+        'servernottrusted','trustedhosts','psremotingtransportexception','network path was not found',
+        'caminho da rede não foi encontrado','domínio não está disponível','dominio nao esta disponivel',
+        'no route to host','connection timed out','timed out','connection refused','name or service not known',
+        'could not resolve hostname','actively refused','host is down','unreachable'
+    )
+    auth_tokens=(
+        'access is denied','acesso negado','logon failure','falha de logon','authentication failed',
+        'permission denied','user name or password is incorrect','username or password is incorrect',
+        'the specified network password is not correct','account restriction'
+    )
+    if any(t in msg for t in auth_tokens):
+        return 'authentication_failed'
+    if any(t in msg for t in transport_tokens):
+        return 'transport_failed'
+    return 'access_not_confirmed'
+
+
 class CredentialValidateExecutor:
     name='credential_validate'
     def run(self,job:dict[str,Any],workdir:str,timeout_seconds:int)->ExecutionResult:
@@ -153,12 +175,21 @@ class CredentialValidateExecutor:
         elif ctype in {'snmp','snmp_v2c','snmpv2c'}: ok,hostname,protocol,attempts,error=_snmp_validate(target,cred,timeout_seconds)
         else: ok,hostname,protocol,attempts,error=False,None,ctype,0,f'Tipo de credencial não suportado nesta versão: {ctype}'
         finished=datetime.now(timezone.utc)
-        relation='discovery' if protocol=='snmp_v2c' else 'access'; finding_status=('discovery_confirmed' if relation=='discovery' else 'access_confirmed') if ok else ('discovery_not_confirmed' if relation=='discovery' else 'access_not_confirmed')
+        relation='discovery' if protocol=='snmp_v2c' else 'access'
+        if ok:
+            finding_status='discovery_confirmed' if relation=='discovery' else 'access_confirmed'
+        elif relation=='discovery':
+            finding_status='discovery_not_confirmed'
+        else:
+            finding_status=_failure_status(protocol,error,attempts)
+        executed = finding_status != 'runner_dependency_missing'
         metadata={'target':target,'credential_id':payload.get('credential_id'),'credential_name':cred.get('name'),'credential_type':ctype,'authenticated':ok,
                   'hostname':hostname,'protocol':protocol,'attempts_used':min(2,attempts),'max_attempts':2,'message':None if ok else error,
-                  'campaign_context':payload.get('campaign_context') or {},'relation_type':relation,'executed_real_test':True,
+                  'campaign_context':payload.get('campaign_context') or {},'relation_type':relation,'executed_real_test':executed,
                   'execution_scope':'campaign_remote','attack_result':finding_status,'confirmation_status':finding_status,
+                  'failure_class':None if ok else finding_status,
                   'finding':{'status':finding_status,'detected':ok,'message':(f'{protocol} confirmado em {target}.' if ok else f'{protocol} não confirmado em {target}: {error}')}}
         Path(workdir,'credential_validation.json').write_text(json.dumps(metadata,indent=2,ensure_ascii=False),encoding='utf-8')
-        return ExecutionResult(status='success' if ok else 'failed',exit_code=0 if ok else 1,stdout=hostname or '',stderr='' if ok else error,
+        runner_error=finding_status=='runner_dependency_missing'
+        return ExecutionResult(status='success' if ok else ('error' if runner_error else 'failed'),exit_code=0 if ok else (None if runner_error else 1),stdout=hostname or '',stderr='' if ok else error,
             started_at=started.isoformat(),finished_at=finished.isoformat(),duration_seconds=(finished-started).total_seconds(),metadata=metadata)

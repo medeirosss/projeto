@@ -161,18 +161,46 @@ def _vector_credentials(c:dict[str,Any])->list[tuple[str,int,str]]:
     return out
 
 
-def _queue_path(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,target:str,depth:int)->bool:
-    runner_id=c.get('runner_id')
-    if not runner_id:
-        runner=get_single_online_runner(); runner_id=(runner or {}).get('runner_id')
+def _runner_id(c:dict[str,Any])->str|None:
+    rid=c.get('runner_id')
+    if rid:return rid
+    runner=get_single_online_runner()
+    return (runner or {}).get('runner_id')
+
+
+def _queue_probe(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,target:str,depth:int)->bool:
+    """Queue one cheap discovery/precondition job for an unknown candidate."""
+    runner_id=_runner_id(c)
     if not runner_id:return False
+    exists=db.execute(text("SELECT 1 FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o AND target=:t AND protocol='preflight' LIMIT 1"),{'e':e['id'],'o':origin,'t':target}).first()
+    if exists:return False
+    enabled=list(c.get('enabled_vectors') or ['winrm','smb','ssh','snmp_v2c'])
+    snmp_cred=int(c['snmp_credential_id']) if c.get('snmp_credential_id') and 'snmp_v2c' in enabled else None
+    payload={'executor':'campaign_probe','target':target,'enabled_vectors':enabled,'timeout_seconds':6,
+             'campaign_context':{'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],'cycle_id':cy['id'],'origin':origin,'target':target,'depth':depth,'protocol':'preflight'}}
+    # Optional SNMP community is injected only in the transient Runner response.
+    if snmp_cred:payload['credential_id']=snmp_cred
+    job=create_runner_job(runner_id,'campaign_probe',target,payload)
+    db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id)
+      VALUES(:e,:cy,:o,:t,'preflight','discovery',:d,'queued',:j) ON CONFLICT(execution_id,origin,target,protocol) DO NOTHING"""),
+      {'e':e['id'],'cy':cy['id'],'o':origin,'t':target,'d':depth,'j':job['id']})
+    return True
+
+
+def _queue_access_vectors(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,target:str,depth:int,applicable:list[str])->int:
+    """Queue only protocols that passed the Runner-side service precondition."""
+    runner_id=_runner_id(c)
+    if not runner_id:return 0
+    applicable=set(applicable or [])
     existing={r[0] for r in db.execute(text('SELECT protocol FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o AND target=:t'),{'e':e['id'],'o':origin,'t':target}).all()}
-    queued=False
+    queued=0
     for protocol,credential_id,relation in _vector_credentials(c):
-        if protocol in existing: continue
+        # SNMP success is already a real authenticated discovery performed by preflight.
+        if protocol=='snmp_v2c':continue
+        if protocol not in applicable or protocol in existing:continue
         payload={'executor':'credential_validate','target':target,'credential_id':credential_id,'protocol':protocol,
-                 'credential_type':'windows' if protocol in {'winrm','smb'} else ('ssh' if protocol=='ssh' else 'snmp_v2c'),
-                 'max_attempts':2,'timeout_seconds':min(90,int(c.get('cycle_timeout_minutes') or 15)*60),
+                 'credential_type':'windows' if protocol in {'winrm','smb'} else 'ssh',
+                 'max_attempts':2,'timeout_seconds':30,
                  'campaign_context':{'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],'cycle_id':cy['id'],'origin':origin,'target':target,'depth':depth,'protocol':protocol}}
         job=create_runner_job(runner_id,'credential_validate',target,payload)
         task=_task_for_protocol(db,protocol); vex_id=None
@@ -182,7 +210,7 @@ def _queue_path(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,t
         db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id,validation_execution_id)
           VALUES(:e,:cy,:o,:t,:p,:rel,:d,'queued',:j,:v) ON CONFLICT(execution_id,origin,target,protocol) DO NOTHING"""),
           {'e':e['id'],'cy':cy['id'],'o':origin,'t':target,'p':protocol,'rel':relation,'d':depth,'j':job['id'],'v':vex_id})
-        queued=True
+        queued+=1
     return queued
 
 
@@ -193,19 +221,56 @@ def _sync_paths(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
     for r in rows:
         js=r['job_status']
         if js in ('pending','running'):
-            if js=='running' and r['status']!='running': db.execute(text("UPDATE attack_campaign_paths SET status='running' WHERE id=:id"),{'id':r['id']})
+            if js=='running' and r['status']!='running':db.execute(text("UPDATE attack_campaign_paths SET status='running' WHERE id=:id"),{'id':r['id']})
             continue
-        data=r['job_result'] or {}; meta=data.get('metadata') or {}; authenticated=bool(meta.get('authenticated'))
-        protocol=str(r.get('protocol') or meta.get('protocol') or 'unknown'); relation=str(r.get('relation_type') or ('discovery' if protocol=='snmp_v2c' else 'access'))
-        result=('discovery_confirmed' if relation=='discovery' else 'access_confirmed') if authenticated else ('discovery_not_confirmed' if relation=='discovery' else 'access_not_confirmed')
-        db.execute(text("UPDATE attack_campaign_paths SET status=:s,result=:r,evidence=CAST(:ev AS JSONB),finished_at=:now WHERE id=:id"),
-                   {'s':'confirmed' if authenticated else 'not_confirmed','r':result,'ev':__import__('json').dumps(meta or data,ensure_ascii=False,default=str),'now':datetime.utcnow(),'id':r['id']})
-        hostname=meta.get('hostname')
-        inv={'ip':r['target'],'hostname':hostname,'source':'attack_campaign','protocol':protocol,'relation_type':relation,'last_origin':r['origin']}
-        _upsert_asset(db,e['id'],r['target'],confirmed=(authenticated and relation=='access'),hostname=hostname,inventory=inv,state=('access_confirmed' if authenticated and relation=='access' else 'discovered_via_snmp' if authenticated else 'evaluated'))
+        data=r['job_result'] or {}; meta=data.get('metadata') or {}
+        protocol=str(r.get('protocol') or meta.get('protocol') or 'unknown')
+        relation=str(r.get('relation_type') or ('discovery' if protocol in {'snmp_v2c','preflight'} else 'access'))
+
+        if protocol=='preflight':
+            alive=bool(meta.get('alive'))
+            result='discovery_confirmed' if alive else 'discovery_not_confirmed'
+            status='confirmed' if alive else 'not_confirmed'
+            db.execute(text("UPDATE attack_campaign_paths SET status=:s,result=:r,evidence=CAST(:ev AS JSONB),finished_at=:now WHERE id=:id"),
+                       {'s':status,'r':result,'ev':__import__('json').dumps(meta or data,ensure_ascii=False,default=str),'now':datetime.utcnow(),'id':r['id']})
+            if not alive:
+                # Critical 5.3.1 rule: an address that did not answer discovery is NOT an Asset.
+                continue
+            hostname=meta.get('hostname')
+            applicable=list(meta.get('applicable_protocols') or [])
+            inv={'ip':r['target'],'hostname':hostname,'source':'attack_campaign','last_origin':r['origin'],'relation_type':'discovery',
+                 'open_ports':meta.get('open_ports') or [],'icmp':bool(meta.get('icmp')),'applicable_protocols':applicable,
+                 'snmp_confirmed':bool(meta.get('snmp_confirmed'))}
+            _upsert_asset(db,e['id'],r['target'],confirmed=False,hostname=hostname,inventory=inv,state='discovered')
+            try:upsert_discovered_target(hostname=hostname,hostname_normalized=(hostname or '').lower() or None,ip_address=r['target'],mac_address=None,mac_normalized=None,status='online',source='attack_campaign',runner_id=c.get('runner_id'),dns_name=None,hostname_source='attack_campaign')
+            except Exception:pass
+            # Preserve SNMP as a concrete discovery relation without repeating the credential test.
+            if meta.get('snmp_confirmed'):
+                snmp_ev=dict(meta);snmp_ev['protocol']='snmp_v2c';snmp_ev['relation_type']='discovery';snmp_ev['confirmation_status']='discovery_confirmed';snmp_ev['attack_result']='discovery_confirmed'
+                db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id,result,evidence,finished_at)
+                  VALUES(:e,:cy,:o,:t,'snmp_v2c','discovery',:d,'confirmed',:j,'discovery_confirmed',CAST(:ev AS JSONB),:now)
+                  ON CONFLICT(execution_id,origin,target,protocol) DO NOTHING"""),
+                  {'e':e['id'],'cy':cy['id'],'o':r['origin'],'t':r['target'],'d':r['depth'],'j':r['runner_job_id'],'ev':__import__('json').dumps(snmp_ev,ensure_ascii=False,default=str),'now':datetime.utcnow()})
+            _queue_access_vectors(db,c,e,cy,r['origin'],r['target'],int(r['depth']),applicable)
+            continue
+
+        authenticated=bool(meta.get('authenticated'))
+        confirmation=str(meta.get('confirmation_status') or '')
         if authenticated:
-            try: upsert_discovered_target(hostname=hostname,hostname_normalized=(hostname or '').lower() or None,ip_address=r['target'],mac_address=None,mac_normalized=None,status='online',source='attack_campaign',runner_id=c.get('runner_id'),dns_name=None,hostname_source='attack_campaign')
-            except Exception: pass
+            path_status='confirmed'; result='access_confirmed' if relation=='access' else 'discovery_confirmed'
+        elif confirmation in {'runner_dependency_missing','execution_error'} or js=='error':
+            path_status='error'; result=confirmation or 'execution_error'
+        else:
+            path_status='not_confirmed'; result=confirmation or ('discovery_not_confirmed' if relation=='discovery' else 'access_not_confirmed')
+        db.execute(text("UPDATE attack_campaign_paths SET status=:s,result=:r,evidence=CAST(:ev AS JSONB),finished_at=:now WHERE id=:id"),
+                   {'s':path_status,'r':result,'ev':__import__('json').dumps(meta or data,ensure_ascii=False,default=str),'now':datetime.utcnow(),'id':r['id']})
+        # Do not create assets here on failures. The target must already have passed preflight.
+        if authenticated and relation=='access':
+            hostname=meta.get('hostname')
+            inv={'ip':r['target'],'hostname':hostname,'source':'attack_campaign','protocol':protocol,'relation_type':relation,'last_origin':r['origin']}
+            _upsert_asset(db,e['id'],r['target'],confirmed=True,hostname=hostname,inventory=inv,state='access_confirmed')
+            try:upsert_discovered_target(hostname=hostname,hostname_normalized=(hostname or '').lower() or None,ip_address=r['target'],mac_address=None,mac_normalized=None,status='online',source='attack_campaign',runner_id=c.get('runner_id'),dns_name=None,hostname_source='attack_campaign')
+            except Exception:pass
 
 
 def _fill_cycle(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
@@ -235,7 +300,7 @@ def _fill_cycle(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
             if count>=limit: continue
             target=_candidate_for_origin(db,c,e,origin)
             if not target: continue
-            if _queue_path(db,c,e,cy,origin,target,depth):
+            if _queue_probe(db,c,e,cy,origin,target,depth):
                 total+=1; slots-=1; progress=True
     db.execute(text('UPDATE attack_campaign_cycles SET frontier=CAST(:f AS JSONB),stats=CAST(:s AS JSONB) WHERE id=:id'),
                {'f':__import__('json').dumps(frontier,ensure_ascii=False),'s':__import__('json').dumps({'paths':total,'outstanding':outstanding},ensure_ascii=False),'id':cy['id']})

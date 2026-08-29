@@ -23,7 +23,8 @@
     "deep_inventory",
     "security_check",
     "nuclei",
-    "attack_simulation"
+    "attack_simulation",
+    "campaign_probe"
   ],
   "offline_jobs_file": "./offline_jobs.json",
   "update_enabled": false,
