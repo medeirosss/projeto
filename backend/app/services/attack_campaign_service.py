@@ -37,7 +37,9 @@ def _validate_campaign(data: dict[str, Any]) -> dict[str, Any]:
     recurrence=data.get('recurrence_days')
     if recurrence in ('',None): recurrence=None
     elif int(recurrence)<1: raise ValueError('Recorrência deve ser de pelo menos 1 dia.')
-    return {**data,'name':name,'initial_seeds':seeds,'scope_cidrs':scopes,'start_at':start,'end_at':end,
+    vectors=[v for v in (data.get('enabled_vectors') or ['winrm','smb','ssh','snmp_v2c']) if v in {'winrm','smb','ssh','snmp_v2c'}]
+    if not vectors: raise ValueError('Selecione ao menos um vetor da Campaign.')
+    return {**data,'name':name,'initial_seeds':seeds,'scope_cidrs':scopes,'start_at':start,'end_at':end,'enabled_vectors':vectors,
             'cycle_interval_minutes':interval,'cycle_timeout_minutes':timeout,'recurrence_days':int(recurrence) if recurrence else None,
             'max_seeds_per_cycle':3,'branch_policy':BRANCH_POLICY,'max_paths_per_cycle':max(10,min(100,int(data.get('max_paths_per_cycle') or 60))),
             'max_outstanding_jobs':max(1,min(10,int(data.get('max_outstanding_jobs') or 5))),'snapshot_retention':10}
@@ -46,7 +48,7 @@ def _validate_campaign(data: dict[str, Any]) -> dict[str, Any]:
 def create_attack_campaign(data: dict[str, Any], requested_by: str) -> dict[str, Any]:
     payload=_validate_campaign(data)
     row=create_campaign(payload, requested_by)
-    return {'success':True,'campaign':row,'policy':{'branch_policy':BRANCH_POLICY,'snapshot_retention':10,'cycle_timeout_max_minutes':15}}
+    return {'success':True,'campaign':row,'policy':{'branch_policy':BRANCH_POLICY,'snapshot_retention':10,'cycle_timeout_max_minutes':15,'multi_protocol':True,'vectors':payload.get('enabled_vectors')}}
 
 
 def campaign_list() -> dict[str, Any]: return {'success':True,'campaigns':list_campaigns()}
@@ -65,8 +67,10 @@ def campaign_resume(uuid: str):
 def campaign_delete(uuid: str): return {'success':delete_campaign(uuid)}
 
 
-def _task_end101(db) -> dict[str,Any] | None:
-    row=db.execute(text("SELECT * FROM validation_tasks WHERE task_key='MAGI-ATK-END-101' LIMIT 1")).mappings().first()
+def _task_for_protocol(db,protocol:str) -> dict[str,Any] | None:
+    key={'winrm':'MAGI-ATK-END-104','smb':'MAGI-ATK-END-102','ssh':'MAGI-ATK-END-103','snmp_v2c':'MAGI-ATK-NET-101'}.get(protocol)
+    if not key:return None
+    row=db.execute(text('SELECT * FROM validation_tasks WHERE task_key=:k LIMIT 1'),{'k':key}).mappings().first()
     return dict(row) if row else None
 
 
@@ -147,29 +151,39 @@ def _candidate_for_origin(db,c:dict[str,Any],e:dict[str,Any],origin:str)->str|No
     return None
 
 
+def _vector_credentials(c:dict[str,Any])->list[tuple[str,int,str]]:
+    out=[]; enabled=set(c.get('enabled_vectors') or ['winrm','smb','ssh','snmp_v2c'])
+    win=c.get('credential_id'); ssh=c.get('ssh_credential_id'); snmp=c.get('snmp_credential_id')
+    if win and 'winrm' in enabled: out.append(('winrm',int(win),'access'))
+    if win and 'smb' in enabled: out.append(('smb',int(win),'access'))
+    if ssh and 'ssh' in enabled: out.append(('ssh',int(ssh),'access'))
+    if snmp and 'snmp_v2c' in enabled: out.append(('snmp_v2c',int(snmp),'discovery'))
+    return out
+
+
 def _queue_path(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,target:str,depth:int)->bool:
-    task=_task_end101(db)
-    if not task:return False
     runner_id=c.get('runner_id')
     if not runner_id:
         runner=get_single_online_runner(); runner_id=(runner or {}).get('runner_id')
     if not runner_id:return False
-    scope={'mode':'campaign_5_2','max_hops':3,'hard_max_hops':5,'allowed_hosts':[origin,target],
-           'allowed_networks':list(c.get('scope_cidrs') or []),'initial_target':origin,'secondary_target':target,
-           'discovery_enabled':True,'branch_policy':BRANCH_POLICY,'campaign_uuid':c['campaign_uuid'],'cycle_id':cy['id']}
-    payload={'executor':'attack_simulation','validation_type':'attack_simulation','task_id':task['id'],'task_key':task['task_key'],
-             'repository_key':'magi_attack','target':origin,'detection':task.get('detection') or {},'impact':task.get('impact'),
-             'remediation':task.get('remediation'),'simulation':task.get('detection') or {},'scenario_name':task.get('name'),
-             'attack_category':task.get('category'),'attack_metadata':task.get('metadata') or {},'safe_mode':True,'destructive':False,
-             'scope':scope,'credential_id':c.get('credential_id'),'host_b':target,'campaign_context':{'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],'cycle_id':cy['id'],'depth':depth},
-             'timeout_seconds':min(180,int(c.get('cycle_timeout_minutes') or 15)*60)}
-    job=create_runner_job(runner_id,'attack_simulation',origin,payload)
-    plan={'ready':True,'runner_id':runner_id,'executor':'attack_simulation','target':origin,'task_id':task['id'],'task_key':task['task_key'],'repository':'magi_attack','scope':scope,'credential_id':c.get('credential_id')}
-    vex=create_execution(task,runner_id,job['id'],origin,f"campaign:{c['campaign_uuid']}",plan)
-    db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,depth,status,runner_job_id,validation_execution_id)
-      VALUES(:e,:cy,:o,:t,:d,'queued',:j,:v) ON CONFLICT(execution_id,origin,target) DO NOTHING"""),
-      {'e':e['id'],'cy':cy['id'],'o':origin,'t':target,'d':depth,'j':job['id'],'v':vex['id']})
-    return True
+    existing={r[0] for r in db.execute(text('SELECT protocol FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o AND target=:t'),{'e':e['id'],'o':origin,'t':target}).all()}
+    queued=False
+    for protocol,credential_id,relation in _vector_credentials(c):
+        if protocol in existing: continue
+        payload={'executor':'credential_validate','target':target,'credential_id':credential_id,'protocol':protocol,
+                 'credential_type':'windows' if protocol in {'winrm','smb'} else ('ssh' if protocol=='ssh' else 'snmp_v2c'),
+                 'max_attempts':2,'timeout_seconds':min(90,int(c.get('cycle_timeout_minutes') or 15)*60),
+                 'campaign_context':{'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],'cycle_id':cy['id'],'origin':origin,'target':target,'depth':depth,'protocol':protocol}}
+        job=create_runner_job(runner_id,'credential_validate',target,payload)
+        task=_task_for_protocol(db,protocol); vex_id=None
+        if task:
+            plan={'ready':True,'runner_id':runner_id,'executor':'credential_validate','target':target,'task_id':task['id'],'task_key':task['task_key'],'repository':'magi_attack','credential_id':credential_id,'protocol':protocol,'campaign_uuid':c['campaign_uuid']}
+            vex=create_execution(task,runner_id,job['id'],target,f"campaign:{c['campaign_uuid']}",plan); vex_id=vex['id']
+        db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id,validation_execution_id)
+          VALUES(:e,:cy,:o,:t,:p,:rel,:d,'queued',:j,:v) ON CONFLICT(execution_id,origin,target,protocol) DO NOTHING"""),
+          {'e':e['id'],'cy':cy['id'],'o':origin,'t':target,'p':protocol,'rel':relation,'d':depth,'j':job['id'],'v':vex_id})
+        queued=True
+    return queued
 
 
 def _sync_paths(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
@@ -181,17 +195,15 @@ def _sync_paths(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
         if js in ('pending','running'):
             if js=='running' and r['status']!='running': db.execute(text("UPDATE attack_campaign_paths SET status='running' WHERE id=:id"),{'id':r['id']})
             continue
-        data=r['job_result'] or {}; meta=data.get('metadata') or {}; ev=meta.get('evidence') or {}
-        attack=meta.get('attack_result') or ev.get('attack_result') or 'not_confirmed'
-        confirmed=attack=='lateral_movement_confirmed'
+        data=r['job_result'] or {}; meta=data.get('metadata') or {}; authenticated=bool(meta.get('authenticated'))
+        protocol=str(r.get('protocol') or meta.get('protocol') or 'unknown'); relation=str(r.get('relation_type') or ('discovery' if protocol=='snmp_v2c' else 'access'))
+        result=('discovery_confirmed' if relation=='discovery' else 'access_confirmed') if authenticated else ('discovery_not_confirmed' if relation=='discovery' else 'access_not_confirmed')
         db.execute(text("UPDATE attack_campaign_paths SET status=:s,result=:r,evidence=CAST(:ev AS JSONB),finished_at=:now WHERE id=:id"),
-                   {'s':'confirmed' if confirmed else 'not_confirmed','r':attack,'ev':__import__('json').dumps(ev or data,ensure_ascii=False,default=str),'now':datetime.utcnow(),'id':r['id']})
-        _upsert_asset(db,e['id'],r['target'],confirmed=confirmed,state='access_confirmed' if confirmed else 'evaluated')
-        if confirmed:
-            remote=ev.get('remote_evidence') or {}; ha=remote.get('host_a') or {}; hb=remote.get('host_b') or {}; hostname=hb.get('hostname')
-            _upsert_asset(db,e['id'],r['origin'],confirmed=True,hostname=ha.get('hostname'),inventory={'ip':r['origin'],'hostname':ha.get('hostname'),'source':'attack_campaign','access_protocol':'winrm'})
-            inventory={'ip':r['target'],'hostname':hostname,'source':'attack_campaign','access_protocol':'winrm','last_path':f"{r['origin']} -> {r['target']}"}
-            _upsert_asset(db,e['id'],r['target'],confirmed=True,hostname=hostname,inventory=inventory)
+                   {'s':'confirmed' if authenticated else 'not_confirmed','r':result,'ev':__import__('json').dumps(meta or data,ensure_ascii=False,default=str),'now':datetime.utcnow(),'id':r['id']})
+        hostname=meta.get('hostname')
+        inv={'ip':r['target'],'hostname':hostname,'source':'attack_campaign','protocol':protocol,'relation_type':relation,'last_origin':r['origin']}
+        _upsert_asset(db,e['id'],r['target'],confirmed=(authenticated and relation=='access'),hostname=hostname,inventory=inv,state=('access_confirmed' if authenticated and relation=='access' else 'discovered_via_snmp' if authenticated else 'evaluated'))
+        if authenticated:
             try: upsert_discovered_target(hostname=hostname,hostname_normalized=(hostname or '').lower() or None,ip_address=r['target'],mac_address=None,mac_normalized=None,status='online',source='attack_campaign',runner_id=c.get('runner_id'),dns_name=None,hostname_source='attack_campaign')
             except Exception: pass
 
@@ -205,7 +217,7 @@ def _fill_cycle(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
     if slots<=0:return
     frontier=list(cy.get('frontier') or [])
     # Rebuild frontier from confirmed paths so scheduler restart is harmless.
-    for r in db.execute(text("SELECT target,depth FROM attack_campaign_paths WHERE cycle_id=:cy AND status='confirmed' ORDER BY id"),{'cy':cy['id']}).mappings().all():
+    for r in db.execute(text("SELECT target,depth FROM attack_campaign_paths WHERE cycle_id=:cy AND status='confirmed' AND relation_type='access' ORDER BY id"),{'cy':cy['id']}).mappings().all():
         next_depth=int(r['depth'])+1
         if next_depth < len(BRANCH_POLICY)-1 and not any(x.get('origin')==r['target'] for x in frontier):
             frontier.append({'origin':r['target'],'depth':next_depth,'limit':BRANCH_POLICY[next_depth],'queued':0})
@@ -219,7 +231,7 @@ def _fill_cycle(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
             if slots<=0 or total>=int(c.get('max_paths_per_cycle') or 60): break
             origin=node['origin']; depth=int(node.get('depth') or 0); limit=int(BRANCH_POLICY[depth] if depth < len(BRANCH_POLICY) else 0)
             if limit<=0: continue
-            count=db.execute(text('SELECT COUNT(*) FROM attack_campaign_paths WHERE cycle_id=:cy AND origin=:o'),{'cy':cy['id'],'o':origin}).scalar() or 0
+            count=db.execute(text('SELECT COUNT(DISTINCT target) FROM attack_campaign_paths WHERE cycle_id=:cy AND origin=:o'),{'cy':cy['id'],'o':origin}).scalar() or 0
             if count>=limit: continue
             target=_candidate_for_origin(db,c,e,origin)
             if not target: continue
@@ -250,7 +262,7 @@ def _execution_stats(db,eid:int)->dict[str,int]:
 
 def _snapshot(db,eid:int)->dict[str,Any]:
     assets=[dict(x) for x in db.execute(text('SELECT address,hostname,state,access_confirmed,inventory,first_seen_at,last_seen_at FROM attack_campaign_assets WHERE execution_id=:e ORDER BY address'),{'e':eid}).mappings().all()]
-    paths=[dict(x) for x in db.execute(text("SELECT origin,target,depth,status,result,evidence,created_at,finished_at FROM attack_campaign_paths WHERE execution_id=:e ORDER BY id"),{'e':eid}).mappings().all()]
+    paths=[dict(x) for x in db.execute(text("SELECT origin,target,protocol,relation_type,depth,status,result,evidence,created_at,finished_at FROM attack_campaign_paths WHERE execution_id=:e ORDER BY id"),{'e':eid}).mappings().all()]
     return {'stats':_execution_stats(db,eid),'assets':assets,'paths':paths,'generated_at':datetime.utcnow().isoformat()}
 
 

@@ -34,6 +34,27 @@ def _windows_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[
             errors.append(str(exc))
     return False,None,'windows',2,' | '.join(e for e in errors if e)[-1600:]
 
+def _winrm_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[bool,str|None,str,int,str]:
+    user=str(credential.get('username') or '').strip(); domain=str(credential.get('domain') or '').strip(); secret=str(credential.get('secret') or '')
+    identity=f"{domain}\\{user}" if domain and '\\' not in user and '@' not in user else user
+    env=os.environ.copy(); env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret})
+    script=r'''$ErrorActionPreference='Stop';$s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force;$c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s);Invoke-Command -ComputerName $env:MAGI_TARGET -Credential $c -ScriptBlock { hostname } -ErrorAction Stop'''
+    try:
+        p=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],capture_output=True,text=True,timeout=max(8,timeout),env=env,shell=False)
+        host=(p.stdout or '').strip().splitlines()[-1].strip() if (p.stdout or '').strip() else None
+        return (p.returncode==0 and bool(host)),host,'winrm',1,'' if p.returncode==0 else (p.stderr or p.stdout or f'exit {p.returncode}')[-1600:]
+    except Exception as exc: return False,None,'winrm',1,str(exc)[-1600:]
+
+def _smb_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[bool,str|None,str,int,str]:
+    user=str(credential.get('username') or '').strip(); domain=str(credential.get('domain') or '').strip(); secret=str(credential.get('secret') or '')
+    identity=f"{domain}\\{user}" if domain and '\\' not in user and '@' not in user else user
+    env=os.environ.copy(); env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret})
+    script=r'''$ErrorActionPreference='Stop';$s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force;$c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s);$n='MAGI'+([guid]::NewGuid().ToString('N').Substring(0,8));New-PSDrive -Name $n -PSProvider FileSystem -Root ("\\\\"+$env:MAGI_TARGET+"\\IPC$") -Credential $c -ErrorAction Stop|Out-Null;Remove-PSDrive -Name $n -Force;Write-Output $env:MAGI_TARGET'''
+    try:
+        p=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],capture_output=True,text=True,timeout=max(8,timeout),env=env,shell=False)
+        ok=p.returncode==0; return ok,(target if ok else None),'smb',1,'' if ok else (p.stderr or p.stdout or f'exit {p.returncode}')[-1600:]
+    except Exception as exc: return False,None,'smb',1,str(exc)[-1600:]
+
 
 def _ssh_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[bool,str|None,str,int,str]:
     try:
@@ -124,13 +145,20 @@ class CredentialValidateExecutor:
         started=datetime.now(timezone.utc); payload=job.get('payload') or {}; target=str(payload.get('target') or job.get('target') or '').strip()
         cred=payload.get('credential') or {}; ctype=str(cred.get('type') or payload.get('credential_type') or '').lower()
         if not target or not cred.get('secret'): raise ValueError('Job de credencial sem target ou segredo transitório.')
-        if ctype in {'windows','wmi','winrm'}: ok,hostname,protocol,attempts,error=_windows_validate(target,cred,timeout_seconds)
+        forced=str(payload.get('protocol') or '').lower()
+        if forced=='smb': ok,hostname,protocol,attempts,error=_smb_validate(target,cred,timeout_seconds)
+        elif forced=='winrm': ok,hostname,protocol,attempts,error=_winrm_validate(target,cred,timeout_seconds)
+        elif ctype in {'windows','wmi','winrm'}: ok,hostname,protocol,attempts,error=_windows_validate(target,cred,timeout_seconds)
         elif ctype in {'ssh','linux'}: ok,hostname,protocol,attempts,error=_ssh_validate(target,cred,timeout_seconds)
         elif ctype in {'snmp','snmp_v2c','snmpv2c'}: ok,hostname,protocol,attempts,error=_snmp_validate(target,cred,timeout_seconds)
         else: ok,hostname,protocol,attempts,error=False,None,ctype,0,f'Tipo de credencial não suportado nesta versão: {ctype}'
         finished=datetime.now(timezone.utc)
+        relation='discovery' if protocol=='snmp_v2c' else 'access'; finding_status=('discovery_confirmed' if relation=='discovery' else 'access_confirmed') if ok else ('discovery_not_confirmed' if relation=='discovery' else 'access_not_confirmed')
         metadata={'target':target,'credential_id':payload.get('credential_id'),'credential_name':cred.get('name'),'credential_type':ctype,'authenticated':ok,
-                  'hostname':hostname,'protocol':protocol,'attempts_used':min(2,attempts),'max_attempts':2,'message':None if ok else error}
+                  'hostname':hostname,'protocol':protocol,'attempts_used':min(2,attempts),'max_attempts':2,'message':None if ok else error,
+                  'campaign_context':payload.get('campaign_context') or {},'relation_type':relation,'executed_real_test':True,
+                  'execution_scope':'campaign_remote','attack_result':finding_status,'confirmation_status':finding_status,
+                  'finding':{'status':finding_status,'detected':ok,'message':(f'{protocol} confirmado em {target}.' if ok else f'{protocol} não confirmado em {target}: {error}')}}
         Path(workdir,'credential_validation.json').write_text(json.dumps(metadata,indent=2,ensure_ascii=False),encoding='utf-8')
         return ExecutionResult(status='success' if ok else 'failed',exit_code=0 if ok else 1,stdout=hostname or '',stderr='' if ok else error,
             started_at=started.isoformat(),finished_at=finished.isoformat(),duration_seconds=(finished-started).total_seconds(),metadata=metadata)

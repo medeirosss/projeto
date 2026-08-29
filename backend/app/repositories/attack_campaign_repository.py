@@ -23,6 +23,10 @@ def ensure_attack_campaign_schema() -> None:
           scope_cidrs JSONB NOT NULL DEFAULT '[]'::jsonb,
           initial_seeds JSONB NOT NULL DEFAULT '[]'::jsonb,
           credential_id INTEGER,
+          ssh_credential_id INTEGER,
+          snmp_credential_id INTEGER,
+          enabled_vectors JSONB NOT NULL DEFAULT '["winrm","smb","ssh","snmp_v2c"]'::jsonb,
+          create_benign_evidence BOOLEAN NOT NULL DEFAULT FALSE,
           runner_id VARCHAR(100),
           start_at TIMESTAMP NOT NULL,
           end_at TIMESTAMP NOT NULL,
@@ -93,6 +97,8 @@ def ensure_attack_campaign_schema() -> None:
           cycle_id INTEGER NOT NULL REFERENCES attack_campaign_cycles(id) ON DELETE CASCADE,
           origin VARCHAR(255) NOT NULL,
           target VARCHAR(255) NOT NULL,
+          protocol VARCHAR(30) NOT NULL DEFAULT 'winrm',
+          relation_type VARCHAR(30) NOT NULL DEFAULT 'access',
           depth INTEGER NOT NULL DEFAULT 0,
           status VARCHAR(50) NOT NULL DEFAULT 'queued',
           runner_job_id INTEGER,
@@ -101,12 +107,18 @@ def ensure_attack_campaign_schema() -> None:
           evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           finished_at TIMESTAMP,
-          UNIQUE(execution_id, origin, target)
+          UNIQUE(execution_id, origin, target, protocol)
         );
         CREATE INDEX IF NOT EXISTS idx_attack_campaign_status ON attack_campaigns(status,enabled);
         CREATE INDEX IF NOT EXISTS idx_attack_campaign_exec_status ON attack_campaign_executions(status,scheduled_start,scheduled_end);
         CREATE INDEX IF NOT EXISTS idx_attack_campaign_cycle_status ON attack_campaign_cycles(status,scheduled_at);
         CREATE INDEX IF NOT EXISTS idx_attack_campaign_path_job ON attack_campaign_paths(runner_job_id);
+        ALTER TABLE attack_campaigns ADD COLUMN IF NOT EXISTS ssh_credential_id INTEGER;
+        ALTER TABLE attack_campaigns ADD COLUMN IF NOT EXISTS snmp_credential_id INTEGER;
+        ALTER TABLE attack_campaigns ADD COLUMN IF NOT EXISTS enabled_vectors JSONB NOT NULL DEFAULT '["winrm","smb","ssh","snmp_v2c"]'::jsonb;
+        ALTER TABLE attack_campaigns ADD COLUMN IF NOT EXISTS create_benign_evidence BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE attack_campaign_paths ADD COLUMN IF NOT EXISTS protocol VARCHAR(30) NOT NULL DEFAULT 'winrm';
+        ALTER TABLE attack_campaign_paths ADD COLUMN IF NOT EXISTS relation_type VARCHAR(30) NOT NULL DEFAULT 'access';
         """))
         db.commit()
 
@@ -116,18 +128,18 @@ def create_campaign(data: dict[str, Any], created_by: str) -> dict[str, Any]:
     with SessionLocal() as db:
         row = db.execute(text("""
           INSERT INTO attack_campaigns(
-            campaign_uuid,name,description,scope_cidrs,initial_seeds,credential_id,runner_id,
+            campaign_uuid,name,description,scope_cidrs,initial_seeds,credential_id,ssh_credential_id,snmp_credential_id,enabled_vectors,create_benign_evidence,runner_id,
             start_at,end_at,daily_start,daily_end,cycle_interval_minutes,cycle_timeout_minutes,
             recurrence_days,max_seeds_per_cycle,branch_policy,max_paths_per_cycle,max_outstanding_jobs,
             snapshot_retention,status,created_by,updated_at)
-          VALUES(:uuid,:name,:description,CAST(:scope AS JSONB),CAST(:seeds AS JSONB),:credential_id,:runner_id,
+          VALUES(:uuid,:name,:description,CAST(:scope AS JSONB),CAST(:seeds AS JSONB),:credential_id,:ssh_credential_id,:snmp_credential_id,CAST(:enabled_vectors AS JSONB),:create_benign_evidence,:runner_id,
             :start_at,:end_at,CAST(:daily_start AS TIME),CAST(:daily_end AS TIME),:interval,:timeout,
             :recurrence,:max_seeds,CAST(:policy AS JSONB),:max_paths,:max_jobs,:retention,'scheduled',:created_by,:now)
           RETURNING *
         """), {
             "uuid": campaign_uuid, "name": data["name"], "description": data.get("description"),
             "scope": _json(data["scope_cidrs"]), "seeds": _json(data["initial_seeds"]),
-            "credential_id": data.get("credential_id"), "runner_id": data.get("runner_id"),
+            "credential_id": data.get("credential_id"), "ssh_credential_id": data.get("ssh_credential_id"), "snmp_credential_id": data.get("snmp_credential_id"), "enabled_vectors": _json(data.get("enabled_vectors") or ["winrm","smb","ssh","snmp_v2c"]), "create_benign_evidence": bool(data.get("create_benign_evidence")), "runner_id": data.get("runner_id"),
             "start_at": data["start_at"], "end_at": data["end_at"],
             "daily_start": data.get("daily_start", "08:00"), "daily_end": data.get("daily_end", "18:00"),
             "interval": int(data.get("cycle_interval_minutes", 15)), "timeout": int(data.get("cycle_timeout_minutes", 15)),

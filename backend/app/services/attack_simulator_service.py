@@ -162,6 +162,10 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
         "remediation": "Valide logging, WAF e controles de método/rota para requisições inesperadas.",
         "metadata": {"attack_phase": "execution_telemetry", "safe_mode": True, "credential_required": False},
     },
+    {"task_key":"MAGI-ATK-END-102","name":"SMB Authenticated Access Validation","description":"Valida autenticação SMB controlada via IPC$ sem payload remoto.","category":"Endpoint","platform":"Windows","executor":"credential_validate","impact":"low","detection":{"type":"smb_auth","port":445},"remediation":"Restrinja SMB e reutilização de credenciais administrativas entre segmentos.","metadata":{"attack_phase":"lateral_access","safe_mode":True,"credential_required":True,"campaign_only":True}},
+    {"task_key":"MAGI-ATK-END-103","name":"SSH Authenticated Access Validation","description":"Valida autenticação SSH e executa apenas hostname como prova benigna de acesso.","category":"Endpoint","platform":"Linux/Unix","executor":"credential_validate","impact":"low","detection":{"type":"ssh_auth","port":22},"remediation":"Restrinja SSH, use autenticação forte e contas administrativas separadas.","metadata":{"attack_phase":"lateral_access","safe_mode":True,"credential_required":True,"campaign_only":True}},
+    {"task_key":"MAGI-ATK-NET-101","name":"SNMP v2c Discovery Validation","description":"Valida community SNMP v2c e coleta sysName.0; é discovery e não comprometimento.","category":"Network Node","platform":"Network","executor":"credential_validate","impact":"low","detection":{"type":"snmp_v2c","port":161,"transport":"udp"},"remediation":"Restrinja SNMP às redes de gestão; prefira SNMPv3 quando suportado.","metadata":{"attack_phase":"discovery","safe_mode":True,"credential_required":True,"campaign_only":True}},
+    {"task_key":"MAGI-ATK-END-104","name":"WinRM Authenticated Access Validation","description":"Valida autenticação WinRM e execução benigna de hostname sem artefato remoto.","category":"Endpoint","platform":"Windows","executor":"credential_validate","impact":"low","detection":{"type":"winrm_auth","port":5985},"remediation":"Restrinja WinRM às redes administrativas e use controles de privilégio.","metadata":{"attack_phase":"lateral_access","safe_mode":True,"credential_required":True,"campaign_only":True}},
     {
         "task_key": "MAGI-ATK-END-101",
         "name": "WinRM Lateral Movement Path Validation",
@@ -183,11 +187,11 @@ def sync_attack_simulator() -> dict[str, Any]:
         "repository_key": "magi_attack",
         "name": "MAGI Attack Simulator",
         "provider": "magi",
-        "description": "Catálogo nativo de simulações remotas, controladas e não destrutivas do MAGI 5.2.",
+        "description": "Catálogo nativo de simulações remotas, controladas e não destrutivas do MAGI 5.3.",
         "available": True,
         "metadata": {
             "execution": "runner",
-            "version": "5.2",
+            "version": "5.3",
             "semantics": "attack_simulation",
             "safe_mode": True,
             "destructive": False,
@@ -200,7 +204,7 @@ def sync_attack_simulator() -> dict[str, Any]:
 
 
 def attack_catalog(search: str | None = None, category: str | None = None) -> dict[str, Any]:
-    return {"success": True, "simulations": list_tasks("magi_attack", search, category)}
+    return {"success": True, "simulations": [x for x in list_tasks("magi_attack", search, category) if not (x.get("metadata") or {}).get("campaign_only")]}
 
 
 def attack_history(limit: int = 100) -> dict[str, Any]:

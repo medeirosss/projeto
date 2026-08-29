@@ -180,3 +180,13 @@
 - Corrige a migration `20260826_0026` para apontar para o Revision ID real da migration 0025: `0025_sprint4_repository_planner`.
 - Elimina o erro de startup `KeyError: '20260810_0025'` durante `alembic upgrade head`.
 - Nenhuma mudança funcional no Attack Campaign Engine 5.2; hotfix restrito à cadeia de migrations e versionamento do pacote.
+
+## 5.3.0 — Multi-Protocol Campaign
+- Campaign passa a aceitar credenciais Windows, SSH e SNMP v2c independentes.
+- Novos vetores Campaign: WinRM, SMB, SSH e SNMP v2c; RDP não participa da Campaign.
+- SMB valida autenticação controlada via IPC$ sem payload remoto.
+- SSH valida autenticação e execução benigna de `hostname`.
+- SNMP v2c valida community e `sysName.0`, classificado como discovery, nunca como pivot/comprometimento.
+- Paths persistem protocolo e tipo de relação (`access`/`discovery`).
+- Apenas acesso autenticado promove frontier; discovery SNMP permanece terminal na 5.3.
+- Migration 0027 adiciona os campos multi-protocolo preservando dados da 5.2.1.

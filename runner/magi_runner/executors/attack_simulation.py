@@ -285,7 +285,7 @@ try {
    param($artifact,$token)
    $dir=Split-Path $artifact -Parent
    New-Item -ItemType Directory -Path $dir -Force | Out-Null
-   Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.2 evidence " + $token) -Encoding ASCII
+   Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.3 evidence " + $token) -Encoding ASCII
    $verified=Test-Path $artifact
    $content=if($verified){Get-Content $artifact -Raw}else{''}
    Remove-Item $artifact -Force -ErrorAction SilentlyContinue
@@ -327,7 +327,7 @@ try {
       param($artifact,$token)
       $dir=Split-Path $artifact -Parent
       New-Item -ItemType Directory -Path $dir -Force | Out-Null
-      Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.2 lateral evidence " + $token) -Encoding ASCII
+      Set-Content -Path $artifact -Value ("MAGI Attack Simulator 5.3 lateral evidence " + $token) -Encoding ASCII
       $verified=Test-Path $artifact
       $content=if($verified){Get-Content $artifact -Raw}else{''}
       Remove-Item $artifact -Force -ErrorAction SilentlyContinue
@@ -415,7 +415,7 @@ finally { if($runnerTrustedChanged -and $null -ne $runnerTrustedState){ try { Re
 
 
 class AttackSimulationExecutor:
-    """MAGI Attack Simulator 5.2.
+    """MAGI Attack Simulator 5.3.
 
     Protocol tests prove only exposure/preconditions. The authenticated 5.1 path
     can prove one authorized WinRM lateral hop with a benign artifact + cleanup.
@@ -452,7 +452,7 @@ class AttackSimulationExecutor:
             )
             metadata = {
                 "engine": "magi_attack_simulator",
-                "engine_version": "5.2",
+                "engine_version": "5.3",
                 "scenario": scenario,
                 "category": payload.get("attack_category"),
                 "simulation_type": sim_type,
@@ -522,7 +522,7 @@ class AttackSimulationExecutor:
         finding = {"status": attack_result, "detected": observed, "message": message}
         metadata = {
             "engine": "magi_attack_simulator",
-            "engine_version": "5.2",
+            "engine_version": "5.3",
             "scenario": scenario,
             "category": payload.get("attack_category"),
             "simulation_type": sim_type,
@@ -562,7 +562,7 @@ class AttackSimulationExecutor:
         if not preserve_metadata:
             metadata = {
                 "engine": "magi_attack_simulator",
-                "engine_version": "5.2",
+                "engine_version": "5.3",
                 "simulation_type": sim_type,
                 "safe_mode": True,
                 "destructive": False,
