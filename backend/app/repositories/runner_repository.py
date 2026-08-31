@@ -155,6 +155,11 @@ def get_single_online_runner() -> dict[str, Any] | None:
 
 def get_next_job(runner_id: str):
     with SessionLocal() as db:
+        # Unknown job types are never delivered silently. They remain visible for investigation.
+        db.execute(text("""UPDATE runner_jobs SET status='blocked', error=COALESCE(error,'uncontrolled_job: tipo de job sem controle registrado'), finished_at=:now
+            WHERE status='pending' AND (runner_id=:runner_id OR runner_id IS NULL)
+              AND job_type NOT IN ('cmd','powershell','python','atomic','atomic_validation','nmap_discovery','service_discovery','credential_validate','deep_inventory','security_check','nuclei','attack_simulation','campaign_probe','validation','connectivity_check')"""), {'runner_id':runner_id,'now':datetime.utcnow()})
+        db.commit()
         row = db.execute(text("""
             UPDATE runner_jobs
             SET status = 'running', started_at = :now, runner_id = COALESCE(runner_id, :runner_id)
@@ -163,6 +168,8 @@ def get_next_job(runner_id: str):
                 FROM runner_jobs
                 WHERE status = 'pending'
                   AND (runner_id = :runner_id OR runner_id IS NULL)
+                  AND job_type IN ('cmd','powershell','python','atomic','atomic_validation','nmap_discovery','service_discovery','credential_validate','deep_inventory','security_check','nuclei','attack_simulation','campaign_probe','validation','connectivity_check')
+                  AND NOT EXISTS (SELECT 1 FROM runners rr WHERE rr.runner_id=:runner_id AND COALESCE((rr.metadata->>'queue_paused')::boolean,FALSE)=TRUE)
                   AND NOT (
                     job_type IN ('campaign_probe','credential_validate')
                     AND COALESCE(payload->'campaign_context'->>'campaign_uuid','') <> ''
@@ -391,8 +398,10 @@ def clear_runner_jobs(runner_id: str, reason: str = "Runner limpo manualmente em
             FOR UPDATE
         """), {"runner_id": runner_id}).all()
         job_ids = [int(r[0]) for r in rows]
+        db.execute(text("""UPDATE runners SET metadata=COALESCE(metadata,'{}'::jsonb) || CAST(:m AS JSONB), updated_at=:now WHERE runner_id=:runner_id"""), {'runner_id':runner_id,'m':_json({'queue_paused':True,'queue_paused_at':now.isoformat()}),'now':now})
         if not job_ids:
-            return {"jobs_cancelled": 0, "campaign_paths_cancelled": 0}
+            db.commit()
+            return {"jobs_cancelled": 0, "campaign_paths_cancelled": 0, "queue_paused": True}
 
         cancelled_jobs = db.execute(text("""
             UPDATE runner_jobs
@@ -434,6 +443,7 @@ def clear_runner_jobs(runner_id: str, reason: str = "Runner limpo manualmente em
         return {
             "jobs_cancelled": int(cancelled_jobs),
             "campaign_paths_cancelled": int(cancelled_paths),
+            "queue_paused": True,
         }
 
 def list_runners(include_disabled: bool = False) -> list[dict[str, Any]]:
@@ -456,6 +466,7 @@ def list_runners(include_disabled: bool = False) -> list[dict[str, Any]]:
                 COALESCE(metadata->>'os', metadata->>'platform') AS os,
                 COALESCE(metadata->>'runner_version', metadata->>'version') AS runner_version,
                 metadata->>'atomic_mode' AS atomic_mode,
+                COALESCE((metadata->>'queue_paused')::boolean,FALSE) AS queue_paused,
                 (SELECT COUNT(*) FROM runner_jobs j WHERE j.runner_id = runners.runner_id AND j.status IN ('pending','running')) AS open_jobs,
                 (SELECT COUNT(*) FROM runner_jobs j WHERE j.runner_id = runners.runner_id) AS total_jobs,
                 created_at,
@@ -480,3 +491,63 @@ def get_online_runner_with_capability(capability: str) -> dict[str, Any] | None:
             LIMIT 1
         """), {"capability": capability}).mappings().first()
         return dict(row) if row else None
+
+# Build 5.3.6 - central Runner queue control / observability
+CONTROLLED_JOB_TYPES = {
+    'cmd','powershell','python','atomic','atomic_validation','nmap_discovery',
+    'service_discovery','credential_validate','deep_inventory','security_check',
+    'nuclei','attack_simulation','campaign_probe','validation','connectivity_check'
+}
+
+def is_runner_queue_paused(runner_id: str) -> bool:
+    with SessionLocal() as db:
+        row=db.execute(text("SELECT COALESCE((metadata->>'queue_paused')::boolean,FALSE) FROM runners WHERE runner_id=:r"),{'r':runner_id}).first()
+        return bool(row and row[0])
+
+def set_runner_queue_paused(runner_id: str, paused: bool) -> None:
+    with SessionLocal() as db:
+        db.execute(text("""UPDATE runners SET metadata=COALESCE(metadata,'{}'::jsonb) || CAST(:m AS JSONB), updated_at=:now WHERE runner_id=:r"""),
+                   {'r':runner_id,'m':_json({'queue_paused':bool(paused),'queue_paused_at':datetime.utcnow().isoformat() if paused else None}),'now':datetime.utcnow()})
+        db.commit()
+
+def list_runner_jobs(runner_id: str, limit: int=100) -> list[dict[str,Any]]:
+    with SessionLocal() as db:
+        rows=db.execute(text("""
+        SELECT j.id,j.runner_id,j.job_type,j.target,j.status,j.created_at,j.started_at,j.finished_at,j.error,
+          CASE
+            WHEN cp.id IS NOT NULL THEN 'Campaign'
+            WHEN dij.runner_job_id IS NOT NULL THEN 'Deep Inventory'
+            WHEN sdj.runner_job_id IS NOT NULL THEN 'Service Discovery'
+            WHEN ca.runner_job_id IS NOT NULL THEN 'Credential Engine'
+            WHEN dr.runner_job_id IS NOT NULL THEN 'Discovery'
+            WHEN vte.runner_job_id IS NOT NULL THEN 'Validation'
+            WHEN aej.runner_job_id IS NOT NULL THEN 'Atomic'
+            WHEN j.job_type IN ('security_check','nuclei','attack_simulation') THEN 'Validation / Attack Simulator'
+            ELSE 'Sem origem rastreável'
+          END AS source_module,
+          CASE WHEN j.job_type = ANY(:controlled) THEN TRUE ELSE FALSE END AS controlled
+        FROM runner_jobs j
+        LEFT JOIN attack_campaign_paths cp ON cp.runner_job_id=j.id
+        LEFT JOIN deep_inventory_jobs dij ON dij.runner_job_id=j.id
+        LEFT JOIN service_discovery_jobs sdj ON sdj.runner_job_id=j.id
+        LEFT JOIN credential_attempts ca ON ca.runner_job_id=j.id
+        LEFT JOIN discovery_runs dr ON dr.runner_job_id=j.id
+        LEFT JOIN validation_task_executions vte ON vte.runner_job_id=j.id
+        LEFT JOIN atomic_execution_jobs aej ON aej.runner_job_id=j.id
+        WHERE j.runner_id=:r OR (j.runner_id IS NULL AND j.status='pending')
+        ORDER BY j.id DESC LIMIT :lim
+        """),{'r':runner_id,'lim':max(1,min(int(limit),500)),'controlled':list(CONTROLLED_JOB_TYPES)}).mappings().all()
+        return [dict(x) for x in rows]
+
+def cancel_runner_job(runner_id: str, job_id: int, reason: str='Job cancelado manualmente') -> bool:
+    now=datetime.utcnow()
+    with SessionLocal() as db:
+        row=db.execute(text("""UPDATE runner_jobs SET status='cancelled',error=:e,finished_at=:n
+          WHERE id=:id AND (runner_id=:r OR runner_id IS NULL) AND status IN ('pending','running') RETURNING id"""),
+          {'id':int(job_id),'r':runner_id,'e':reason,'n':now}).first()
+        if row:
+            for table in ('deep_inventory_jobs','service_discovery_jobs','credential_attempts','discovery_runs','validation_task_executions','atomic_execution_jobs'):
+                if db.execute(text('SELECT to_regclass(:t)'),{'t':table}).scalar():
+                    db.execute(text(f"UPDATE {table} SET status='cancelled',finished_at=COALESCE(finished_at,:n) WHERE runner_job_id=:id AND status IN ('pending','queued','running')"),{'id':int(job_id),'n':now})
+            db.execute(text("UPDATE attack_campaign_paths SET status='cancelled',result='runner_job_cancelled',finished_at=:n WHERE runner_job_id=:id AND status IN ('queued','running')"),{'id':int(job_id),'n':now})
+        db.commit(); return bool(row)

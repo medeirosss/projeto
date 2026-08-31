@@ -18,6 +18,9 @@ from app.repositories.runner_repository import (
     get_next_job,
     get_pending_jobs,
     list_runners,
+    list_runner_jobs,
+    cancel_runner_job,
+    set_runner_queue_paused,
     register_runner,
     save_job_result,
     update_heartbeat,
@@ -205,6 +208,19 @@ def clear_runner_jobs_service(runner_id: str):
         **result,
         "message": f"Runner limpo. {result['jobs_cancelled']} job(s) cancelado(s).",
     }
+
+
+def runner_jobs_control_service(runner_id: str, limit: int=100):
+    return {"success":True,"runner_id":runner_id,"jobs":list_runner_jobs(runner_id,limit)}
+
+def resume_runner_queue_service(runner_id: str):
+    set_runner_queue_paused(runner_id,False)
+    return {"success":True,"runner_id":runner_id,"queue_paused":False,"message":"Fila do Runner liberada."}
+
+def cancel_runner_job_service(runner_id: str, job_id: int):
+    ok=cancel_runner_job(runner_id,job_id)
+    if not ok: raise ValueError("Job não encontrado ou já finalizado.")
+    return {"success":True,"runner_id":runner_id,"job_id":int(job_id),"status":"cancelled"}
 
 def list_runners_service(include_disabled: bool = False):
     return {"success": True, "runners": list_runners(include_disabled=include_disabled)}

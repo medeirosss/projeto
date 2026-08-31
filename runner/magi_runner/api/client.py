@@ -22,6 +22,10 @@ class MagiApiClient:
 
     def _new_session(self) -> requests.Session:
         session = requests.Session()
+        # Avoid reusing stale HTTP/1.1 keep-alive sockets through Docker Desktop/Windows NAT.
+        # Uvicorn closes idle keep-alive connections after a short timeout; the Runner
+        # polling cadence can otherwise race with that close and trigger RemoteDisconnected.
+        session.headers.update({"Connection": "close"})
         session.verify = self.config.verify_tls
         if self.config.runner_secret:
             session.headers.update({"X-Runner-Secret": self.config.runner_secret})

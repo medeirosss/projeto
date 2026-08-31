@@ -221,14 +221,22 @@
                   <th>Sistema</th>
                   <th>Modo Atomic</th>
                   <th>Jobs abertos</th>
+                  <th>Fila</th>
                   <th>Último heartbeat</th>
                   <th>Ações</th>
                 </tr>
               </thead>
               <tbody id="runnersTableBody">
-                <tr><td colspan="9">Carregando runners...</td></tr>
+                <tr><td colspan="10">Carregando runners...</td></tr>
               </tbody>
             </table>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <div class="card-header">Jobs do Runner</div>
+            <div class="form-body">
+              <div class="notice" id="runnerJobsStatusBox">Selecione Atualizar para visualizar os jobs recentes e sua origem.</div>
+              <div class="table-wrap"><table class="data-table"><thead><tr><th>Job</th><th>Origem</th><th>Executor</th><th>Target</th><th>Status</th><th>Criado</th><th>Ação</th></tr></thead><tbody id="runnerJobsTableBody"><tr><td colspan="7">Nenhum Runner selecionado.</td></tr></tbody></table></div>
+            </div>
           </div>
         </div>
       </div>

@@ -1,3 +1,17 @@
+# 5.3.6
+- Runner Queue Control: limpeza pausa a fila para impedir regeneração imediata por schedulers.
+- Deep Inventory periódico respeita queue_paused.
+- Configurações > Runners mostra os runner_jobs reais e sua origem.
+- Jobs de tipo desconhecido são bloqueados e nunca executados silenciosamente.
+- Cancelamento individual de jobs e liberação explícita da fila.
+
+# 5.3.5
+
+- Corrige `RemoteDisconnected` intermitente no polling Runner -> Backend causado por reutilização de sockets HTTP keep-alive encerrados pelo Uvicorn/Docker Desktop.
+- Runner passa a enviar `Connection: close`, usando uma conexão HTTP nova por requisição; custo irrelevante no polling local e comportamento mais robusto em Windows + Docker NAT.
+- Mantida a serialização da sessão HTTP da 5.3.4.
+- Runner atualizado para 2.17.2.
+
 # 5.3.4
 
 - Corrige concorrência HTTP do Runner: polling e heartbeat não acessam mais o mesmo `requests.Session` simultaneamente.

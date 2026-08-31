@@ -10,7 +10,7 @@ from app.services.common import write_text_log
 from app.services.module_service import get_module_status
 from app.services.scanner_service import fetch_endpointcentral_all, get_access_token, run_ad_scan
 from app.services.settings_service import get_settings_data, save_settings_data, settings_public_view
-from app.services.runner_service import clear_runner_jobs_service
+from app.services.runner_service import clear_runner_jobs_service, runner_jobs_control_service, resume_runner_queue_service, cancel_runner_job_service
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
@@ -101,3 +101,19 @@ async def api_clear_runner_jobs(runner_id: str):
         return clear_runner_jobs_service(runner_id)
     except Exception as exc:
         return JSONResponse(status_code=400, content={"success": False, "detail": str(exc)})
+
+
+@router.get("/settings/runners/{runner_id}/jobs")
+async def api_runner_control_jobs(runner_id: str, limit: int=100):
+    try: return runner_jobs_control_service(runner_id,limit)
+    except Exception as exc: return JSONResponse(status_code=400,content={"success":False,"detail":str(exc)})
+
+@router.post("/settings/runners/{runner_id}/resume-queue")
+async def api_resume_runner_queue(runner_id: str):
+    try: return resume_runner_queue_service(runner_id)
+    except Exception as exc: return JSONResponse(status_code=400,content={"success":False,"detail":str(exc)})
+
+@router.post("/settings/runners/{runner_id}/jobs/{job_id}/cancel")
+async def api_cancel_runner_job(runner_id: str, job_id: int):
+    try: return cancel_runner_job_service(runner_id,job_id)
+    except Exception as exc: return JSONResponse(status_code=400,content={"success":False,"detail":str(exc)})

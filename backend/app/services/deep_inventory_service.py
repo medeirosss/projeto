@@ -1,5 +1,5 @@
 from __future__ import annotations
-from app.repositories.runner_repository import create_runner_job, get_single_online_runner
+from app.repositories.runner_repository import create_runner_job, get_single_online_runner, is_runner_queue_paused
 from app.repositories import deep_inventory_repository as repo
 
 
@@ -25,6 +25,7 @@ def maybe_enqueue_after_credential(attempt:dict,runner_id:str,authenticated:bool
 def enqueue_due_periodic(limit:int=20):
     runner=get_single_online_runner()
     if not runner: return 0
+    if is_runner_queue_paused(runner['runner_id']): return 0
     n=0
     for item in repo.due_targets(limit):
         enqueue_for_target(target_id=int(item['target_id']),target_ip=str(item['target_ip']),credential_id=int(item['credential_id']),runner_id=runner['runner_id'],scan_id=int(item['scan_id']),protocol=item.get('protocol'))
