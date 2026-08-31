@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Relatórios</title><link rel="stylesheet" href="/assets/style.css"></head><body class="centric-page" data-theme="dark">
+<div class="topbar modern-topbar"><div class="top-left"><div class="brand"><img id="brandLogo" src="/assets/logo.png" alt="Logo"><span>Centric</span></div><nav class="menu" id="mainMenu"></nav></div><div class="top-right"><button class="theme-toggle" id="themeToggle" type="button">Dark mode</button><span id="latestJsonLabel">-</span></div></div>
+<div class="report-layout">
+  <aside class="report-sidebar" id="reportSidebar"></aside>
+  <main class="report-content">
+    <section id="activeUsersSection" class="report-section">
+      <div class="toolbar toolbar-gap"><div class="title">Usuários ativos no ambiente</div><div class="report-search-wrap"><div class="report-search-box"><span class="report-search-icon"></span><input type="text" id="activeUsersSearchInput" placeholder="Buscar máquina..."></div></div></div>
+      <div class="alert" id="reportNotice">O usuário mostrado no relatório foi identificado no último contato do agente.</div>
+      <div class="card"><div class="card-header">Relatório</div><div class="table-wrap"><table><thead><tr><th>Nome</th><th>Status</th><th>Usuário</th></tr></thead><tbody id="activeUsersTable"></tbody></table></div></div>
+    </section>
+
+    <section id="scansSection" class="hidden-section report-section">
+      <div class="toolbar toolbar-gap scans-toolbar-top"><div class="title">Correlação AD x UEM x CSV</div><div class="report-search-wrap"><div class="report-search-box"><span class="report-search-icon"></span><input type="text" id="scansSearchInput" placeholder="Buscar máquina..."></div></div></div>
+      <div class="alert">Envie CSVs com apenas o cabeçalho <strong>hostname</strong>. O compare mostra somente máquinas ausentes em pelo menos uma origem.</div>
+      <div class="scan-block-grid"><div class="card"><div class="card-header">Upload de CSVs</div><div class="card-body scan-upload-list" id="scanUploadList"></div><div class="scan-actions-row scan-actions-pad"><button class="btn secondary" id="addUploadSourceBtn">Adicionar CSV</button><button class="btn primary" id="runUploadCompareBtn">Comparar upload</button></div></div><div class="card"><div class="card-header">Arquivos da pasta compare</div><div class="card-body scan-upload-list" id="scanFolderList"></div><div class="scan-actions-row scan-actions-pad"><button class="btn secondary" id="addFolderSourceBtn">Adicionar arquivo</button><button class="btn secondary" id="refreshCompareFilesBtn">Atualizar lista</button><button class="btn primary" id="runFolderCompareBtn">Comparar pasta</button></div></div></div>
+      <div class="scan-actions-row scan-result-actions"><div class="scan-meta" id="scansSummaryLabel">Nenhum compare executado.</div><button class="btn success" id="exportScansBtn">Exportar resultado</button></div>
+      <div class="card"><div class="card-header">Resultado do compare</div><div class="table-wrap"><table><thead><tr><th>Hostname</th><th>Presente em</th><th>Ausente em</th></tr></thead><tbody id="scanResultsTable"></tbody></table></div></div>
+    </section>
+
+    <section id="mitreSection" class="hidden-section report-section"><div class="toolbar"><div class="title">MITRE Map</div></div><div class="alert">Mapa alimentado pela base real de alertas recebidos no portal.</div><div class="card"><div class="card-header">Mapa MITRE</div><div class="table-wrap"><table><thead><tr><th>Técnica</th><th>Quantidade</th></tr></thead><tbody id="mitreMapTable"></tbody></table></div></div></section>
+    <section id="nistSection" class="hidden-section report-section"><div class="toolbar"><div class="title">NIST Map</div></div><div class="alert">Mapa alimentado pela mesma base consolidada de alertas.</div><div class="card"><div class="card-header">Mapa NIST</div><div class="table-wrap"><table><thead><tr><th>Controle</th><th>Quantidade</th></tr></thead><tbody id="nistMapTable"></tbody></table></div></div></section>
+  </main>
+</div>
+<script src="/assets/common.js"></script><script src="/assets/reports.js"></script>
+</body></html>

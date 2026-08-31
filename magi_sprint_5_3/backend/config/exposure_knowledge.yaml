@@ -1,0 +1,43 @@
+version: 1
+service_rules:
+  - id: TELNET_EXPOSED
+    port: 23
+    protocol: tcp
+    title: Telnet exposto
+    category: Insecure Protocol
+    severity: high
+  - id: FTP_EXPOSED
+    port: 21
+    protocol: tcp
+    title: FTP exposto
+    category: Insecure Protocol
+    severity: medium
+  - id: RDP_EXPOSED
+    port: 3389
+    protocol: tcp
+    title: Remote Desktop exposto
+    category: Remote Access
+    severity: medium
+  - id: SMB_EXPOSED
+    port: 445
+    protocol: tcp
+    title: SMB exposto
+    category: File Sharing
+    severity: low
+  - id: WINRM_HTTP_EXPOSED
+    port: 5985
+    protocol: tcp
+    title: WinRM HTTP exposto
+    category: Remote Management
+    severity: medium
+  - id: SNMP_EXPOSED
+    port: 161
+    protocol: udp
+    title: SNMP exposto
+    category: Network Management
+    severity: low
+unknown_service:
+  enabled: true
+  title: Serviço desconhecido exposto
+  category: Unknown Service
+  severity: info

@@ -1,0 +1,82 @@
+from __future__ import annotations
+
+from typing import Any, Dict
+
+from fastapi import APIRouter, Body, HTTPException
+
+from app.services.alert_service import (
+    alert_summary,
+    create_alert_from_inbound,
+    get_alert_by_id,
+    list_open_alerts,
+    list_resolved_alerts,
+    register_execution_result,
+    run_connectivity_validation_for_alert,
+    update_alert_status,
+)
+
+router = APIRouter(prefix='/api/alerts', tags=['alerts'])
+
+
+@router.get('')
+async def api_alerts_list():
+    return {'summary': alert_summary(), 'alerts': list_open_alerts()}
+
+
+@router.get('/resolved')
+async def api_alerts_resolved():
+    return {'alerts': list_resolved_alerts()}
+
+
+@router.post('/inbound')
+async def api_alert_inbound(payload: Dict[str, Any] = Body(...)):
+    try:
+        alert = create_alert_from_inbound(payload or {})
+        return {'success': True, 'alert': alert}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get('/{alert_id}')
+async def api_alert_by_id(alert_id: str):
+    alert = get_alert_by_id(alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail='Alerta não encontrado.')
+    return {'alert': alert}
+
+
+@router.post('/{alert_id}/validate-connectivity')
+async def api_alert_validate_connectivity(alert_id: str):
+    try:
+        return run_connectivity_validation_for_alert(alert_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post('/{alert_id}/status')
+async def api_alert_status(alert_id: str, payload: Dict[str, Any] = Body(...)):
+    try:
+        alert = update_alert_status(
+            alert_id,
+            int(payload.get('status') or 0),
+            str(payload.get('resolution_type') or ''),
+            str(payload.get('resolved_by') or ''),
+            str(payload.get('message') or ''),
+        )
+        return {'success': True, 'alert': alert}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post('/{alert_id}/execution-result')
+async def api_alert_execution_result(alert_id: str, payload: Dict[str, Any] = Body(...)):
+    try:
+        alert = register_execution_result(
+            alert_id,
+            bool(payload.get('success')),
+            str(payload.get('message') or ''),
+            str(payload.get('resolution_type') or 'playbook'),
+        )
+        return {'success': True, 'alert': alert}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

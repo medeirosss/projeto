@@ -1,0 +1,22 @@
+[
+  {
+    "job_id": "OFFLINE-CMD-001",
+    "executor": "cmd",
+    "command": "echo Magi Runner v2 OK && whoami",
+    "timeout_seconds": 30,
+    "collect": {
+      "processes": true,
+      "network": true,
+      "files": []
+    }
+  },
+  {
+    "job_id": "OFFLINE-PS-001",
+    "executor": "powershell",
+    "command": "Write-Output 'PowerShell executor OK'; Get-Date",
+    "timeout_seconds": 30,
+    "collect": {
+      "processes": true
+    }
+  }
+]

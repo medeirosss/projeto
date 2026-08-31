@@ -1,0 +1,225 @@
+from __future__ import annotations
+import socket
+from typing import Any
+from app.repositories.validation_repository import upsert_repository,upsert_task,list_repositories,list_tasks,get_task,create_execution,list_executions,get_execution
+from app.repositories.runner_repository import get_single_online_runner,create_runner_job
+from app.repositories.atomic_repository import list_atomic_executions, get_atomic_execution_by_id
+from app.services.nuclei_service import as_validation_tasks
+from app.services.attack_simulator_service import sync_attack_simulator
+
+BUILTIN_TASKS=[
+ {"task_key":"MAGI-NET-001","name":"RDP acessível — TCP/3389","description":"Verifica se TCP/3389 está acessível a partir do Runner.","category":"Remote Access","platform":"Windows","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":3389,"finding_when":"open"},"remediation":"Restrinja RDP por firewall/VPN, limite origens autorizadas e mantenha NLA/MFA conforme a política do ambiente."},
+ {"task_key":"MAGI-NET-002","name":"SMB acessível — TCP/445","description":"Verifica se TCP/445 está acessível a partir do Runner.","category":"File Sharing","platform":"Windows","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":445,"finding_when":"open"},"remediation":"Restrinja SMB às redes administrativas necessárias; bloqueie TCP/445 entre segmentos que não precisam compartilhar arquivos."},
+ {"task_key":"MAGI-NET-003","name":"WinRM HTTP acessível — TCP/5985","description":"Verifica se TCP/5985 está acessível a partir do Runner.","category":"Remote Management","platform":"Windows","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":5985,"finding_when":"open"},"remediation":"Restrinja WinRM às redes de administração e prefira HTTPS/5986 quando aplicável."},
+ {"task_key":"MAGI-NET-004","name":"WinRM HTTPS acessível — TCP/5986","description":"Verifica se TCP/5986 está acessível a partir do Runner.","category":"Remote Management","platform":"Windows","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":5986,"finding_when":"open"},"remediation":"Mantenha o acesso restrito a origens administrativas autorizadas e valide certificados e autenticação."},
+ {"task_key":"MAGI-NET-005","name":"SSH acessível — TCP/22","description":"Verifica se TCP/22 está acessível a partir do Runner.","category":"Remote Access","platform":"Linux/Network","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":22,"finding_when":"open"},"remediation":"Restrinja SSH por ACL/firewall, use autenticação forte e desabilite métodos não necessários."},
+ {"task_key":"MAGI-NET-006","name":"Telnet acessível — TCP/23","description":"Verifica se TCP/23 está acessível. A exposição deve ser revisada por se tratar de protocolo legado sem proteção adequada.","category":"Legacy Protocol","platform":"Any","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":23,"finding_when":"open"},"remediation":"Desabilite Telnet e migre a administração para SSH ou outro protocolo seguro."},
+ {"task_key":"MAGI-NET-007","name":"FTP acessível — TCP/21","description":"Verifica se TCP/21 está acessível a partir do Runner.","category":"File Transfer","platform":"Any","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":21,"finding_when":"open"},"remediation":"Revise a necessidade de FTP; prefira SFTP/FTPS e restrinja origens por ACL/firewall."},
+ {"task_key":"MAGI-NET-008","name":"Microsoft SQL Server acessível — TCP/1433","description":"Verifica se TCP/1433 está acessível a partir do Runner.","category":"Database","platform":"Windows/Database","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":1433,"finding_when":"open"},"remediation":"Restrinja o acesso ao SQL Server apenas a aplicações e redes administrativas autorizadas."},
+ {"task_key":"MAGI-NET-009","name":"MySQL acessível — TCP/3306","description":"Verifica se TCP/3306 está acessível a partir do Runner.","category":"Database","platform":"Database","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":3306,"finding_when":"open"},"remediation":"Restrinja MySQL às origens necessárias e evite exposição entre segmentos sem necessidade."},
+ {"task_key":"MAGI-NET-010","name":"PostgreSQL acessível — TCP/5432","description":"Verifica se TCP/5432 está acessível a partir do Runner.","category":"Database","platform":"Database","executor":"security_check","impact":"low","detection":{"type":"tcp_port","port":5432,"finding_when":"open"},"remediation":"Restrinja PostgreSQL às origens necessárias e revise pg_hba.conf e controles de rede."},
+]
+
+def sync_repositories()->dict[str,Any]:
+    upsert_repository({"repository_key":"magi","name":"MAGI Security Checks","provider":"magi","description":"Checks defensivos nativos do MAGI.","available":True,"metadata":{"execution":"native","version":"4.2","semantics":"exposure_not_vulnerability"}})
+    upsert_repository({"repository_key":"atomic","name":"Atomic Red Team","provider":"atomic_red_team","description":"Integração preservada, congelada na 4.0 e reservada para pós-ataque/pós-comprometimento.","available":False,"metadata":{"execution":"atomic","lifecycle":"frozen","phase":"post_attack"}})
+    upsert_repository({"repository_key":"nuclei","name":"Nuclei Templates","provider":"nuclei","description":"Validações Nuclei executadas remotamente pelo Runner com catálogo controlado pelo MAGI.","available":True,"metadata":{"execution":"runner","version":"4.2","catalog":"curated_profiles","runtime_policy":"fixed_bundled","binary_owner":"magi_runner"}})
+    for task in BUILTIN_TASKS: upsert_task({"repository_key":"magi",**task,"approved":True,"enabled":True,"requires_admin":False})
+    attack_sync=sync_attack_simulator()
+    nuclei_tasks=as_validation_tasks()
+    for task in nuclei_tasks: upsert_task(task)
+    return {"success":True,"repositories":list_repositories(),"magi_tasks":len(BUILTIN_TASKS),"attack_simulations":attack_sync.get("simulations",0),"nuclei_tasks":len(nuclei_tasks)}
+
+def repository_summary():
+    repos=list_repositories(); tasks=list_tasks(limit=1000)
+    return {"success":True,"repositories":repos,"summary":{"repositories":len(repos),"available_repositories":sum(1 for r in repos if r.get('available')),"tasks":len(tasks),"enabled_tasks":sum(1 for t in tasks if t.get('enabled'))}}
+
+def task_catalog(repository_key=None,search=None,category=None): return {"success":True,"tasks":list_tasks(repository_key,search,category)}
+
+def _attack_scope(options:dict[str,Any]|None,target:str)->dict[str,Any]:
+    options=options or {}
+    host_b=str(options.get("host_b") or options.get("secondary_target") or "").strip()
+    def bounded(name,default,minimum,maximum):
+        try: value=int(options.get(name,default))
+        except Exception: value=default
+        return max(minimum,min(maximum,value))
+    networks=options.get("allowed_networks") or []
+    if isinstance(networks,str): networks=[x.strip() for x in networks.replace(";",",").split(",") if x.strip()]
+    return {"initial_target":target,"secondary_target":host_b or None,"allowed_networks":networks,"allowed_hosts":[x for x in [target,host_b] if x],"max_hops":bounded("max_hops",3,1,5),"hard_max_hops":5,"max_branches_per_host":bounded("max_branches_per_host",3,1,10),"max_total_hosts":bounded("max_total_hosts",15,2,50),"max_job_duration_minutes":bounded("max_job_duration_minutes",30,1,60),"discovery_enabled":False,"mode":"manual_path_5_1"}
+
+def plan_task(task_id:int,target:str,options:dict[str,Any]|None=None)->dict[str,Any]:
+    target=(target or '').strip()
+    if not target: raise ValueError('Target é obrigatório.')
+    task=get_task(task_id)
+    if not task: raise ValueError('Tarefa não encontrada.')
+    if not task.get('enabled'): raise ValueError('Tarefa desabilitada pelo administrador.')
+    if not task.get('approved'): raise ValueError('Tarefa ainda não aprovada pelo administrador.')
+    runner=get_single_online_runner()
+    if not runner: raise ValueError('Nenhum Runner online disponível.')
+    detection=task.get('detection') or {}
+    metadata=task.get('metadata') or {}
+    plan={"task_id":task_id,"task_key":task['task_key'],"repository":task['repository_key'],"target":target,"runner_id":runner['runner_id'],"executor":task['executor'],"impact":task.get('impact'),"requires_admin":bool(task.get('requires_admin')),"detection":detection,"metadata":metadata,"remediation":task.get('remediation'),"ready":True}
+    if task.get("repository_key")=="magi_attack":
+        scope=_attack_scope(options,target); plan["scope"]=scope
+        if metadata.get("secondary_target_required") and not scope.get("secondary_target"): raise ValueError("Host B / Destination é obrigatório para esta simulação.")
+        if metadata.get("credential_required") and not (options or {}).get("credential_id"): raise ValueError("Credential Profile é obrigatório para esta simulação.")
+        if (options or {}).get("credential_id"): plan["credential_id"]=(options or {}).get("credential_id")
+    return {"success":True,"plan":plan,"task":task}
+
+def execute_task(task_id:int,target:str,requested_by:str='ui',options:dict[str,Any]|None=None):
+    prepared=plan_task(task_id,target,options=options); plan=prepared['plan']; task=prepared['task']
+    metadata=task.get('metadata') or {}
+    validation_type="nuclei" if task.get("executor")=="nuclei" else "attack_simulation" if task.get("executor")=="attack_simulation" else "security_check"
+    payload={"executor":task['executor'],"validation_type":validation_type,"task_id":task_id,"task_key":task['task_key'],"repository_key":task['repository_key'],"target":target,"detection":task.get('detection') or {},"impact":task.get('impact'),"remediation":task.get('remediation')}
+    if validation_type=="attack_simulation":
+        payload.update({"simulation":task.get("detection") or {},"scenario_name":task.get("name"),"attack_category":task.get("category"),"attack_metadata":metadata,"safe_mode":True,"destructive":False,"scope":plan.get("scope") or {}})
+        if (options or {}).get("credential_id"): payload["credential_id"]=(options or {}).get("credential_id")
+        if (plan.get("scope") or {}).get("secondary_target"): payload["host_b"]=plan["scope"]["secondary_target"]
+    if validation_type=="nuclei":
+        payload.update({"template":metadata.get("template") or (task.get("detection") or {}).get("template"),"severity":metadata.get("severity"),"tags":metadata.get("tags") or [],"profile_name":metadata.get("profile_name") or task.get("name"),"protocol":metadata.get("protocol"),"ports":metadata.get("ports") or (task.get("detection") or {}).get("ports") or []})
+    job=create_runner_job(plan['runner_id'],validation_type,target,payload)
+    execution=create_execution(task,plan['runner_id'],job['id'],target,requested_by,plan)
+    return {"success":True,"plan":plan,"runner_job":job,"execution":execution}
+
+def _iso_sort_value(value):
+    if value is None:
+        return ""
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+
+def _atomic_confirmation_status(row:dict):
+    evidence=row.get("evidence") or {}
+    meta=evidence.get("metadata") or {}
+    explicit=evidence.get("confirmation_status") or meta.get("confirmation_status")
+    if explicit:
+        return explicit
+    status=str(row.get("status") or "").lower()
+    if status in {"failed","error","timeout","blocked"}:
+        return "error"
+    if bool(row.get("executed_real_test")) and status=="success":
+        return "executed_unverified"
+    return None
+
+def _atomic_confirmation_message(row:dict):
+    evidence=row.get("evidence") or {}
+    meta=evidence.get("metadata") or {}
+    confirmation=_atomic_confirmation_status(row)
+    scope=evidence.get("execution_scope") or meta.get("execution_scope")
+    requested=evidence.get("requested_target") or meta.get("requested_target") or row.get("target_host")
+    if confirmation=="target_unreachable":
+        return f"Target {requested or '--'} sem conectividade WinRM; execução remota não iniciada."
+    if confirmation=="remote_transport_error":
+        return f"Falha ao abrir sessão remota WinRM com {requested or '--'}."
+    if confirmation=="authentication_failed":
+        return f"Falha de autenticação no target {requested or '--'}; execução remota não iniciada."
+    if confirmation=="dependency_missing":
+        return "Atomic não pôde ser concluído porque uma dependência/pré-requisito está ausente."
+    if confirmation=="runner_dependency_error":
+        return "Runner não possui os componentes necessários para preparar o Atomic remoto."
+    if confirmation=="prevented":
+        signals=(evidence.get("outcome_signals") or meta.get("outcome_signals") or [])
+        signal_text=", ".join(signals) if signals else "controle de segurança"
+        if scope=="runner_local":
+            return f"Atomic executado no Runner e houve evidência de prevenção/interferência ({signal_text}); efeito não foi atribuído ao target solicitado {requested or '--'}."
+        return f"Atomic executado e houve evidência de prevenção/interferência ({signal_text})."
+    if confirmation=="executed_unverified":
+        if scope=="runner_local":
+            return f"Atomic executado no Runner; efeito não confirmado no target solicitado {requested or '--'}."
+        return "Atomic executado; efeito pós-execução ainda não confirmado por evidência independente."
+    if confirmation=="confirmed":
+        return "Efeito da técnica confirmado por evidência pós-execução."
+    if confirmation=="not_confirmed":
+        return "Comando executado, mas o efeito esperado não foi confirmado."
+    if confirmation=="error":
+        return row.get("error_message") or "Execução Atomic falhou ou foi interrompida."
+    return None
+
+def _normalize_atomic(row:dict):
+    return {
+        "source":"atomic", "source_label":"Atomic Red Team", "id":row.get("id"),
+        "execution_uuid":row.get("execution_uuid"), "technique_id":row.get("technique_id"),
+        "atomic_test_number":row.get("atomic_test_number"), "task_key":row.get("technique_id"),
+        "task_name":row.get("atomic_name"), "executor":row.get("executor_name") or "atomic",
+        "runner_id":row.get("runner_id"), "runner_job_id":row.get("runner_job_id"),
+        "target":row.get("target_host"), "status":row.get("status"),
+        "finding_status":_atomic_confirmation_status(row),
+        "finding_message":_atomic_confirmation_message(row),
+        "requested_by":row.get("requested_by"), "approved_by":row.get("approved_by"),
+        "created_at":row.get("created_at"), "started_at":row.get("started_at"), "finished_at":row.get("finished_at"),
+        "duration_seconds":row.get("duration_seconds"), "executed_real_test":bool(row.get("executed_real_test")),
+        "error":row.get("error_message") or row.get("block_reason"), "evidence":row.get("evidence") or {},
+        "remediation":None,
+    }
+
+
+def _normalize_magi(row:dict):
+    duration=None
+    if row.get("started_at") and row.get("finished_at"):
+        try: duration=int((row["finished_at"]-row["started_at"]).total_seconds())
+        except Exception: duration=None
+    return {
+        "source":"magi", "source_label":"MAGI", "id":row.get("id"),
+        "execution_uuid":row.get("execution_uuid"), "technique_id":None, "atomic_test_number":None,
+        "task_key":row.get("task_key"), "task_name":row.get("task_name") or row.get("task_key"),
+        "executor":row.get("executor") or "security_check", "runner_id":row.get("runner_id"),
+        "runner_job_id":row.get("runner_job_id"), "target":row.get("target"), "status":row.get("status"),
+        "finding_status":row.get("finding_status"), "finding_message":row.get("finding_message"),
+        "requested_by":row.get("requested_by"), "approved_by":None, "created_at":row.get("created_at"),
+        "started_at":row.get("started_at"), "finished_at":row.get("finished_at"), "duration_seconds":duration,
+        "executed_real_test":bool((row.get("evidence") or {}).get("executed_real_test")),
+        "execution_scope":(row.get("evidence") or {}).get("execution_scope"),
+        "requested_target":(row.get("evidence") or {}).get("requested_target") or row.get("target"),
+        "secondary_target":(row.get("evidence") or {}).get("secondary_target"),
+        "execution_status":(row.get("evidence") or {}).get("execution_status") or row.get("status"),
+        "attack_result":(row.get("evidence") or {}).get("attack_result") or row.get("finding_status"),
+        "payload_status":(row.get("evidence") or {}).get("payload_status"),
+        "authentication_status":(row.get("evidence") or {}).get("authentication_status"),
+        "lateral_movement_status":(row.get("evidence") or {}).get("lateral_movement_status"),
+        "detection_status":(row.get("evidence") or {}).get("detection_status"),
+        "confirmation_status":(row.get("evidence") or {}).get("confirmation_status") or row.get("finding_status"),
+        "error":row.get("error"), "evidence":row.get("evidence") or {}, "remediation":row.get("remediation"),
+    }
+
+
+def unified_execution_history(limit=100, search=None, technique_id=None, runner_id=None, status=None, requested_by=None, date_from=None, date_to=None, source=None):
+    fetch_limit=max(200, min(int(limit or 100)*5, 1000))
+    atomic=list_atomic_executions(limit=fetch_limit, offset=0).get("items", [])
+    magi=list_executions(limit=fetch_limit)
+    rows=[_normalize_atomic(x) for x in atomic]+[_normalize_magi(x) for x in magi]
+    def match(row):
+        if source and row.get("source") != source: return False
+        if status and str(row.get("status") or "").lower() != str(status).lower(): return False
+        if runner_id and str(runner_id).lower() not in str(row.get("runner_id") or "").lower(): return False
+        if requested_by and str(requested_by).lower() not in str(row.get("requested_by") or "").lower(): return False
+        if technique_id:
+            needle=str(technique_id).lower()
+            if needle not in str(row.get("technique_id") or "").lower() and needle not in str(row.get("task_key") or "").lower(): return False
+        hay=" ".join(str(row.get(k) or "") for k in ["execution_uuid","technique_id","task_key","task_name","runner_id","target","requested_by","finding_message"]).lower()
+        if search and str(search).lower() not in hay: return False
+        created=_iso_sort_value(row.get("created_at"))[:10]
+        if date_from and created and created < str(date_from): return False
+        if date_to and created and created > str(date_to): return False
+        return True
+    rows=[r for r in rows if match(r)]
+    rows.sort(key=lambda r:(_iso_sort_value(r.get("created_at")), int(r.get("id") or 0)), reverse=True)
+    total=len(rows)
+    return {"success":True,"executions":rows[:max(1,min(int(limit or 100),500))],"total":total}
+
+
+def execution_detail(source:str, execution_id:int):
+    if source == "atomic":
+        row=get_atomic_execution_by_id(execution_id)
+        if not row: raise ValueError("Atomic execution not found")
+        normalized=_normalize_atomic(row)
+        normalized["raw"] = row
+        return {"success":True,"execution":normalized}
+    if source == "magi":
+        row=get_execution(execution_id)
+        if not row: raise ValueError("MAGI execution not found")
+        normalized=_normalize_magi(row)
+        normalized["raw"] = row
+        return {"success":True,"execution":normalized}
+    raise ValueError("Unknown execution source")
+
+
+def execution_history(): return {"success":True,"executions":list_executions()}

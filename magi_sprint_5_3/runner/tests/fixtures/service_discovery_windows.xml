@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" version="7.99">
+  <host>
+    <status state="up" reason="arp-response"/>
+    <address addr="192.0.2.25" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="135"><state state="open" reason="syn-ack" reason_ttl="128"/><service name="msrpc" product="Microsoft Windows RPC" ostype="Windows" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service></port>
+      <port protocol="tcp" portid="139"><state state="open" reason="syn-ack" reason_ttl="128"/><service name="netbios-ssn" product="Microsoft Windows netbios-ssn" ostype="Windows" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service></port>
+      <port protocol="tcp" portid="445"><state state="open" reason="syn-ack" reason_ttl="128"/><service name="microsoft-ds" method="table" conf="3"/></port>
+      <port protocol="tcp" portid="6565"><state state="open" reason="syn-ack" reason_ttl="128"/><service name="unknown" servicefp="SF-Port6565-TCP:V=7.99" tunnel="ssl" method="table" conf="3"/></port>
+      <port protocol="tcp" portid="9999"><state state="closed" reason="reset"/><service name="unknown"/></port>
+    </ports>
+  </host>
+</nmaprun>

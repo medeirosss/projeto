@@ -1,0 +1,10 @@
+**/__pycache__
+**/*.pyc
+.git
+.env
+backend/.env
+backend/logs/*
+backend/data/*.json
+backend/data/.secret.key
+backend/json/*.json
+license_authority_DEV_DO_NOT_SHIP

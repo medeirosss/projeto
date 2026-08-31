@@ -1,0 +1,488 @@
+from __future__ import annotations
+
+import ipaddress
+import os
+from datetime import datetime, timedelta, time as dtime
+from zoneinfo import ZoneInfo
+from typing import Any
+from sqlalchemy import text
+
+from app.repositories.attack_campaign_repository import create_campaign, list_campaigns, get_campaign, set_campaign_status, delete_campaign, db_session
+from app.repositories.runner_repository import create_runner_job, get_single_online_runner
+from app.repositories.validation_repository import list_tasks, create_execution
+from app.repositories.target_repository import upsert_discovered_target
+
+BRANCH_POLICY = [10, 5, 1, 0]
+
+
+def _campaign_now() -> datetime:
+    """Return MAGI Campaign wall-clock time as a naive datetime.
+
+    Campaign scheduling fields are stored as TIMESTAMP/TIME without timezone and
+    originate from the operator UI. Always compare them against the configured
+    MAGI timezone instead of UTC.
+    """
+    tz_name = os.getenv("MAGI_TIMEZONE") or os.getenv("TZ") or "America/Sao_Paulo"
+    try:
+        return datetime.now(ZoneInfo(tz_name)).replace(tzinfo=None)
+    except Exception:
+        return datetime.now(ZoneInfo("America/Sao_Paulo")).replace(tzinfo=None)
+
+
+def _parse_dt(v: Any) -> datetime:
+    if isinstance(v, datetime): return v
+    return datetime.fromisoformat(str(v).replace('Z','+00:00')).replace(tzinfo=None)
+
+
+def _validate_campaign(data: dict[str, Any]) -> dict[str, Any]:
+    name=str(data.get('name') or '').strip()
+    if not name: raise ValueError('Nome da Campaign é obrigatório.')
+    seeds=[str(x).strip() for x in (data.get('initial_seeds') or []) if str(x).strip()]
+    if not seeds or len(seeds)>3: raise ValueError('Informe de 1 a 3 Hosts A iniciais.')
+    scopes=[str(x).strip() for x in (data.get('scope_cidrs') or []) if str(x).strip()]
+    if not scopes: raise ValueError('Ao menos uma rede CIDR é obrigatória.')
+    total=0
+    for raw in scopes:
+        net=ipaddress.ip_network(raw, strict=False)
+        total += max(0, net.num_addresses-2 if net.version==4 and net.prefixlen<31 else net.num_addresses)
+        if net.num_addresses > 4096: raise ValueError('Na 5.2 cada bloco da Campaign pode ter no máximo 4096 endereços.')
+    start=_parse_dt(data.get('start_at')); end=_parse_dt(data.get('end_at'))
+    if end <= start: raise ValueError('Data/hora final deve ser posterior ao início.')
+    interval=max(15,int(data.get('cycle_interval_minutes') or 15))
+    timeout=max(5,min(15,int(data.get('cycle_timeout_minutes') or 15)))
+    recurrence=data.get('recurrence_days')
+    if recurrence in ('',None): recurrence=None
+    elif int(recurrence)<1: raise ValueError('Recorrência deve ser de pelo menos 1 dia.')
+    vectors=[v for v in (data.get('enabled_vectors') or ['winrm','smb','ssh','snmp_v2c']) if v in {'winrm','smb','ssh','snmp_v2c'}]
+    if not vectors: raise ValueError('Selecione ao menos um vetor da Campaign.')
+    return {**data,'name':name,'initial_seeds':seeds,'scope_cidrs':scopes,'start_at':start,'end_at':end,'enabled_vectors':vectors,
+            'cycle_interval_minutes':interval,'cycle_timeout_minutes':timeout,'recurrence_days':int(recurrence) if recurrence else None,
+            'max_seeds_per_cycle':3,'branch_policy':BRANCH_POLICY,'max_paths_per_cycle':max(10,min(100,int(data.get('max_paths_per_cycle') or 60))),
+            'max_outstanding_jobs':max(1,min(10,int(data.get('max_outstanding_jobs') or 5))),'snapshot_retention':10}
+
+
+def create_attack_campaign(data: dict[str, Any], requested_by: str) -> dict[str, Any]:
+    payload=_validate_campaign(data)
+    row=create_campaign(payload, requested_by)
+    return {'success':True,'campaign':row,'policy':{'branch_policy':BRANCH_POLICY,'snapshot_retention':10,'cycle_timeout_max_minutes':15,'multi_protocol':True,'vectors':payload.get('enabled_vectors')}}
+
+
+def campaign_list() -> dict[str, Any]: return {'success':True,'campaigns':list_campaigns()}
+def campaign_detail(uuid: str) -> dict[str, Any]:
+    row=get_campaign(uuid)
+    if not row: raise ValueError('Campaign não encontrada.')
+    return {'success':True,'campaign':row}
+def _cancel_campaign_jobs(db, campaign_id: int, reason: str) -> dict[str, int]:
+    """Cancel every outstanding Runner job owned by a Campaign execution.
+
+    This is deliberately idempotent. A job already completed is left untouched;
+    pending/running jobs are terminally marked cancelled so they cannot be
+    reclaimed by the Runner after the operator pauses the Campaign.
+    """
+    now=datetime.utcnow()
+    job_ids=[r[0] for r in db.execute(text("""
+      SELECT DISTINCT p.runner_job_id
+      FROM attack_campaign_paths p
+      JOIN attack_campaign_executions e ON e.id=p.execution_id
+      WHERE e.campaign_id=:c AND p.runner_job_id IS NOT NULL
+        AND p.status IN ('queued','running')
+    """),{'c':campaign_id}).all()]
+    cancelled_jobs=0
+    if job_ids:
+        cancelled_jobs=db.execute(text("""
+          UPDATE runner_jobs SET status='cancelled',error=:reason,finished_at=:now
+          WHERE id = ANY(:ids) AND status IN ('pending','running')
+        """),{'ids':job_ids,'reason':reason,'now':now}).rowcount or 0
+    cancelled_paths=db.execute(text("""
+      UPDATE attack_campaign_paths p
+      SET status='cancelled',result='campaign_cancelled',finished_at=:now,
+          evidence=COALESCE(p.evidence,'{}'::jsonb) || CAST(:ev AS JSONB)
+      FROM attack_campaign_executions e
+      WHERE p.execution_id=e.id AND e.campaign_id=:c
+        AND p.status IN ('queued','running')
+    """),{'c':campaign_id,'now':now,'ev':__import__('json').dumps({'cancellation_reason':reason},ensure_ascii=False)}).rowcount or 0
+    db.execute(text("""
+      UPDATE attack_campaign_cycles cy
+      SET status='cancelled',finished_at=:now,stop_reason='campaign_paused'
+      FROM attack_campaign_executions e
+      WHERE cy.execution_id=e.id AND e.campaign_id=:c AND cy.status='running'
+    """),{'c':campaign_id,'now':now})
+    db.execute(text("""
+      UPDATE attack_campaign_executions
+      SET status='paused',next_cycle_at=NULL
+      WHERE campaign_id=:c AND status IN ('scheduled','active')
+    """),{'c':campaign_id})
+    return {'jobs':int(cancelled_jobs),'paths':int(cancelled_paths)}
+
+
+def campaign_pause(uuid: str):
+    db=db_session()
+    try:
+        c=db.execute(text('SELECT * FROM attack_campaigns WHERE campaign_uuid=:u FOR UPDATE'),{'u':uuid}).mappings().first()
+        if not c: raise ValueError('Campaign não encontrada.')
+        db.execute(text("UPDATE attack_campaigns SET status='paused',updated_at=:now WHERE id=:id"),{'now':datetime.utcnow(),'id':c['id']})
+        cancelled=_cancel_campaign_jobs(db,int(c['id']),'Campaign pausada pelo usuário')
+        db.commit()
+        row=get_campaign(uuid)
+        return {'success':True,'campaign':row,'cancelled':cancelled}
+    except Exception:
+        db.rollback(); raise
+    finally: db.close()
+
+
+def campaign_resume(uuid: str):
+    db=db_session()
+    try:
+        c=db.execute(text('SELECT * FROM attack_campaigns WHERE campaign_uuid=:u FOR UPDATE'),{'u':uuid}).mappings().first()
+        if not c: raise ValueError('Campaign não encontrada.')
+        now=_campaign_now()
+        # Resume the latest paused execution without resurrecting cancelled jobs/cycles.
+        e=db.execute(text('SELECT * FROM attack_campaign_executions WHERE campaign_id=:c ORDER BY execution_number DESC LIMIT 1'),{'c':c['id']}).mappings().first()
+        if e and e['status']=='paused' and now < e['scheduled_end']:
+            db.execute(text("UPDATE attack_campaign_executions SET status='active',next_cycle_at=:now WHERE id=:id"),{'now':now,'id':e['id']})
+            status='active'
+        else:
+            status='scheduled'
+        db.execute(text('UPDATE attack_campaigns SET status=:s,updated_at=:now WHERE id=:id'),{'s':status,'now':now,'id':c['id']})
+        db.commit()
+        return {'success':True,'campaign':get_campaign(uuid)}
+    except Exception:
+        db.rollback(); raise
+    finally: db.close()
+
+
+def campaign_delete(uuid: str):
+    # Deleting a Campaign must not leave orphaned pending work in the Runner queue.
+    db=db_session()
+    try:
+        c=db.execute(text('SELECT id FROM attack_campaigns WHERE campaign_uuid=:u FOR UPDATE'),{'u':uuid}).mappings().first()
+        if not c:
+            db.rollback(); return {'success':False}
+        cancelled=_cancel_campaign_jobs(db,int(c['id']),'Campaign removida pelo usuário')
+        db.execute(text('DELETE FROM attack_campaigns WHERE id=:id'),{'id':c['id']})
+        db.commit()
+        return {'success':True,'cancelled':cancelled}
+    except Exception:
+        db.rollback(); raise
+    finally: db.close()
+
+
+def _task_for_protocol(db,protocol:str) -> dict[str,Any] | None:
+    key={'winrm':'MAGI-ATK-END-104','smb':'MAGI-ATK-END-102','ssh':'MAGI-ATK-END-103','snmp_v2c':'MAGI-ATK-NET-101'}.get(protocol)
+    if not key:return None
+    row=db.execute(text('SELECT * FROM validation_tasks WHERE task_key=:k LIMIT 1'),{'k':key}).mappings().first()
+    return dict(row) if row else None
+
+
+def _usable_addresses(scopes: list[str]) -> list[str]:
+    out=[]
+    for raw in scopes:
+        net=ipaddress.ip_network(raw,strict=False)
+        for ip in net.hosts(): out.append(str(ip))
+    return out
+
+
+def _inside_daily_window(now: datetime, c: dict[str,Any]) -> bool:
+    ds=c['daily_start']; de=c['daily_end']
+    if isinstance(ds,str): ds=dtime.fromisoformat(ds)
+    if isinstance(de,str): de=dtime.fromisoformat(de)
+    t=now.time().replace(tzinfo=None)
+    return ds <= t < de
+
+
+def _window_remaining_minutes(now:datetime,c:dict[str,Any])->float:
+    de=c['daily_end'];
+    if isinstance(de,str): de=dtime.fromisoformat(de)
+    end=datetime.combine(now.date(),de)
+    return (end-now).total_seconds()/60
+
+
+def _upsert_asset(db,eid:int,address:str,*,confirmed=False,hostname=None,inventory=None,increment_seed=False,state=None):
+    db.execute(text("""
+      INSERT INTO attack_campaign_assets(execution_id,address,hostname,state,access_confirmed,seed_count,inventory,last_seen_at)
+      VALUES(:e,:a,:h,:state,:confirmed,:seed,CAST(:inv AS JSONB),:now)
+      ON CONFLICT(execution_id,address) DO UPDATE SET
+        hostname=COALESCE(EXCLUDED.hostname,attack_campaign_assets.hostname),
+        state=CASE WHEN EXCLUDED.access_confirmed THEN 'access_confirmed' ELSE COALESCE(EXCLUDED.state,attack_campaign_assets.state) END,
+        access_confirmed=attack_campaign_assets.access_confirmed OR EXCLUDED.access_confirmed,
+        seed_count=attack_campaign_assets.seed_count + EXCLUDED.seed_count,
+        inventory=COALESCE(attack_campaign_assets.inventory,'{}'::jsonb) || EXCLUDED.inventory,
+        last_seen_at=EXCLUDED.last_seen_at
+    """),{'e':eid,'a':address,'h':hostname,'state':state or ('access_confirmed' if confirmed else 'discovered'),'confirmed':confirmed,'seed':1 if increment_seed else 0,'inv':__import__('json').dumps(inventory or {},ensure_ascii=False),'now':datetime.utcnow()})
+
+
+def _select_cycle_seeds(db,c:dict[str,Any],e:dict[str,Any])->list[str]:
+    cycle_count=db.execute(text('SELECT COUNT(*) FROM attack_campaign_cycles WHERE execution_id=:e'),{'e':e['id']}).scalar() or 0
+    if cycle_count==0:
+        seeds=list(c.get('initial_seeds') or [])[:3]
+        for s in seeds:_upsert_asset(db,e['id'],s,confirmed=False,increment_seed=True,state='seed')
+        return seeds
+    rows=db.execute(text("""
+      SELECT address FROM attack_campaign_assets
+      WHERE execution_id=:e AND access_confirmed=TRUE
+      ORDER BY seed_count ASC,last_seen_at DESC,address ASC LIMIT :n
+    """),{'e':e['id'],'n':int(c.get('max_seeds_per_cycle') or 3)}).mappings().all()
+    seeds=[r['address'] for r in rows]
+    for s in seeds:_upsert_asset(db,e['id'],s,confirmed=True,increment_seed=True)
+    return seeds
+
+
+def _candidate_for_origin(db,c:dict[str,Any],e:dict[str,Any],origin:str)->str|None:
+    tested={r[0] for r in db.execute(text('SELECT target FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o'),{'e':e['id'],'o':origin}).all()}
+    all_tested={r[0] for r in db.execute(text('SELECT target FROM attack_campaign_paths WHERE execution_id=:e'),{'e':e['id']}).all()}
+    # Known MAGI assets first, then remaining scope addresses. This still allows unknown hosts to be found progressively.
+    known=[]
+    try:
+        rows=db.execute(text("SELECT host(ip_address) AS ip FROM targets WHERE deleted_at IS NULL ORDER BY last_seen_at DESC LIMIT 2000")).all()
+        known=[r[0] for r in rows]
+    except Exception: pass
+    addresses=_usable_addresses(list(c.get('scope_cidrs') or []))
+    allowed=set(addresses)
+    ordered=[x for x in known if x in allowed]+addresses
+    seen=set()
+    for x in ordered:
+        if x in seen: continue
+        seen.add(x)
+        if x==origin or x in tested: continue
+        # Prefer never-evaluated hosts, but permit a different origin to validate a distinct path later.
+        if x not in all_tested: return x
+    for x in ordered:
+        if x!=origin and x not in tested: return x
+    return None
+
+
+def _vector_credentials(c:dict[str,Any])->list[tuple[str,int,str]]:
+    out=[]; enabled=set(c.get('enabled_vectors') or ['winrm','smb','ssh','snmp_v2c'])
+    win=c.get('credential_id'); ssh=c.get('ssh_credential_id'); snmp=c.get('snmp_credential_id')
+    if win and 'winrm' in enabled: out.append(('winrm',int(win),'access'))
+    if win and 'smb' in enabled: out.append(('smb',int(win),'access'))
+    if ssh and 'ssh' in enabled: out.append(('ssh',int(ssh),'access'))
+    if snmp and 'snmp_v2c' in enabled: out.append(('snmp_v2c',int(snmp),'discovery'))
+    return out
+
+
+def _runner_id(c:dict[str,Any])->str|None:
+    rid=c.get('runner_id')
+    if rid:return rid
+    runner=get_single_online_runner()
+    return (runner or {}).get('runner_id')
+
+
+def _queue_probe(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,target:str,depth:int)->bool:
+    """Queue one cheap discovery/precondition job for an unknown candidate."""
+    runner_id=_runner_id(c)
+    if not runner_id:return False
+    exists=db.execute(text("SELECT 1 FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o AND target=:t AND protocol='preflight' LIMIT 1"),{'e':e['id'],'o':origin,'t':target}).first()
+    if exists:return False
+    enabled=list(c.get('enabled_vectors') or ['winrm','smb','ssh','snmp_v2c'])
+    snmp_cred=int(c['snmp_credential_id']) if c.get('snmp_credential_id') and 'snmp_v2c' in enabled else None
+    payload={'executor':'campaign_probe','target':target,'enabled_vectors':enabled,'timeout_seconds':6,
+             'campaign_context':{'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],'cycle_id':cy['id'],'origin':origin,'target':target,'depth':depth,'protocol':'preflight'}}
+    # Optional SNMP community is injected only in the transient Runner response.
+    if snmp_cred:payload['credential_id']=snmp_cred
+    job=create_runner_job(runner_id,'campaign_probe',target,payload)
+    db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id)
+      VALUES(:e,:cy,:o,:t,'preflight','discovery',:d,'queued',:j) ON CONFLICT(execution_id,origin,target,protocol) DO NOTHING"""),
+      {'e':e['id'],'cy':cy['id'],'o':origin,'t':target,'d':depth,'j':job['id']})
+    return True
+
+
+def _queue_access_vectors(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,target:str,depth:int,applicable:list[str])->int:
+    """Queue only protocols that passed the Runner-side service precondition."""
+    runner_id=_runner_id(c)
+    if not runner_id:return 0
+    applicable=set(applicable or [])
+    existing={r[0] for r in db.execute(text('SELECT protocol FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o AND target=:t'),{'e':e['id'],'o':origin,'t':target}).all()}
+    queued=0
+    for protocol,credential_id,relation in _vector_credentials(c):
+        # SNMP success is already a real authenticated discovery performed by preflight.
+        if protocol=='snmp_v2c':continue
+        if protocol not in applicable or protocol in existing:continue
+        payload={'executor':'credential_validate','target':target,'credential_id':credential_id,'protocol':protocol,
+                 'credential_type':'windows' if protocol in {'winrm','smb'} else 'ssh',
+                 'max_attempts':2,'timeout_seconds':30,
+                 'campaign_context':{'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],'cycle_id':cy['id'],'origin':origin,'target':target,'depth':depth,'protocol':protocol}}
+        job=create_runner_job(runner_id,'credential_validate',target,payload)
+        task=_task_for_protocol(db,protocol); vex_id=None
+        if task:
+            plan={'ready':True,'runner_id':runner_id,'executor':'credential_validate','target':target,'task_id':task['id'],'task_key':task['task_key'],'repository':'magi_attack','credential_id':credential_id,'protocol':protocol,'campaign_uuid':c['campaign_uuid']}
+            vex=create_execution(task,runner_id,job['id'],target,f"campaign:{c['campaign_uuid']}",plan); vex_id=vex['id']
+        db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id,validation_execution_id)
+          VALUES(:e,:cy,:o,:t,:p,:rel,:d,'queued',:j,:v) ON CONFLICT(execution_id,origin,target,protocol) DO NOTHING"""),
+          {'e':e['id'],'cy':cy['id'],'o':origin,'t':target,'p':protocol,'rel':relation,'d':depth,'j':job['id'],'v':vex_id})
+        queued+=1
+    return queued
+
+
+def _sync_paths(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
+    rows=db.execute(text("""SELECT p.*,j.status AS job_status,j.result AS job_result,j.error AS job_error
+      FROM attack_campaign_paths p JOIN runner_jobs j ON j.id=p.runner_job_id
+      WHERE p.cycle_id=:cy AND p.status IN ('queued','running')"""),{'cy':cy['id']}).mappings().all()
+    for r in rows:
+        js=r['job_status']
+        if js in ('pending','running'):
+            if js=='running' and r['status']!='running':db.execute(text("UPDATE attack_campaign_paths SET status='running' WHERE id=:id"),{'id':r['id']})
+            continue
+        data=r['job_result'] or {}; meta=data.get('metadata') or {}
+        protocol=str(r.get('protocol') or meta.get('protocol') or 'unknown')
+        relation=str(r.get('relation_type') or ('discovery' if protocol in {'snmp_v2c','preflight'} else 'access'))
+
+        if protocol=='preflight':
+            alive=bool(meta.get('alive'))
+            result='discovery_confirmed' if alive else 'discovery_not_confirmed'
+            status='confirmed' if alive else 'not_confirmed'
+            db.execute(text("UPDATE attack_campaign_paths SET status=:s,result=:r,evidence=CAST(:ev AS JSONB),finished_at=:now WHERE id=:id"),
+                       {'s':status,'r':result,'ev':__import__('json').dumps(meta or data,ensure_ascii=False,default=str),'now':datetime.utcnow(),'id':r['id']})
+            if not alive:
+                # Critical 5.3.1 rule: an address that did not answer discovery is NOT an Asset.
+                continue
+            hostname=meta.get('hostname')
+            applicable=list(meta.get('applicable_protocols') or [])
+            inv={'ip':r['target'],'hostname':hostname,'source':'attack_campaign','last_origin':r['origin'],'relation_type':'discovery',
+                 'open_ports':meta.get('open_ports') or [],'icmp':bool(meta.get('icmp')),'applicable_protocols':applicable,
+                 'snmp_confirmed':bool(meta.get('snmp_confirmed'))}
+            _upsert_asset(db,e['id'],r['target'],confirmed=False,hostname=hostname,inventory=inv,state='discovered')
+            try:upsert_discovered_target(hostname=hostname,hostname_normalized=(hostname or '').lower() or None,ip_address=r['target'],mac_address=None,mac_normalized=None,status='online',source='attack_campaign',runner_id=c.get('runner_id'),dns_name=None,hostname_source='attack_campaign')
+            except Exception:pass
+            # Preserve SNMP as a concrete discovery relation without repeating the credential test.
+            if meta.get('snmp_confirmed'):
+                snmp_ev=dict(meta);snmp_ev['protocol']='snmp_v2c';snmp_ev['relation_type']='discovery';snmp_ev['confirmation_status']='discovery_confirmed';snmp_ev['attack_result']='discovery_confirmed'
+                db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id,result,evidence,finished_at)
+                  VALUES(:e,:cy,:o,:t,'snmp_v2c','discovery',:d,'confirmed',:j,'discovery_confirmed',CAST(:ev AS JSONB),:now)
+                  ON CONFLICT(execution_id,origin,target,protocol) DO NOTHING"""),
+                  {'e':e['id'],'cy':cy['id'],'o':r['origin'],'t':r['target'],'d':r['depth'],'j':r['runner_job_id'],'ev':__import__('json').dumps(snmp_ev,ensure_ascii=False,default=str),'now':datetime.utcnow()})
+            _queue_access_vectors(db,c,e,cy,r['origin'],r['target'],int(r['depth']),applicable)
+            continue
+
+        authenticated=bool(meta.get('authenticated'))
+        confirmation=str(meta.get('confirmation_status') or '')
+        if authenticated:
+            path_status='confirmed'; result='access_confirmed' if relation=='access' else 'discovery_confirmed'
+        elif confirmation in {'runner_dependency_missing','execution_error'} or js=='error':
+            path_status='error'; result=confirmation or 'execution_error'
+        else:
+            path_status='not_confirmed'; result=confirmation or ('discovery_not_confirmed' if relation=='discovery' else 'access_not_confirmed')
+        db.execute(text("UPDATE attack_campaign_paths SET status=:s,result=:r,evidence=CAST(:ev AS JSONB),finished_at=:now WHERE id=:id"),
+                   {'s':path_status,'r':result,'ev':__import__('json').dumps(meta or data,ensure_ascii=False,default=str),'now':datetime.utcnow(),'id':r['id']})
+        # Do not create assets here on failures. The target must already have passed preflight.
+        if authenticated and relation=='access':
+            hostname=meta.get('hostname')
+            inv={'ip':r['target'],'hostname':hostname,'source':'attack_campaign','protocol':protocol,'relation_type':relation,'last_origin':r['origin']}
+            _upsert_asset(db,e['id'],r['target'],confirmed=True,hostname=hostname,inventory=inv,state='access_confirmed')
+            try:upsert_discovered_target(hostname=hostname,hostname_normalized=(hostname or '').lower() or None,ip_address=r['target'],mac_address=None,mac_normalized=None,status='online',source='attack_campaign',runner_id=c.get('runner_id'),dns_name=None,hostname_source='attack_campaign')
+            except Exception:pass
+
+
+def _fill_cycle(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
+    _sync_paths(db,c,e,cy)
+    total=db.execute(text('SELECT COUNT(*) FROM attack_campaign_paths WHERE cycle_id=:cy'),{'cy':cy['id']}).scalar() or 0
+    outstanding=db.execute(text("SELECT COUNT(*) FROM attack_campaign_paths WHERE cycle_id=:cy AND status IN ('queued','running')"),{'cy':cy['id']}).scalar() or 0
+    if total>=int(c.get('max_paths_per_cycle') or 60): return
+    slots=max(0,int(c.get('max_outstanding_jobs') or 5)-outstanding)
+    if slots<=0:return
+    frontier=list(cy.get('frontier') or [])
+    # Rebuild frontier from confirmed paths so scheduler restart is harmless.
+    for r in db.execute(text("SELECT target,depth FROM attack_campaign_paths WHERE cycle_id=:cy AND status='confirmed' AND relation_type='access' ORDER BY id"),{'cy':cy['id']}).mappings().all():
+        next_depth=int(r['depth'])+1
+        if next_depth < len(BRANCH_POLICY)-1 and not any(x.get('origin')==r['target'] for x in frontier):
+            frontier.append({'origin':r['target'],'depth':next_depth,'limit':BRANCH_POLICY[next_depth],'queued':0})
+    for s in (cy.get('seeds') or []):
+        if not any(x.get('origin')==s for x in frontier): frontier.insert(0,{'origin':s,'depth':0,'limit':BRANCH_POLICY[0],'queued':0})
+    # Round-robin: no initial seed may consume all outstanding slots before the others are evaluated.
+    progress=True
+    while slots>0 and total<int(c.get('max_paths_per_cycle') or 60) and progress:
+        progress=False
+        for node in frontier:
+            if slots<=0 or total>=int(c.get('max_paths_per_cycle') or 60): break
+            origin=node['origin']; depth=int(node.get('depth') or 0); limit=int(BRANCH_POLICY[depth] if depth < len(BRANCH_POLICY) else 0)
+            if limit<=0: continue
+            count=db.execute(text('SELECT COUNT(DISTINCT target) FROM attack_campaign_paths WHERE cycle_id=:cy AND origin=:o'),{'cy':cy['id'],'o':origin}).scalar() or 0
+            if count>=limit: continue
+            target=_candidate_for_origin(db,c,e,origin)
+            if not target: continue
+            if _queue_probe(db,c,e,cy,origin,target,depth):
+                total+=1; slots-=1; progress=True
+    db.execute(text('UPDATE attack_campaign_cycles SET frontier=CAST(:f AS JSONB),stats=CAST(:s AS JSONB) WHERE id=:id'),
+               {'f':__import__('json').dumps(frontier,ensure_ascii=False),'s':__import__('json').dumps({'paths':total,'outstanding':outstanding},ensure_ascii=False),'id':cy['id']})
+
+
+def _finalize_cycle(db,c,e,cy,reason):
+    # Cancel only pending jobs created by this cycle. Running job is allowed to finish and will be ingested later.
+    db.execute(text("""UPDATE runner_jobs SET status='cancelled',error='Campaign cycle timeout' WHERE id IN
+      (SELECT runner_job_id FROM attack_campaign_paths WHERE cycle_id=:cy AND status='queued') AND status='pending'"""),{'cy':cy['id']})
+    db.execute(text("UPDATE attack_campaign_paths SET status='cycle_timeout',result='cycle_timeout',finished_at=:now WHERE cycle_id=:cy AND status='queued'"),{'cy':cy['id'],'now':datetime.utcnow()})
+    stats=dict(db.execute(text("""SELECT COUNT(*) AS paths,COUNT(*) FILTER(WHERE status='confirmed') AS confirmed,
+      COUNT(*) FILTER(WHERE status='not_confirmed') AS not_confirmed FROM attack_campaign_paths WHERE cycle_id=:cy"""),{'cy':cy['id']}).mappings().first())
+    db.execute(text("UPDATE attack_campaign_cycles SET status='completed',finished_at=:now,stop_reason=:r,stats=CAST(:s AS JSONB) WHERE id=:id"),
+               {'now':datetime.utcnow(),'r':reason,'s':__import__('json').dumps(stats,default=int),'id':cy['id']})
+    now_local=_campaign_now(); base=cy.get('started_at') or now_local; planned=base+timedelta(minutes=int(c.get('cycle_interval_minutes') or 15)); nxt=max(now_local,planned)
+    db.execute(text("UPDATE attack_campaign_executions SET next_cycle_at=:n,stats=CAST(:s AS JSONB) WHERE id=:e"),{'n':nxt,'s':__import__('json').dumps(_execution_stats(db,e['id']),default=int),'e':e['id']})
+
+
+def _execution_stats(db,eid:int)->dict[str,int]:
+    a=dict(db.execute(text("SELECT COUNT(*) AS discovered,COUNT(*) FILTER(WHERE access_confirmed) AS accessed FROM attack_campaign_assets WHERE execution_id=:e"),{'e':eid}).mappings().first())
+    p=dict(db.execute(text("SELECT COUNT(*) AS paths,COUNT(*) FILTER(WHERE status='confirmed') AS confirmed FROM attack_campaign_paths WHERE execution_id=:e"),{'e':eid}).mappings().first())
+    return {**{k:int(v or 0) for k,v in a.items()},**{k:int(v or 0) for k,v in p.items()}}
+
+
+def _snapshot(db,eid:int)->dict[str,Any]:
+    assets=[dict(x) for x in db.execute(text('SELECT address,hostname,state,access_confirmed,inventory,first_seen_at,last_seen_at FROM attack_campaign_assets WHERE execution_id=:e ORDER BY address'),{'e':eid}).mappings().all()]
+    paths=[dict(x) for x in db.execute(text("SELECT origin,target,protocol,relation_type,depth,status,result,evidence,created_at,finished_at FROM attack_campaign_paths WHERE execution_id=:e ORDER BY id"),{'e':eid}).mappings().all()]
+    return {'stats':_execution_stats(db,eid),'assets':assets,'paths':paths,'generated_at':datetime.utcnow().isoformat()}
+
+
+def _finish_execution(db,c,e,reason):
+    snap=_snapshot(db,e['id'])
+    db.execute(text("UPDATE attack_campaign_executions SET status='completed',finished_at=:now,stop_reason=:r,stats=CAST(:st AS JSONB),final_snapshot=CAST(:snap AS JSONB) WHERE id=:e"),
+               {'now':datetime.utcnow(),'r':reason,'st':__import__('json').dumps(snap['stats']),'snap':__import__('json').dumps(snap,ensure_ascii=False,default=str),'e':e['id']})
+    # Compact retention: only final snapshots of the newest N executions survive.
+    retention=int(c.get('snapshot_retention') or 10)
+    old=db.execute(text('SELECT id FROM attack_campaign_executions WHERE campaign_id=:c ORDER BY execution_number DESC OFFSET :n'),{'c':c['id'],'n':retention}).all()
+    for (oid,) in old: db.execute(text('DELETE FROM attack_campaign_executions WHERE id=:id'),{'id':oid})
+    rec=c.get('recurrence_days')
+    if rec:
+        duration=e['scheduled_end']-e['scheduled_start']; new_start=e['scheduled_end']+timedelta(days=int(rec)); new_end=new_start+duration
+        num=int(e['execution_number'])+1
+        db.execute(text("INSERT INTO attack_campaign_executions(campaign_id,execution_number,status,scheduled_start,scheduled_end,next_cycle_at) VALUES(:c,:n,'scheduled',:s,:e,:s) ON CONFLICT DO NOTHING"),{'c':c['id'],'n':num,'s':new_start,'e':new_end})
+        db.execute(text("UPDATE attack_campaigns SET status='scheduled',updated_at=:now WHERE id=:id"),{'now':datetime.utcnow(),'id':c['id']})
+    else: db.execute(text("UPDATE attack_campaigns SET status='completed',updated_at=:now WHERE id=:id"),{'now':datetime.utcnow(),'id':c['id']})
+
+
+def process_campaigns_once(now:datetime|None=None):
+    now=now or _campaign_now()
+    db=db_session()
+    try:
+        campaigns=[dict(x) for x in db.execute(text("SELECT * FROM attack_campaigns WHERE enabled=TRUE AND status NOT IN ('completed','cancelled','paused') ORDER BY id")).mappings().all()]
+        for c in campaigns:
+            e0=db.execute(text("SELECT * FROM attack_campaign_executions WHERE campaign_id=:c ORDER BY execution_number DESC LIMIT 1"),{'c':c['id']}).mappings().first()
+            if not e0: continue
+            e=dict(e0)
+            if now < e['scheduled_start']: continue
+            if now >= e['scheduled_end']:
+                active=db.execute(text("SELECT * FROM attack_campaign_cycles WHERE execution_id=:e AND status='running' ORDER BY id DESC LIMIT 1"),{'e':e['id']}).mappings().first()
+                if active:_finalize_cycle(db,c,e,dict(active),'execution_window_ended')
+                _finish_execution(db,c,e,'time_window_reached'); continue
+            if e['status']=='scheduled':
+                db.execute(text("UPDATE attack_campaign_executions SET status='active',started_at=COALESCE(started_at,:now),next_cycle_at=GREATEST(next_cycle_at,:now) WHERE id=:id"),{'now':now,'id':e['id']}); e['status']='active'
+                db.execute(text("UPDATE attack_campaigns SET status='active',updated_at=:now WHERE id=:id"),{'now':now,'id':c['id']})
+            active=db.execute(text("SELECT * FROM attack_campaign_cycles WHERE execution_id=:e AND status='running' ORDER BY id DESC LIMIT 1"),{'e':e['id']}).mappings().first()
+            if active:
+                cy=dict(active); _fill_cycle(db,c,e,cy)
+                if now >= cy['deadline_at']:
+                    _sync_paths(db,c,e,cy); _finalize_cycle(db,c,e,cy,'cycle_timeout')
+                continue
+            if not _inside_daily_window(now,c): continue
+            if _window_remaining_minutes(now,c) < int(c.get('cycle_timeout_minutes') or 15): continue
+            if e.get('next_cycle_at') and now < e['next_cycle_at']: continue
+            number=(db.execute(text('SELECT COALESCE(MAX(cycle_number),0)+1 FROM attack_campaign_cycles WHERE execution_id=:e'),{'e':e['id']}).scalar() or 1)
+            seeds=_select_cycle_seeds(db,c,e)
+            if not seeds:
+                _finish_execution(db,c,e,'scope_exhausted'); continue
+            deadline=now+timedelta(minutes=int(c.get('cycle_timeout_minutes') or 15))
+            cyrow=db.execute(text("INSERT INTO attack_campaign_cycles(execution_id,cycle_number,status,scheduled_at,started_at,deadline_at,seeds,frontier) VALUES(:e,:n,'running',:now,:now,:d,CAST(:s AS JSONB),'[]'::jsonb) RETURNING *"),
+                             {'e':e['id'],'n':number,'now':now,'d':deadline,'s':__import__('json').dumps(seeds)}).mappings().first()
+            _fill_cycle(db,c,e,dict(cyrow))
+        db.commit()
+    except Exception:
+        db.rollback(); raise
+    finally: db.close()

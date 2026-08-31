@@ -1,0 +1,11 @@
+ALTER TABLE atomic_tests
+ADD COLUMN IF NOT EXISTS approved_by VARCHAR(255);
+
+ALTER TABLE atomic_tests
+ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITHOUT TIME ZONE;
+
+ALTER TABLE atomic_execution_jobs
+ADD COLUMN IF NOT EXISTS executed_real_test BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE atomic_execution_jobs
+ADD COLUMN IF NOT EXISTS evidence JSONB NOT NULL DEFAULT '{}'::jsonb;

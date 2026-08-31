@@ -1,0 +1,55 @@
+<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tarefas</title><link rel="stylesheet" href="/assets/style.css"></head><body class="centric-page" data-theme="dark">
+<div class="topbar modern-topbar"><div class="top-left"><div class="brand"><img id="brandLogo" src="/assets/logo.png" alt="Logo"><span>Centric</span></div><nav class="menu" id="mainMenu"></nav></div><div class="top-right"><span>Execução de técnicas</span></div></div>
+<div class="report-layout">
+  <aside class="report-sidebar" id="validationsSidebar"></aside>
+  <main class="report-content settings-content alerts-content">
+    <section id="tasksSection" class="report-section">
+      <div class="toolbar"><div><div class="title">Tarefas</div><p class="section-subtitle">Execute checks defensivos nativos do MAGI contra o alvo selecionado.</p></div></div>
+      <div class="card alerts-card">
+        <div class="card-header">MAGI Security Checks</div>
+        <div class="card-body">
+          <div class="form-grid">
+            <label>Target <small>(IP ou hostname)</small><input id="magiCheckTarget" placeholder="Ex.: 192.168.0.100 ou HOST01"></label>
+            <label>Provider<select id="validationRepository"><option value="magi">MAGI Checks</option><option value="nuclei">Nuclei Validations</option></select></label>
+            <label>Buscar check<input id="magiCheckSearch" placeholder="RDP, SMB, CVE, HTTP..."></label>
+          </div>
+          <div class="atomic-target-warning">Fluxo principal da versão 4.0: checks nativos e validações defensivas. Atomic Red Team permanece congelado para uma fase futura de pós-ataque/pós-comprometimento.</div>
+          <div class="table-wrap"><table><thead><tr><th>Check</th><th>Categoria</th><th>Plataforma</th><th>Impacto</th><th>Detecção</th><th>Remediação</th><th>Ação</th></tr></thead><tbody id="magiChecksTable"></tbody></table></div>
+          <pre id="magiCheckResult" class="result-box">Selecione um check para planejar ou executar.</pre>
+        </div>
+      </div>
+      <div class="card alerts-card" style="margin-top:16px">
+        <div class="card-header">Atomic Red Team</div>
+        <div class="card-body">
+          <span class="badge badge-muted">CONGELADO — PÓS-ATAQUE</span>
+          <p class="section-subtitle">A integração existente foi preservada no código e no histórico, mas novas execuções Atomic ficam desabilitadas por padrão nesta versão.</p>
+        </div>
+      </div>
+    </section>
+
+
+    <section id="repositoriesSection" class="report-section" hidden>
+      <div class="toolbar"><div><div class="title">Repositórios</div><p class="section-subtitle">Catálogos de validação e checks defensivos disponíveis no MAGI.</p></div><button class="btn secondary btn-sm" id="repositoriesSyncBtn" type="button">Sincronizar</button></div>
+      <div class="mini-stats alert-stats"><div class="mini-stat"><small>Repositórios</small><strong id="repoCount">0</strong></div><div class="mini-stat"><small>Disponíveis</small><strong id="repoAvailable">0</strong></div><div class="mini-stat"><small>Tarefas</small><strong id="repoTasks">0</strong></div><div class="mini-stat"><small>Ativas</small><strong id="repoEnabledTasks">0</strong></div></div>
+      <div class="card alerts-card"><div class="card-header">Providers</div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Repositório</th><th>Provider</th><th>Status</th><th>Tarefas</th><th>Descrição</th></tr></thead><tbody id="repositoriesTable"></tbody></table></div></div></div>
+    </section>
+
+    <section id="historySection" class="report-section" hidden>
+      <div class="toolbar"><div><div class="title">Histórico</div><p class="section-subtitle">Histórico unificado das execuções MAGI e das execuções Atomic preservadas de fases anteriores.</p></div><button class="btn secondary btn-sm" id="atomicExecutionsRefreshBtn" type="button">Atualizar histórico</button></div>
+      <div class="card alerts-card"><div class="card-body">
+        <div class="history-filters">
+          <input id="historySearch" placeholder="Buscar por UUID, técnica, tarefa, runner, host ou solicitante">
+          <select id="historySource"><option value="">Todas as origens</option><option value="magi">MAGI</option><option value="atomic">Atomic Red Team</option></select><input id="historyTechnique" placeholder="Técnica/Check ex: T1059 ou MAGI-NET-001">
+          <input id="historyRunner" placeholder="Runner ID">
+          <select id="historyStatus"><option value="">Todos os status</option><option value="queued">queued</option><option value="running">running</option><option value="success">success</option><option value="failed">failed</option><option value="error">error</option><option value="timeout">timeout</option><option value="blocked">blocked</option></select>
+          <input id="historyRequestedBy" placeholder="Solicitante"><input id="historyDateFrom" type="date" title="Data inicial"><input id="historyDateTo" type="date" title="Data final"><button class="btn secondary btn-sm" id="historyClearBtn" type="button">Limpar filtros</button>
+        </div>
+        <div class="history-meta" id="atomicHistoryMeta">Histórico de tarefas: 0 registros.</div>
+        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Origem</th><th>Técnica/Check</th><th>Tarefa</th><th>Runner</th><th>Target</th><th>Status</th><th>Resultado</th><th>Duração</th><th>Solicitante</th><th>Data</th><th>Ações</th></tr></thead><tbody id="atomicExecutionsTable"></tbody></table></div>
+        <pre id="historyExecutionResult" class="result-box">Selecione um job para visualizar os detalhes.</pre>
+      </div></div>
+    </section>
+  </main>
+</div>
+<script src="/assets/common.js"></script><script src="/assets/validations.js"></script>
+</body></html>

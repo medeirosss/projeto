@@ -1,0 +1,336 @@
+{
+  "version": "1.1",
+  "description": "Motor CVE do Sistema Magi. Não replica o scanner; transforma CVE detectado em decisão defensiva e remediação.",
+  "decision_model": {
+    "goal": "Separar defesa imediata de remediação por patch.",
+    "signals": [
+      "exploit_available",
+      "patch_available",
+      "cvss_score",
+      "exploit_type",
+      "attack_vector",
+      "affected_systems"
+    ]
+  },
+  "default_policy": {
+    "critical_with_exploit": {
+      "risk_score": 98,
+      "risk_level": "Critico",
+      "defense_playbook": "contain_exploitable_cve",
+      "remediation_playbook": "apply_patch_urgent",
+      "immediate_action": "Validar exposição do ativo, restringir acesso ao serviço afetado e iniciar contenção se houver exposição ou criticidade operacional.",
+      "remediation_action": "Aplicar patch emergencial e validar a correção.",
+      "defense_actions": [
+        "restrict_service_access",
+        "collect_host_evidence",
+        "monitor_connections",
+        "isolate_host_if_exposed"
+      ]
+    },
+    "critical_no_patch": {
+      "risk_score": 94,
+      "risk_level": "Critico",
+      "defense_playbook": "virtual_patch_or_restrict_access",
+      "remediation_playbook": "vendor_fix_watch",
+      "immediate_action": "Como não há patch disponível, aplicar controle compensatório: restringir acesso, segmentar rede e monitorar exploração.",
+      "remediation_action": "Acompanhar correção do fabricante e aplicar assim que disponível.",
+      "defense_actions": [
+        "restrict_service_access",
+        "network_segmentation",
+        "increase_monitoring",
+        "block_external_exposure"
+      ]
+    },
+    "critical_patch_available": {
+      "risk_score": 82,
+      "risk_level": "Alto",
+      "defense_playbook": "prioritize_and_reduce_exposure",
+      "remediation_playbook": "apply_patch_priority",
+      "immediate_action": "Priorizar ativo e reduzir superfície de ataque até a aplicação do patch.",
+      "remediation_action": "Aplicar patch prioritário pela ferramenta de patch management.",
+      "defense_actions": [
+        "prioritize_asset",
+        "restrict_service_access_if_exposed",
+        "schedule_patch_now"
+      ]
+    },
+    "high_no_patch": {
+      "risk_score": 76,
+      "risk_level": "Alto",
+      "defense_playbook": "restrict_and_monitor",
+      "remediation_playbook": "vendor_fix_watch",
+      "immediate_action": "Restringir acesso ao componente vulnerável e monitorar comportamento anômalo.",
+      "remediation_action": "Aguardar patch do fabricante ou aplicar workaround oficial.",
+      "defense_actions": [
+        "restrict_service_access",
+        "monitor_host",
+        "review_exposure"
+      ]
+    },
+    "patch_only": {
+      "risk_score": 58,
+      "risk_level": "Medio",
+      "defense_playbook": "monitor_until_patch",
+      "remediation_playbook": "schedule_patch",
+      "immediate_action": "Monitorar o ativo até a janela de correção. Não há indicação suficiente para contenção imediata.",
+      "remediation_action": "Agendar aplicação de patch conforme criticidade e janela operacional.",
+      "defense_actions": [
+        "monitor_host",
+        "schedule_patch"
+      ]
+    }
+  },
+  "exact_cves": {
+    "CVE-2021-44228": {
+      "name": "Log4Shell",
+      "exploit_type": "RCE",
+      "attack_vector": "network",
+      "requires_auth": false,
+      "force_policy": "critical_with_exploit",
+      "decision_reason": "RCE remoto historicamente explorado em serviços Java/Log4j.",
+      "tags": [
+        "rce",
+        "network",
+        "java",
+        "log4j",
+        "internet-facing"
+      ]
+    },
+    "CVE-2020-1472": {
+      "name": "Zerologon",
+      "exploit_type": "Privilege Escalation",
+      "attack_vector": "network",
+      "requires_auth": false,
+      "force_policy": "critical_with_exploit",
+      "decision_reason": "Risco de comprometimento de domínio quando afeta controladores de domínio.",
+      "tags": [
+        "ad",
+        "domain-controller",
+        "privilege-escalation"
+      ]
+    },
+    "CVE-2019-0708": {
+      "name": "BlueKeep",
+      "exploit_type": "RCE",
+      "attack_vector": "network",
+      "requires_auth": false,
+      "force_policy": "critical_with_exploit",
+      "decision_reason": "RCE em serviço RDP; exige contenção de exposição além do patch.",
+      "tags": [
+        "rce",
+        "rdp",
+        "windows"
+      ]
+    },
+    "CVE-2023-23397": {
+      "name": "Outlook credential exposure",
+      "exploit_type": "Credential Exposure",
+      "attack_vector": "network",
+      "requires_auth": false,
+      "force_policy": "critical_with_exploit",
+      "decision_reason": "Risco de exposição/coleta de credenciais em cliente Outlook.",
+      "tags": [
+        "credential-access",
+        "outlook",
+        "ntlm"
+      ]
+    }
+  },
+  "keyword_rules": [
+    {
+      "name": "Remote Code Execution",
+      "keywords": [
+        "rce",
+        "remote code execution",
+        "code execution",
+        "execução remota",
+        "execucao remota"
+      ],
+      "exploit_type": "RCE",
+      "attack_vector": "network",
+      "requires_auth": null,
+      "risk_bonus": 14,
+      "preferred_policy": "critical_with_exploit",
+      "tags": [
+        "rce",
+        "network"
+      ]
+    },
+    {
+      "name": "Authentication Bypass",
+      "keywords": [
+        "authentication bypass",
+        "auth bypass",
+        "bypass authentication",
+        "sem autenticação",
+        "sem autenticacao"
+      ],
+      "exploit_type": "Auth Bypass",
+      "attack_vector": "network",
+      "requires_auth": false,
+      "risk_bonus": 12,
+      "preferred_policy": "critical_with_exploit",
+      "tags": [
+        "auth-bypass",
+        "network"
+      ]
+    },
+    {
+      "name": "Privilege Escalation",
+      "keywords": [
+        "privilege escalation",
+        "elevation of privilege",
+        "local privilege",
+        "elevação de privilégio",
+        "elevacao de privilegio",
+        "escalonamento"
+      ],
+      "exploit_type": "Privilege Escalation",
+      "attack_vector": "local",
+      "requires_auth": true,
+      "risk_bonus": 8,
+      "preferred_policy": "critical_patch_available",
+      "tags": [
+        "privilege-escalation",
+        "local"
+      ]
+    },
+    {
+      "name": "Denial of Service",
+      "keywords": [
+        "denial of service",
+        "dos",
+        "crash",
+        "negação de serviço",
+        "negacao de servico"
+      ],
+      "exploit_type": "DoS",
+      "attack_vector": "network_or_local",
+      "requires_auth": null,
+      "risk_bonus": 3,
+      "preferred_policy": "patch_only",
+      "tags": [
+        "availability"
+      ]
+    },
+    {
+      "name": "Information Disclosure",
+      "keywords": [
+        "information disclosure",
+        "data exposure",
+        "exposure of sensitive",
+        "divulgação de informações",
+        "divulgacao de informacoes"
+      ],
+      "exploit_type": "Information Disclosure",
+      "attack_vector": "network_or_local",
+      "requires_auth": null,
+      "risk_bonus": 5,
+      "preferred_policy": "restrict_and_monitor",
+      "tags": [
+        "data-exposure"
+      ]
+    },
+    {
+      "name": "Memory/Buffer Corruption",
+      "keywords": [
+        "buffer overflow",
+        "write buffer",
+        "memory corruption",
+        "use after free",
+        "out-of-bounds",
+        "heap overflow"
+      ],
+      "exploit_type": "Memory Corruption",
+      "attack_vector": "unknown",
+      "requires_auth": null,
+      "risk_bonus": 6,
+      "preferred_policy": "critical_patch_available",
+      "tags": [
+        "memory-corruption"
+      ]
+    },
+    {
+      "name": "Public service exposure",
+      "keywords": [
+        "apache",
+        "nginx",
+        "tomcat",
+        "iis",
+        "exchange",
+        "owa",
+        "rdp",
+        "smb",
+        "postgresql",
+        "postgres",
+        "curl",
+        "safari",
+        "windows"
+      ],
+      "exploit_type": "Service Risk",
+      "attack_vector": "network_or_endpoint",
+      "requires_auth": null,
+      "risk_bonus": 4,
+      "preferred_policy": "prioritize_and_reduce_exposure",
+      "tags": [
+        "service-risk"
+      ]
+    }
+  ],
+  "playbooks": {
+    "contain_exploitable_cve": {
+      "label": "Conter CVE explorável",
+      "type": "defense",
+      "automation_ready": false,
+      "description": "Reduz exposição, coleta evidência e permite isolamento quando o ativo estiver exposto ou for crítico."
+    },
+    "virtual_patch_or_restrict_access": {
+      "label": "Controle compensatório",
+      "type": "defense",
+      "automation_ready": false,
+      "description": "Usa bloqueio/restrição de rede, segmentação ou WAF quando não há patch disponível."
+    },
+    "prioritize_and_reduce_exposure": {
+      "label": "Reduzir exposição e priorizar",
+      "type": "defense",
+      "automation_ready": false,
+      "description": "Reduz superfície de ataque enquanto o patch é aplicado."
+    },
+    "restrict_and_monitor": {
+      "label": "Restringir e monitorar",
+      "type": "defense",
+      "automation_ready": false,
+      "description": "Restringe acesso ao componente e aumenta monitoramento temporário."
+    },
+    "monitor_until_patch": {
+      "label": "Monitorar até correção",
+      "type": "defense",
+      "automation_ready": false,
+      "description": "Apenas monitora quando não há sinal de exploração imediata."
+    },
+    "apply_patch_urgent": {
+      "label": "Aplicar patch emergencial",
+      "type": "remediation",
+      "automation_ready": false,
+      "description": "Aplicação emergencial via Endpoint Central ou ferramenta equivalente."
+    },
+    "apply_patch_priority": {
+      "label": "Aplicar patch prioritário",
+      "type": "remediation",
+      "automation_ready": false,
+      "description": "Aplicação prioritária por criticidade."
+    },
+    "schedule_patch": {
+      "label": "Agendar patch",
+      "type": "remediation",
+      "automation_ready": false,
+      "description": "Agendamento de correção em janela regular."
+    },
+    "vendor_fix_watch": {
+      "label": "Aguardar correção/workaround",
+      "type": "remediation",
+      "automation_ready": false,
+      "description": "Acompanhar correção do fabricante ou aplicar workaround oficial."
+    }
+  }
+}

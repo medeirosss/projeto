@@ -1,0 +1,32 @@
+.atomic-evidence {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #2d3b55;
+  border-radius: 8px;
+  background: #0d1626;
+}
+
+.atomic-evidence summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #d8e7ff;
+}
+
+.atomic-evidence pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 6px;
+  background: #050b16;
+  color: #d8e7ff;
+}
+
+.atomic-target-warning {
+  margin-top: 8px;
+  padding: 8px;
+  border-left: 4px solid #ffd37a;
+  background: #211a0b;
+  color: #ffe3a3;
+}
