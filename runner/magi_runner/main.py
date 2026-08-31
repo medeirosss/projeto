@@ -57,10 +57,18 @@ def _flush_result_spool(api: MagiApiClient, state: LocalState, logger) -> None:
                 state.remove_spooled_result(job_id)
             continue
         try:
-            api.send_result(job_id, result)
+            ack = api.send_result(job_id, result)
             state.remove_spooled_result(job_id)
             state.mark_completed(job_id)
-            logger.info("Previously spooled result delivered for job %s", job_id)
+            if ack.get("discard_result"):
+                logger.info(
+                    "Discarded stale spooled result for job %s after backend terminal acknowledgement: %s (%s)",
+                    job_id,
+                    ack.get("reason") or "terminal",
+                    ack.get("job_status") or "unknown",
+                )
+            else:
+                logger.info("Previously spooled result delivered for job %s", job_id)
         except Exception as exc:
             logger.warning("Result delivery retry still pending for job %s: %s", job_id, exc)
 
@@ -157,9 +165,16 @@ def run_runner(config_path: Path, once: bool = False, stop_event: Any | None = N
                         job_id = str(job.get("job_id") or job.get("id"))
                         result = scheduler.run_job(job)
                         try:
-                            api.send_result(job_id, result)
+                            ack = api.send_result(job_id, result)
                             state.remove_spooled_result(job_id)
                             state.mark_completed(job_id)
+                            if ack.get("discard_result"):
+                                logger.info(
+                                    "Backend marked job %s terminal; local result discarded (%s/%s)",
+                                    job_id,
+                                    ack.get("reason") or "terminal",
+                                    ack.get("job_status") or "unknown",
+                                )
                         except Exception as exc:
                             state.spool_result(job_id, result)
                             logger.warning(

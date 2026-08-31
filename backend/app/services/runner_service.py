@@ -23,6 +23,7 @@ from app.repositories.runner_repository import (
     set_runner_queue_paused,
     register_runner,
     save_job_result,
+    get_job_result_disposition,
     update_heartbeat,
     update_validation_from_runner_job,
     validate_runner_secret,
@@ -135,7 +136,33 @@ def job_result_v2_service(job_id: int, data: dict, headers):
         error=data.get("error") or data.get("stderr"),
     )
     if not result:
-        raise ValueError("job not found or not assigned to this runner")
+        disposition = get_job_result_disposition(int(job_id), runner_id)
+        terminal_statuses = {
+            "cancelled", "blocked", "success", "failed", "error",
+            "timeout", "target_unreachable", "completed",
+        }
+        if disposition and str(disposition.get("status") or "").lower() in terminal_statuses:
+            return {
+                "success": True,
+                "acknowledged": False,
+                "discard_result": True,
+                "reason": "job_already_terminal",
+                "job_id": int(job_id),
+                "job_status": disposition.get("status"),
+            }
+        if disposition is None:
+            # An authenticated Runner can safely discard a locally spooled result
+            # for a job that no longer exists in the backend. Retrying forever
+            # cannot make such a result valid again.
+            return {
+                "success": True,
+                "acknowledged": False,
+                "discard_result": True,
+                "reason": "job_not_found",
+                "job_id": int(job_id),
+                "job_status": "missing",
+            }
+        raise ValueError("job not assigned to this runner or not in a terminal state")
     validation = update_validation_from_runner_job(int(job_id), status=status, result=data, error=data.get("error"))
     atomic_execution = None
     if result and result.get("job_type") == "atomic_validation":

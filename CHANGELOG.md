@@ -1,3 +1,8 @@
+# 5.3.7
+- Corrige durable retry spool infinito para resultados de jobs já cancelados/terminais.
+- Backend responde ACK terminal com `discard_result=true` em vez de HTTP 400 para retries obsoletos.
+- Runner 2.17.3 remove automaticamente resultados antigos do spool após ACK terminal.
+
 # 5.3.6
 - Runner Queue Control: limpeza pausa a fila para impedir regeneração imediata por schedulers.
 - Deep Inventory periódico respeita queue_paused.

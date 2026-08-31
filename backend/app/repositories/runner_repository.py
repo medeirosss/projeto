@@ -270,6 +270,27 @@ def create_runner_job(runner_id: str | None, job_type: str, target: str | None, 
         return dict(row)
 
 
+def get_job_result_disposition(job_id: int, runner_id: str) -> dict | None:
+    """Return the current backend disposition for a Runner result retry.
+
+    Used when a result cannot update runner_jobs because the job is already in a
+    terminal state. This lets the backend explicitly tell the Runner that a
+    durable-spool entry can be discarded instead of retried forever.
+    """
+    with SessionLocal() as db:
+        row = db.execute(text("""
+            SELECT id, runner_id, status, job_type, error, finished_at
+            FROM runner_jobs
+            WHERE id = :job_id
+              AND (runner_id = :runner_id OR runner_id IS NULL)
+            LIMIT 1
+        """), {
+            "job_id": int(job_id),
+            "runner_id": runner_id,
+        }).mappings().first()
+        return dict(row) if row else None
+
+
 def save_job_result(job_id: int, runner_id: str, status: str, result: dict | None, error: str | None):
     with SessionLocal() as db:
         row = db.execute(text("""

@@ -82,12 +82,17 @@ class MagiApiClient:
             job["type"] = job.get("job_type")
         return job
 
-    def send_result(self, job_id: str, result: dict[str, Any]) -> None:
+    def send_result(self, job_id: str, result: dict[str, Any]) -> dict[str, Any]:
         if not self.config.runner_id:
             raise RuntimeError("Runner is not registered")
         with self._session_lock:
             response = self.session.post(self._url(f"/api/runners/jobs/{job_id}/result"), json=result, timeout=60)
             response.raise_for_status()
+            try:
+                data = response.json()
+            except ValueError:
+                data = {}
+        return data if isinstance(data, dict) else {}
 
 
     def ping(self) -> dict[str, Any]:
