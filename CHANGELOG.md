@@ -1,3 +1,10 @@
+# 5.3.4
+
+- Corrige concorrência HTTP do Runner: polling e heartbeat não acessam mais o mesmo `requests.Session` simultaneamente.
+- `reset_session()` agora é serializado com as requisições ativas, evitando fechar/recriar a sessão enquanto outra thread a utiliza.
+- Runner atualizado para 2.17.1.
+- Correção direcionada ao erro intermitente `RemoteDisconnected('Remote end closed connection without response')`.
+
 # 5.3.3
 - Configurações > Runners: nova ação **Limpar Runner** por Runner.
 - Cancela todos os `runner_jobs` em `pending/running` do Runner e também jobs `pending` ainda não atribuídos, sem apagar o histórico.
