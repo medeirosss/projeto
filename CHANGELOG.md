@@ -1,3 +1,12 @@
+# 5.3.10 - Campaign ICMP Admission Gate
+
+- ICMP Echo Reply passa a ser requisito obrigatório para um IP entrar na Campaign.
+- `campaign_probe` executa ping antes de qualquer TCP/SNMP; sem resposta real, encerra o probe imediatamente.
+- Validação do ping Windows exige `TTL=` além do return code, evitando falso positivo de mensagens ICMP de host inalcançável.
+- Portas WinRM/SMB/SSH e SNMP só são testadas após o host ser confirmado por ping.
+- Hosts sem ping não viram assets descobertos e não recebem credential validation.
+- Runner atualizado para 2.17.4 e metadata de pacote sincronizada.
+
 # 5.3.9 - Campaign Runner Binding / No Silent Cycles
 
 - Campaign agora vincula explicitamente um Runner online antes de entrar em `active`.

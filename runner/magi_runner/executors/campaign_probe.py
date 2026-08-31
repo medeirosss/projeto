@@ -20,7 +20,13 @@ def _tcp_open(target: str, port: int, timeout: float = 1.2) -> bool:
 
 
 def _icmp_alive(target: str, timeout_seconds: int) -> bool:
-    # Windows Runner. One echo only; failure is not considered proof that the host is down.
+    """Require a real ICMP Echo Reply from the Windows ping command.
+
+    Windows may return a process status that is not sufficient to distinguish
+    an Echo Reply from messages such as "Destination host unreachable".
+    MAGI Campaign therefore requires the TTL field that is present in a real
+    Echo Reply. No TTL means the candidate is not admitted to the Campaign.
+    """
     try:
         ms = max(250, min(1500, int(timeout_seconds * 1000)))
         p = subprocess.run(
@@ -30,7 +36,8 @@ def _icmp_alive(target: str, timeout_seconds: int) -> bool:
             timeout=max(2, timeout_seconds + 1),
             shell=False,
         )
-        return p.returncode == 0
+        output = f"{p.stdout or ''}\n{p.stderr or ''}".upper()
+        return p.returncode == 0 and "TTL=" in output
     except Exception:
         return False
 
@@ -119,10 +126,10 @@ def _snmp_sysname(target: str, community: str, timeout: float = 1.5) -> tuple[bo
 class CampaignProbeExecutor:
     """Cheap existence/service precondition for Attack Campaign.
 
-    One probe replaces the previous WinRM+SMB+SSH+SNMP fan-out against every
-    candidate address. Credentials are never used as generic host-discovery
-    mechanisms; the optional SNMP community is used only to positively detect
-    devices whose useful management surface is UDP/161.
+    ICMP Echo Reply is the mandatory admission gate. Only candidates that
+    answer ping with a real TTL are admitted to the Campaign and then checked
+    for applicable WinRM/SMB/SSH/SNMP services. Credentials are never used as
+    host-discovery mechanisms.
     """
 
     name = "campaign_probe"
@@ -134,6 +141,53 @@ class CampaignProbeExecutor:
         ipaddress.ip_address(target)
 
         enabled = set(payload.get("enabled_vectors") or [])
+
+        # 5.3.10: ICMP is the mandatory admission gate for Campaign.
+        # A candidate that does not answer a real Echo Reply is discarded
+        # immediately. Do not probe ports, SNMP or credentials on it.
+        icmp = _icmp_alive(target, min(2, max(1, timeout_seconds)))
+        if not icmp:
+            finished = datetime.now(timezone.utc)
+            confirmation = "discovery_not_confirmed"
+            metadata = {
+                "target": target,
+                "hostname": None,
+                "alive": False,
+                "icmp": False,
+                "open_ports": [],
+                "applicable_protocols": [],
+                "snmp_confirmed": False,
+                "snmp_error": None,
+                "protocol": "preflight",
+                "relation_type": "discovery",
+                "authenticated": False,
+                "executed_real_test": True,
+                "execution_scope": "campaign_remote",
+                "campaign_context": payload.get("campaign_context") or {},
+                "attack_result": confirmation,
+                "confirmation_status": confirmation,
+                "admission_reason": "icmp_echo_reply_required",
+                "finding": {
+                    "status": confirmation,
+                    "detected": False,
+                    "message": f"Host {target} descartado: sem ICMP Echo Reply (TTL).",
+                },
+            }
+            Path(workdir, "campaign_probe.json").write_text(
+                json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            return ExecutionResult(
+                status="success",
+                exit_code=0,
+                stdout=json.dumps(metadata, ensure_ascii=False),
+                stderr="",
+                started_at=started.isoformat(),
+                finished_at=finished.isoformat(),
+                duration_seconds=(finished - started).total_seconds(),
+                metadata=metadata,
+            )
+
+        # Only ICMP-confirmed hosts are allowed to proceed to service discovery.
         ports: list[int] = []
         if "ssh" in enabled:
             ports.append(22)
@@ -144,7 +198,6 @@ class CampaignProbeExecutor:
         ports = sorted(set(ports))
 
         open_ports = [p for p in ports if _tcp_open(target, p, timeout=min(1.2, max(0.4, timeout_seconds / 10)))]
-        icmp = _icmp_alive(target, min(2, max(1, timeout_seconds)))
 
         cred = payload.get("credential") or {}
         snmp_confirmed = False
@@ -155,7 +208,9 @@ class CampaignProbeExecutor:
                 target, str(cred.get("secret") or ""), timeout=min(1.5, max(0.5, timeout_seconds / 8))
             )
 
-        alive = bool(icmp or open_ports or snmp_confirmed)
+        # ICMP is authoritative for Campaign membership. Protocol checks only
+        # decide which access vectors are applicable after admission.
+        alive = True
         applicable: list[str] = []
         if 22 in open_ports and "ssh" in enabled:
             applicable.append("ssh")
@@ -185,6 +240,7 @@ class CampaignProbeExecutor:
             "campaign_context": payload.get("campaign_context") or {},
             "attack_result": confirmation,
             "confirmation_status": confirmation,
+            "admission_reason": "icmp_echo_reply_confirmed",
             "finding": {
                 "status": confirmation,
                 "detected": alive,
