@@ -1,3 +1,19 @@
+# 5.3.9 - Campaign Runner Binding / No Silent Cycles
+
+- Campaign agora vincula explicitamente um Runner online antes de entrar em `active`.
+- Se nenhum Runner estiver elegível, Campaign/Execution ficam em `waiting_runner` com motivo persistido em `stats`.
+- Se a fila do Runner estiver pausada, Campaign fica em `waiting_runner` em vez de aparentar execução.
+- `campaign_probe` sem Runner deixa de falhar silenciosamente: gera erro explícito no scheduler.
+- Primeiro ciclo que não conseguir gerar nenhum path/job é marcado `blocked` com `no_jobs_queued`.
+- Scheduler passa a registrar no log cada `campaign_probe` enfileirado com Campaign, Cycle, Runner, Job ID e target.
+- Ao recuperar Runner, `next_cycle_at` é normalizado para permitir o primeiro ciclo imediatamente.
+
+# 5.3.8
+- Corrige timezone do scheduler da Attack Campaign.
+- Campaigns com janela diária configurada no horário local agora são avaliadas no `MAGI_TIMEZONE` (padrão `America/Sao_Paulo`) em vez de UTC.
+- Corrige também Resume e cálculo de `next_cycle_at` para usar o mesmo relógio operacional.
+- Evita Campaign permanecer sem ciclos quando o backend está em UTC e a janela diária já parece encerrada.
+
 # 5.3.7
 - Corrige durable retry spool infinito para resultados de jobs já cancelados/terminais.
 - Backend responde ACK terminal com `discard_result=true` em vez de HTTP 400 para retries obsoletos.

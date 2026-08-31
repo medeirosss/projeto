@@ -1,16 +1,32 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 from datetime import datetime, timedelta, time as dtime
+from zoneinfo import ZoneInfo
 from typing import Any
 from sqlalchemy import text
 
 from app.repositories.attack_campaign_repository import create_campaign, list_campaigns, get_campaign, set_campaign_status, delete_campaign, db_session
-from app.repositories.runner_repository import create_runner_job, get_single_online_runner
+from app.repositories.runner_repository import create_runner_job, get_single_online_runner, is_runner_queue_paused
 from app.repositories.validation_repository import list_tasks, create_execution
 from app.repositories.target_repository import upsert_discovered_target
 
 BRANCH_POLICY = [10, 5, 1, 0]
+
+
+def _campaign_now() -> datetime:
+    """Return MAGI Campaign wall-clock time as a naive datetime.
+
+    Campaign scheduling fields are stored as TIMESTAMP/TIME without timezone and
+    originate from the operator UI. Always compare them against the configured
+    MAGI timezone instead of UTC.
+    """
+    tz_name = os.getenv("MAGI_TIMEZONE") or os.getenv("TZ") or "America/Sao_Paulo"
+    try:
+        return datetime.now(ZoneInfo(tz_name)).replace(tzinfo=None)
+    except Exception:
+        return datetime.now(ZoneInfo("America/Sao_Paulo")).replace(tzinfo=None)
 
 
 def _parse_dt(v: Any) -> datetime:
@@ -119,7 +135,7 @@ def campaign_resume(uuid: str):
     try:
         c=db.execute(text('SELECT * FROM attack_campaigns WHERE campaign_uuid=:u FOR UPDATE'),{'u':uuid}).mappings().first()
         if not c: raise ValueError('Campaign não encontrada.')
-        now=datetime.utcnow()
+        now=_campaign_now()
         # Resume the latest paused execution without resurrecting cancelled jobs/cycles.
         e=db.execute(text('SELECT * FROM attack_campaign_executions WHERE campaign_id=:c ORDER BY execution_number DESC LIMIT 1'),{'c':c['id']}).mappings().first()
         if e and e['status']=='paused' and now < e['scheduled_end']:
@@ -247,15 +263,44 @@ def _vector_credentials(c:dict[str,Any])->list[tuple[str,int,str]]:
 
 def _runner_id(c:dict[str,Any])->str|None:
     rid=c.get('runner_id')
-    if rid:return rid
+    if rid:
+        return str(rid)
     runner=get_single_online_runner()
-    return (runner or {}).get('runner_id')
+    return str((runner or {}).get('runner_id') or '') or None
+
+
+def _bind_campaign_runner(db, c:dict[str,Any], e:dict[str,Any], now:datetime) -> tuple[str|None,str|None]:
+    """Resolve and persist the Runner before a Campaign is allowed to become active.
+
+    Build 5.3.9 removes the previous silent state where a cycle could be shown as
+    running while _queue_probe() simply returned False because no usable Runner
+    was resolved.
+    """
+    rid=_runner_id(c)
+    if not rid:
+        reason='waiting_runner: nenhum Runner online/elegível encontrado'
+        db.execute(text("UPDATE attack_campaign_executions SET status='waiting_runner',stats=COALESCE(stats,'{}'::jsonb) || CAST(:st AS JSONB) WHERE id=:id"),
+                   {'st':__import__('json').dumps({'scheduler_state':'waiting_runner','scheduler_reason':reason,'scheduler_checked_at':now.isoformat()},ensure_ascii=False),'id':e['id']})
+        db.execute(text("UPDATE attack_campaigns SET status='waiting_runner',updated_at=:now WHERE id=:id"),{'now':now,'id':c['id']})
+        return None,reason
+    if is_runner_queue_paused(rid):
+        reason=f'waiting_runner_queue: fila do Runner {rid} está pausada'
+        db.execute(text("UPDATE attack_campaign_executions SET status='waiting_runner',stats=COALESCE(stats,'{}'::jsonb) || CAST(:st AS JSONB) WHERE id=:id"),
+                   {'st':__import__('json').dumps({'scheduler_state':'waiting_runner_queue','scheduler_reason':reason,'runner_id':rid,'scheduler_checked_at':now.isoformat()},ensure_ascii=False),'id':e['id']})
+        db.execute(text("UPDATE attack_campaigns SET status='waiting_runner',runner_id=:r,updated_at=:now WHERE id=:id"),{'r':rid,'now':now,'id':c['id']})
+        c['runner_id']=rid
+        return None,reason
+    if not c.get('runner_id'):
+        db.execute(text("UPDATE attack_campaigns SET runner_id=:r,updated_at=:now WHERE id=:id"),{'r':rid,'now':now,'id':c['id']})
+        c['runner_id']=rid
+    return rid,None
 
 
 def _queue_probe(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,target:str,depth:int)->bool:
     """Queue one cheap discovery/precondition job for an unknown candidate."""
     runner_id=_runner_id(c)
-    if not runner_id:return False
+    if not runner_id:
+        raise RuntimeError(f"Campaign {c.get('campaign_uuid')} sem Runner vinculado ao tentar enfileirar preflight")
     exists=db.execute(text("SELECT 1 FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o AND target=:t AND protocol='preflight' LIMIT 1"),{'e':e['id'],'o':origin,'t':target}).first()
     if exists:return False
     enabled=list(c.get('enabled_vectors') or ['winrm','smb','ssh','snmp_v2c'])
@@ -265,6 +310,7 @@ def _queue_probe(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,
     # Optional SNMP community is injected only in the transient Runner response.
     if snmp_cred:payload['credential_id']=snmp_cred
     job=create_runner_job(runner_id,'campaign_probe',target,payload)
+    print(f"[attack-campaign-scheduler] campaign={c['campaign_uuid']} cycle={cy['id']} queued runner_job={job['id']} executor=campaign_probe target={target} runner={runner_id}")
     db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id)
       VALUES(:e,:cy,:o,:t,'preflight','discovery',:d,'queued',:j) ON CONFLICT(execution_id,origin,target,protocol) DO NOTHING"""),
       {'e':e['id'],'cy':cy['id'],'o':origin,'t':target,'d':depth,'j':job['id']})
@@ -274,7 +320,8 @@ def _queue_probe(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,
 def _queue_access_vectors(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,target:str,depth:int,applicable:list[str])->int:
     """Queue only protocols that passed the Runner-side service precondition."""
     runner_id=_runner_id(c)
-    if not runner_id:return 0
+    if not runner_id:
+        raise RuntimeError(f"Campaign {c.get('campaign_uuid')} sem Runner vinculado ao tentar enfileirar vetor de acesso")
     applicable=set(applicable or [])
     existing={r[0] for r in db.execute(text('SELECT protocol FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o AND target=:t'),{'e':e['id'],'o':origin,'t':target}).all()}
     queued=0
@@ -399,7 +446,7 @@ def _finalize_cycle(db,c,e,cy,reason):
       COUNT(*) FILTER(WHERE status='not_confirmed') AS not_confirmed FROM attack_campaign_paths WHERE cycle_id=:cy"""),{'cy':cy['id']}).mappings().first())
     db.execute(text("UPDATE attack_campaign_cycles SET status='completed',finished_at=:now,stop_reason=:r,stats=CAST(:s AS JSONB) WHERE id=:id"),
                {'now':datetime.utcnow(),'r':reason,'s':__import__('json').dumps(stats,default=int),'id':cy['id']})
-    base=cy.get('started_at') or datetime.utcnow(); planned=base+timedelta(minutes=int(c.get('cycle_interval_minutes') or 15)); nxt=max(datetime.utcnow(),planned)
+    now_local=_campaign_now(); base=cy.get('started_at') or now_local; planned=base+timedelta(minutes=int(c.get('cycle_interval_minutes') or 15)); nxt=max(now_local,planned)
     db.execute(text("UPDATE attack_campaign_executions SET next_cycle_at=:n,stats=CAST(:s AS JSONB) WHERE id=:e"),{'n':nxt,'s':__import__('json').dumps(_execution_stats(db,e['id']),default=int),'e':e['id']})
 
 
@@ -433,10 +480,10 @@ def _finish_execution(db,c,e,reason):
 
 
 def process_campaigns_once(now:datetime|None=None):
-    now=now or datetime.utcnow()
+    now=now or _campaign_now()
     db=db_session()
     try:
-        campaigns=[dict(x) for x in db.execute(text("SELECT * FROM attack_campaigns WHERE enabled=TRUE AND status NOT IN ('completed','cancelled','paused') ORDER BY id")).mappings().all()]
+        campaigns=[dict(x) for x in db.execute(text("SELECT * FROM attack_campaigns WHERE enabled=TRUE AND status NOT IN ('completed','cancelled','paused','blocked') ORDER BY id")).mappings().all()]
         for c in campaigns:
             e0=db.execute(text("SELECT * FROM attack_campaign_executions WHERE campaign_id=:c ORDER BY execution_number DESC LIMIT 1"),{'c':c['id']}).mappings().first()
             if not e0: continue
@@ -446,9 +493,15 @@ def process_campaigns_once(now:datetime|None=None):
                 active=db.execute(text("SELECT * FROM attack_campaign_cycles WHERE execution_id=:e AND status='running' ORDER BY id DESC LIMIT 1"),{'e':e['id']}).mappings().first()
                 if active:_finalize_cycle(db,c,e,dict(active),'execution_window_ended')
                 _finish_execution(db,c,e,'time_window_reached'); continue
-            if e['status']=='scheduled':
-                db.execute(text("UPDATE attack_campaign_executions SET status='active',started_at=COALESCE(started_at,:now),next_cycle_at=GREATEST(next_cycle_at,:now) WHERE id=:id"),{'now':now,'id':e['id']}); e['status']='active'
-                db.execute(text("UPDATE attack_campaigns SET status='active',updated_at=:now WHERE id=:id"),{'now':now,'id':c['id']})
+            # A Campaign only becomes active after a concrete, unpaused Runner is bound.
+            # This guarantees that 'active' means the backend is actually able to create work.
+            rid,wait_reason=_bind_campaign_runner(db,c,e,now)
+            if not rid:
+                continue
+            if e['status'] in ('scheduled','waiting_runner'):
+                db.execute(text("UPDATE attack_campaign_executions SET status='active',started_at=COALESCE(started_at,:now),next_cycle_at=CASE WHEN next_cycle_at IS NULL OR next_cycle_at>:now THEN :now ELSE next_cycle_at END,stats=COALESCE(stats,'{}'::jsonb) || CAST(:st AS JSONB) WHERE id=:id"),
+                           {'now':now,'id':e['id'],'st':__import__('json').dumps({'scheduler_state':'runner_bound','runner_id':rid,'scheduler_checked_at':now.isoformat()},ensure_ascii=False)}); e['status']='active'; e['next_cycle_at']=now
+                db.execute(text("UPDATE attack_campaigns SET status='active',runner_id=:r,updated_at=:now WHERE id=:id"),{'r':rid,'now':now,'id':c['id']})
             active=db.execute(text("SELECT * FROM attack_campaign_cycles WHERE execution_id=:e AND status='running' ORDER BY id DESC LIMIT 1"),{'e':e['id']}).mappings().first()
             if active:
                 cy=dict(active); _fill_cycle(db,c,e,cy)
@@ -465,7 +518,17 @@ def process_campaigns_once(now:datetime|None=None):
             deadline=now+timedelta(minutes=int(c.get('cycle_timeout_minutes') or 15))
             cyrow=db.execute(text("INSERT INTO attack_campaign_cycles(execution_id,cycle_number,status,scheduled_at,started_at,deadline_at,seeds,frontier) VALUES(:e,:n,'running',:now,:now,:d,CAST(:s AS JSONB),'[]'::jsonb) RETURNING *"),
                              {'e':e['id'],'n':number,'now':now,'d':deadline,'s':__import__('json').dumps(seeds)}).mappings().first()
-            _fill_cycle(db,c,e,dict(cyrow))
+            cy=dict(cyrow)
+            _fill_cycle(db,c,e,cy)
+            path_count=db.execute(text('SELECT COUNT(*) FROM attack_campaign_paths WHERE cycle_id=:cy'),{'cy':cy['id']}).scalar() or 0
+            if int(path_count)==0:
+                reason='no_jobs_queued: ciclo criado mas nenhum path/job foi gerado'
+                db.execute(text("UPDATE attack_campaign_cycles SET status='blocked',stop_reason=:r,finished_at=:now,stats=COALESCE(stats,'{}'::jsonb) || CAST(:st AS JSONB) WHERE id=:id"),
+                           {'r':reason,'now':now,'id':cy['id'],'st':__import__('json').dumps({'scheduler_state':'blocked','scheduler_reason':reason,'runner_id':rid},ensure_ascii=False)})
+                db.execute(text("UPDATE attack_campaign_executions SET status='blocked',stats=COALESCE(stats,'{}'::jsonb) || CAST(:st AS JSONB) WHERE id=:id"),
+                           {'id':e['id'],'st':__import__('json').dumps({'scheduler_state':'blocked','scheduler_reason':reason,'runner_id':rid,'scheduler_checked_at':now.isoformat()},ensure_ascii=False)})
+                db.execute(text("UPDATE attack_campaigns SET status='blocked',updated_at=:now WHERE id=:id"),{'now':now,'id':c['id']})
+                print(f"[attack-campaign-scheduler] campaign={c['campaign_uuid']} BLOCKED reason={reason} runner={rid}")
         db.commit()
     except Exception:
         db.rollback(); raise
