@@ -56,15 +56,99 @@ def campaign_detail(uuid: str) -> dict[str, Any]:
     row=get_campaign(uuid)
     if not row: raise ValueError('Campaign não encontrada.')
     return {'success':True,'campaign':row}
+def _cancel_campaign_jobs(db, campaign_id: int, reason: str) -> dict[str, int]:
+    """Cancel every outstanding Runner job owned by a Campaign execution.
+
+    This is deliberately idempotent. A job already completed is left untouched;
+    pending/running jobs are terminally marked cancelled so they cannot be
+    reclaimed by the Runner after the operator pauses the Campaign.
+    """
+    now=datetime.utcnow()
+    job_ids=[r[0] for r in db.execute(text("""
+      SELECT DISTINCT p.runner_job_id
+      FROM attack_campaign_paths p
+      JOIN attack_campaign_executions e ON e.id=p.execution_id
+      WHERE e.campaign_id=:c AND p.runner_job_id IS NOT NULL
+        AND p.status IN ('queued','running')
+    """),{'c':campaign_id}).all()]
+    cancelled_jobs=0
+    if job_ids:
+        cancelled_jobs=db.execute(text("""
+          UPDATE runner_jobs SET status='cancelled',error=:reason,finished_at=:now
+          WHERE id = ANY(:ids) AND status IN ('pending','running')
+        """),{'ids':job_ids,'reason':reason,'now':now}).rowcount or 0
+    cancelled_paths=db.execute(text("""
+      UPDATE attack_campaign_paths p
+      SET status='cancelled',result='campaign_cancelled',finished_at=:now,
+          evidence=COALESCE(p.evidence,'{}'::jsonb) || CAST(:ev AS JSONB)
+      FROM attack_campaign_executions e
+      WHERE p.execution_id=e.id AND e.campaign_id=:c
+        AND p.status IN ('queued','running')
+    """),{'c':campaign_id,'now':now,'ev':__import__('json').dumps({'cancellation_reason':reason},ensure_ascii=False)}).rowcount or 0
+    db.execute(text("""
+      UPDATE attack_campaign_cycles cy
+      SET status='cancelled',finished_at=:now,stop_reason='campaign_paused'
+      FROM attack_campaign_executions e
+      WHERE cy.execution_id=e.id AND e.campaign_id=:c AND cy.status='running'
+    """),{'c':campaign_id,'now':now})
+    db.execute(text("""
+      UPDATE attack_campaign_executions
+      SET status='paused',next_cycle_at=NULL
+      WHERE campaign_id=:c AND status IN ('scheduled','active')
+    """),{'c':campaign_id})
+    return {'jobs':int(cancelled_jobs),'paths':int(cancelled_paths)}
+
+
 def campaign_pause(uuid: str):
-    row=set_campaign_status(uuid,'paused')
-    if not row: raise ValueError('Campaign não encontrada.')
-    return {'success':True,'campaign':row}
+    db=db_session()
+    try:
+        c=db.execute(text('SELECT * FROM attack_campaigns WHERE campaign_uuid=:u FOR UPDATE'),{'u':uuid}).mappings().first()
+        if not c: raise ValueError('Campaign não encontrada.')
+        db.execute(text("UPDATE attack_campaigns SET status='paused',updated_at=:now WHERE id=:id"),{'now':datetime.utcnow(),'id':c['id']})
+        cancelled=_cancel_campaign_jobs(db,int(c['id']),'Campaign pausada pelo usuário')
+        db.commit()
+        row=get_campaign(uuid)
+        return {'success':True,'campaign':row,'cancelled':cancelled}
+    except Exception:
+        db.rollback(); raise
+    finally: db.close()
+
+
 def campaign_resume(uuid: str):
-    row=set_campaign_status(uuid,'scheduled')
-    if not row: raise ValueError('Campaign não encontrada.')
-    return {'success':True,'campaign':row}
-def campaign_delete(uuid: str): return {'success':delete_campaign(uuid)}
+    db=db_session()
+    try:
+        c=db.execute(text('SELECT * FROM attack_campaigns WHERE campaign_uuid=:u FOR UPDATE'),{'u':uuid}).mappings().first()
+        if not c: raise ValueError('Campaign não encontrada.')
+        now=datetime.utcnow()
+        # Resume the latest paused execution without resurrecting cancelled jobs/cycles.
+        e=db.execute(text('SELECT * FROM attack_campaign_executions WHERE campaign_id=:c ORDER BY execution_number DESC LIMIT 1'),{'c':c['id']}).mappings().first()
+        if e and e['status']=='paused' and now < e['scheduled_end']:
+            db.execute(text("UPDATE attack_campaign_executions SET status='active',next_cycle_at=:now WHERE id=:id"),{'now':now,'id':e['id']})
+            status='active'
+        else:
+            status='scheduled'
+        db.execute(text('UPDATE attack_campaigns SET status=:s,updated_at=:now WHERE id=:id'),{'s':status,'now':now,'id':c['id']})
+        db.commit()
+        return {'success':True,'campaign':get_campaign(uuid)}
+    except Exception:
+        db.rollback(); raise
+    finally: db.close()
+
+
+def campaign_delete(uuid: str):
+    # Deleting a Campaign must not leave orphaned pending work in the Runner queue.
+    db=db_session()
+    try:
+        c=db.execute(text('SELECT id FROM attack_campaigns WHERE campaign_uuid=:u FOR UPDATE'),{'u':uuid}).mappings().first()
+        if not c:
+            db.rollback(); return {'success':False}
+        cancelled=_cancel_campaign_jobs(db,int(c['id']),'Campaign removida pelo usuário')
+        db.execute(text('DELETE FROM attack_campaigns WHERE id=:id'),{'id':c['id']})
+        db.commit()
+        return {'success':True,'cancelled':cancelled}
+    except Exception:
+        db.rollback(); raise
+    finally: db.close()
 
 
 def _task_for_protocol(db,protocol:str) -> dict[str,Any] | None:

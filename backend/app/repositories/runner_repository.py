@@ -163,6 +163,15 @@ def get_next_job(runner_id: str):
                 FROM runner_jobs
                 WHERE status = 'pending'
                   AND (runner_id = :runner_id OR runner_id IS NULL)
+                  AND NOT (
+                    job_type IN ('campaign_probe','credential_validate')
+                    AND COALESCE(payload->'campaign_context'->>'campaign_uuid','') <> ''
+                    AND EXISTS (
+                      SELECT 1 FROM attack_campaigns c
+                      WHERE c.campaign_uuid = payload->'campaign_context'->>'campaign_uuid'
+                        AND (c.enabled=FALSE OR c.status IN ('paused','cancelled','completed'))
+                    )
+                  )
                 ORDER BY created_at ASC
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
@@ -264,6 +273,7 @@ def save_job_result(job_id: int, runner_id: str, status: str, result: dict | Non
                 finished_at = :now
             WHERE id = :job_id
               AND (runner_id = :runner_id OR runner_id IS NULL)
+              AND status <> 'cancelled'
             RETURNING id, status, job_type, payload, result, error, finished_at
         """), {
             "job_id": int(job_id),

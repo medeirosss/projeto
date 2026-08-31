@@ -198,3 +198,10 @@
 - SNMP v2c pode confirmar discovery no preflight e não gera teste duplicado.
 - Classifica runner_dependency_missing, transport_failed e authentication_failed separadamente.
 - Configurações existentes do Runner habilitam campaign_probe por migração forward-compatible.
+
+## 5.3.2
+- Campaign pause agora cancela fila pendente e paths em andamento.
+- Ciclo ativo é encerrado ao pausar.
+- Runner queue não entrega jobs pertencentes a Campaign pausada/cancelada/concluída.
+- Resultados tardios não sobrescrevem jobs cancelados.
+- Delete de Campaign limpa jobs associados antes da remoção.
