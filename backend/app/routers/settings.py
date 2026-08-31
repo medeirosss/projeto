@@ -10,6 +10,7 @@ from app.services.common import write_text_log
 from app.services.module_service import get_module_status
 from app.services.scanner_service import fetch_endpointcentral_all, get_access_token, run_ad_scan
 from app.services.settings_service import get_settings_data, save_settings_data, settings_public_view
+from app.services.runner_service import clear_runner_jobs_service
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
@@ -91,3 +92,12 @@ async def api_token_refresh():
             content={"success": False, "detail": "Falha ao gerar access token.", "token_debug_log": token_debug_log},
         )
     return {"success": True, "token_source": source, "token_debug_log": token_debug_log}
+
+
+@router.post("/settings/runners/{runner_id}/clear")
+async def api_clear_runner_jobs(runner_id: str):
+    """Administrative emergency cleanup for one Runner queue."""
+    try:
+        return clear_runner_jobs_service(runner_id)
+    except Exception as exc:
+        return JSONResponse(status_code=400, content={"success": False, "detail": str(exc)})

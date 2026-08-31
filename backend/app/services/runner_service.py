@@ -12,6 +12,7 @@ from app.services.credential_engine_service import ingest_runner_credential_resu
 from app.services.deep_inventory_service import ingest_runner_deep_result
 from app.repositories.runner_repository import (
     create_runner_job,
+    clear_runner_jobs,
     create_runner_registration,
     create_validation_job,
     get_next_job,
@@ -191,6 +192,19 @@ def heartbeat_service(data: dict):
     update_heartbeat(runner_id, metadata=metadata)
     return {"success": True, "runner_id": runner_id, "status": "online"}
 
+
+
+def clear_runner_jobs_service(runner_id: str):
+    runner_id = str(runner_id or '').strip()
+    if not runner_id:
+        raise ValueError("runner_id is required")
+    result = clear_runner_jobs(runner_id)
+    return {
+        "success": True,
+        "runner_id": runner_id,
+        **result,
+        "message": f"Runner limpo. {result['jobs_cancelled']} job(s) cancelado(s).",
+    }
 
 def list_runners_service(include_disabled: bool = False):
     return {"success": True, "runners": list_runners(include_disabled=include_disabled)}

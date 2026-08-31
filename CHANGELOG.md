@@ -1,3 +1,9 @@
+# 5.3.3
+- Configurações > Runners: nova ação **Limpar Runner** por Runner.
+- Cancela todos os `runner_jobs` em `pending/running` do Runner e também jobs `pending` ainda não atribuídos, sem apagar o histórico.
+- Sincroniza paths de Campaign vinculados para `cancelled` e evita filas visualmente presas.
+- Endpoint administrativo protegido em `/api/settings/runners/{runner_id}/clear`.
+
 # MAGI 4.0 Consolidada
 
 - Consolida 4.0.1–4.0.5 como versão oficial 4.0.

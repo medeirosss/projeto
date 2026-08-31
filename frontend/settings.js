@@ -352,14 +352,14 @@ function formatRunnerDate(value){
 async function loadRunners(){
   const body = document.getElementById('runnersTableBody');
   if(!body) return;
-  body.innerHTML = '<tr><td colspan="8">Carregando runners...</td></tr>';
+  body.innerHTML = '<tr><td colspan="9">Carregando runners...</td></tr>';
   try{
     const res = await fetch('/api/runner/runners');
     const data = await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(data.detail || 'Falha ao carregar runners.');
     const runners = data.runners || [];
     if(!runners.length){
-      body.innerHTML = '<tr><td colspan="8">Nenhum runner registrado ainda.</td></tr>';
+      body.innerHTML = '<tr><td colspan="9">Nenhum runner registrado ainda.</td></tr>';
       setMessage('runnersStatusBox', 'Nenhum runner reportando para o Magi.');
       return;
     }
@@ -373,8 +373,29 @@ async function loadRunners(){
         <td>${r.atomic_mode || '-'}</td>
         <td>${r.open_jobs ?? 0}</td>
         <td>${formatRunnerDate(r.last_heartbeat)}</td>
+        <td><button class="btn danger btn-sm runner-clear-btn" data-runner-id="${r.runner_id || ''}" type="button">Limpar Runner</button></td>
       </tr>
     `).join('');
+    document.querySelectorAll('.runner-clear-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const runnerId = btn.dataset.runnerId;
+        if(!runnerId) return;
+        const ok = confirm(`Limpar o Runner ${runnerId}?\n\nTodos os jobs pendentes ou em execução serão marcados como CANCELLED. Jobs já concluídos serão preservados no histórico.`);
+        if(!ok) return;
+        btn.disabled = true;
+        setMessage('runnersStatusBox', `Limpando fila do Runner ${runnerId}...`);
+        try{
+          const res = await fetch(`/api/settings/runners/${encodeURIComponent(runnerId)}/clear`, {method:'POST'});
+          const data = await res.json().catch(()=>({}));
+          if(!res.ok) throw new Error(data.detail || 'Falha ao limpar Runner.');
+          await loadRunners();
+          setMessage('runnersStatusBox', `Runner ${runnerId} limpo: ${data.jobs_cancelled ?? 0} job(s) cancelado(s), ${data.campaign_paths_cancelled ?? 0} path(s) da Campaign cancelado(s).`);
+        }catch(e){
+          setMessage('runnersStatusBox', e.message || 'Falha ao limpar Runner.');
+          btn.disabled = false;
+        }
+      });
+    });
     setMessage('runnersStatusBox', `${runners.length} runner(s) encontrados.`);
   }catch(e){
     body.innerHTML = `<tr><td colspan="8">${e.message || 'Falha ao carregar runners.'}</td></tr>`;

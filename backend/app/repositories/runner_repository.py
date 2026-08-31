@@ -370,6 +370,72 @@ def update_validation_from_runner_job(runner_job_id: int, status: str, result: d
         return dict(row) if row else None
 
 
+
+def clear_runner_jobs(runner_id: str, reason: str = "Runner limpo manualmente em Configurações") -> dict[str, int]:
+    """Cancel all outstanding jobs assigned to one Runner without deleting history.
+
+    Completed/failed/timeout jobs are preserved for audit. Campaign paths linked to
+    cancelled jobs are also terminally cancelled so the Campaign UI cannot remain
+    stuck in queued/running after an administrative Runner cleanup.
+    """
+    now = datetime.utcnow()
+    with SessionLocal() as db:
+        exists = db.execute(text("SELECT 1 FROM runners WHERE runner_id=:runner_id"), {"runner_id": runner_id}).first()
+        if not exists:
+            raise ValueError("Runner não encontrado.")
+
+        rows = db.execute(text("""
+            SELECT id FROM runner_jobs
+            WHERE (runner_id=:runner_id OR (runner_id IS NULL AND status='pending'))
+              AND status IN ('pending','running')
+            FOR UPDATE
+        """), {"runner_id": runner_id}).all()
+        job_ids = [int(r[0]) for r in rows]
+        if not job_ids:
+            return {"jobs_cancelled": 0, "campaign_paths_cancelled": 0}
+
+        cancelled_jobs = db.execute(text("""
+            UPDATE runner_jobs
+            SET status='cancelled', error=:reason, finished_at=:now
+            WHERE id = ANY(:ids) AND status IN ('pending','running')
+        """), {"ids": job_ids, "reason": reason, "now": now}).rowcount or 0
+
+        cancelled_paths = db.execute(text("""
+            UPDATE attack_campaign_paths
+            SET status='cancelled', result='runner_cleared', finished_at=:now,
+                evidence=COALESCE(evidence,'{}'::jsonb) || CAST(:evidence AS JSONB)
+            WHERE runner_job_id = ANY(:ids) AND status IN ('queued','running')
+        """), {
+            "ids": job_ids,
+            "now": now,
+            "evidence": _json({"cancellation_reason": reason, "runner_id": runner_id}),
+        }).rowcount or 0
+
+        # Keep common execution mirrors from remaining visually queued/running.
+        sync_tables = [
+            ("credential_attempts", "runner_job_id"),
+            ("service_discovery_jobs", "runner_job_id"),
+            ("deep_inventory_jobs", "runner_job_id"),
+            ("discovery_runs", "runner_job_id"),
+            ("validation_task_executions", "runner_job_id"),
+            ("atomic_execution_jobs", "runner_job_id"),
+        ]
+        for table, column in sync_tables:
+            present = db.execute(text("SELECT to_regclass(:name)"), {"name": table}).scalar()
+            if not present:
+                continue
+            db.execute(text(f"""
+                UPDATE {table}
+                SET status='cancelled', finished_at=COALESCE(finished_at,:now)
+                WHERE {column} = ANY(:ids) AND status IN ('pending','queued','running')
+            """), {"ids": job_ids, "now": now})
+
+        db.commit()
+        return {
+            "jobs_cancelled": int(cancelled_jobs),
+            "campaign_paths_cancelled": int(cancelled_paths),
+        }
+
 def list_runners(include_disabled: bool = False) -> list[dict[str, Any]]:
     with SessionLocal() as db:
         rows = db.execute(text("""
