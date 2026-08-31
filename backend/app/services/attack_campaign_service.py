@@ -212,18 +212,53 @@ def _upsert_asset(db,eid:int,address:str,*,confirmed=False,hostname=None,invento
 
 
 def _select_cycle_seeds(db,c:dict[str,Any],e:dict[str,Any])->list[str]:
+    """Select origins for the next Campaign cycle.
+
+    The initial seed remains a valid origin across cycles while it still has
+    untested candidates in scope. Build 5.3.10 incorrectly dropped the initial
+    seed after cycle 1 and required access_confirmed=TRUE, which caused a
+    Campaign with no successful credential hop to finish as scope_exhausted
+    after only one cycle.
+    """
     cycle_count=db.execute(text('SELECT COUNT(*) FROM attack_campaign_cycles WHERE execution_id=:e'),{'e':e['id']}).scalar() or 0
     if cycle_count==0:
         seeds=list(c.get('initial_seeds') or [])[:3]
         for s in seeds:_upsert_asset(db,e['id'],s,confirmed=False,increment_seed=True,state='seed')
         return seeds
+
+    max_seeds=int(c.get('max_seeds_per_cycle') or 3)
+    ordered=[]
+    seen=set()
+
+    # Keep operator-provided seeds alive across cycles. They are discovery
+    # origins, not one-shot inputs. _candidate_for_origin() is execution-aware,
+    # so each new cycle naturally continues with addresses not tested before.
+    for address in (c.get('initial_seeds') or []):
+        address=str(address)
+        if address and address not in seen:
+            ordered.append((address,False)); seen.add(address)
+
+    # Successful access paths add new origins for lateral progression.
     rows=db.execute(text("""
       SELECT address FROM attack_campaign_assets
       WHERE execution_id=:e AND access_confirmed=TRUE
-      ORDER BY seed_count ASC,last_seen_at DESC,address ASC LIMIT :n
-    """),{'e':e['id'],'n':int(c.get('max_seeds_per_cycle') or 3)}).mappings().all()
-    seeds=[r['address'] for r in rows]
-    for s in seeds:_upsert_asset(db,e['id'],s,confirmed=True,increment_seed=True)
+      ORDER BY seed_count ASC,last_seen_at DESC,address ASC
+    """),{'e':e['id']}).mappings().all()
+    for r in rows:
+        address=str(r['address'])
+        if address and address not in seen:
+            ordered.append((address,True)); seen.add(address)
+
+    seeds=[]
+    for address,confirmed in ordered:
+        if len(seeds)>=max_seeds:
+            break
+        # Only schedule an origin if there is still at least one distinct path
+        # it can evaluate. This makes scope_exhausted a real exhaustion signal.
+        if _candidate_for_origin(db,c,e,address) is None:
+            continue
+        seeds.append(address)
+        _upsert_asset(db,e['id'],address,confirmed=confirmed,increment_seed=True,state='access_confirmed' if confirmed else 'seed')
     return seeds
 
 

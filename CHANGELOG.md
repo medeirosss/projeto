@@ -1,3 +1,8 @@
+## 5.3.11
+- Corrige Campaign que encerrava após o primeiro ciclo quando não havia `access_confirmed`.
+- Seeds iniciais permanecem elegíveis entre ciclos enquanto houver candidatos não testados.
+- `scope_exhausted` agora representa esgotamento real dos caminhos disponíveis.
+
 # 5.3.10 - Campaign ICMP Admission Gate
 
 - ICMP Echo Reply passa a ser requisito obrigatório para um IP entrar na Campaign.
