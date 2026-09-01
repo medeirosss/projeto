@@ -36,7 +36,7 @@ def ensure_attack_campaign_schema() -> None:
           cycle_timeout_minutes INTEGER NOT NULL DEFAULT 15,
           recurrence_days INTEGER,
           max_seeds_per_cycle INTEGER NOT NULL DEFAULT 3,
-          branch_policy JSONB NOT NULL DEFAULT '[10,5,1,0]'::jsonb,
+          branch_policy JSONB NOT NULL DEFAULT '[10,5,3,0]'::jsonb,
           max_paths_per_cycle INTEGER NOT NULL DEFAULT 60,
           max_outstanding_jobs INTEGER NOT NULL DEFAULT 5,
           snapshot_retention INTEGER NOT NULL DEFAULT 10,
@@ -144,7 +144,7 @@ def create_campaign(data: dict[str, Any], created_by: str) -> dict[str, Any]:
             "daily_start": data.get("daily_start", "08:00"), "daily_end": data.get("daily_end", "18:00"),
             "interval": int(data.get("cycle_interval_minutes", 15)), "timeout": int(data.get("cycle_timeout_minutes", 15)),
             "recurrence": data.get("recurrence_days"), "max_seeds": int(data.get("max_seeds_per_cycle", 3)),
-            "policy": _json(data.get("branch_policy") or [10,5,1,0]), "max_paths": int(data.get("max_paths_per_cycle",60)),
+            "policy": _json(data.get("branch_policy") or [10,5,3,0]), "max_paths": int(data.get("max_paths_per_cycle",60)),
             "max_jobs": int(data.get("max_outstanding_jobs",5)), "retention": int(data.get("snapshot_retention",10)),
             "created_by": created_by, "now": datetime.utcnow(),
         }).mappings().first()

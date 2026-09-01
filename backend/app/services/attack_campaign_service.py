@@ -12,7 +12,7 @@ from app.repositories.runner_repository import create_runner_job, get_single_onl
 from app.repositories.validation_repository import list_tasks, create_execution
 from app.repositories.target_repository import upsert_discovered_target
 
-BRANCH_POLICY = [10, 5, 1, 0]
+BRANCH_POLICY = [10, 5, 3, 0]
 
 
 def _campaign_now() -> datetime:
@@ -151,6 +151,64 @@ def campaign_resume(uuid: str):
     finally: db.close()
 
 
+
+def campaign_update(uuid: str, data: dict[str, Any]):
+    """Adjust a Campaign while preserving executions, assets and paths."""
+    db=db_session()
+    try:
+        current=db.execute(text('SELECT * FROM attack_campaigns WHERE campaign_uuid=:u FOR UPDATE'),{'u':uuid}).mappings().first()
+        if not current: raise ValueError('Campaign não encontrada.')
+        merged=dict(current); merged.update(data or {})
+        payload=_validate_campaign(merged); now=_campaign_now()
+        db.execute(text("""UPDATE attack_campaigns SET name=:name,description=:description,
+          scope_cidrs=CAST(:scope AS JSONB),initial_seeds=CAST(:seeds AS JSONB),
+          credential_id=:win,ssh_credential_id=:ssh,snmp_credential_id=:snmp,
+          enabled_vectors=CAST(:vectors AS JSONB),create_benign_evidence=:evidence,
+          start_at=:start,end_at=:end,daily_start=CAST(:ds AS TIME),daily_end=CAST(:de AS TIME),
+          cycle_interval_minutes=:interval,cycle_timeout_minutes=:timeout,recurrence_days=:rec,
+          max_seeds_per_cycle=3,branch_policy=CAST(:policy AS JSONB),max_paths_per_cycle=:paths,
+          max_outstanding_jobs=:jobs,snapshot_retention=:retention,updated_at=:now WHERE id=:id"""),
+          {'name':payload['name'],'description':payload.get('description'),'scope':__import__('json').dumps(payload['scope_cidrs']),
+           'seeds':__import__('json').dumps(payload['initial_seeds']),'win':payload.get('credential_id'),'ssh':payload.get('ssh_credential_id'),
+           'snmp':payload.get('snmp_credential_id'),'vectors':__import__('json').dumps(payload['enabled_vectors']),
+           'evidence':bool(payload.get('create_benign_evidence')),'start':payload['start_at'],'end':payload['end_at'],
+           'ds':str(payload.get('daily_start') or current['daily_start']),'de':str(payload.get('daily_end') or current['daily_end']),
+           'interval':payload['cycle_interval_minutes'],'timeout':payload['cycle_timeout_minutes'],'rec':payload.get('recurrence_days'),
+           'policy':__import__('json').dumps(BRANCH_POLICY),'paths':payload['max_paths_per_cycle'],'jobs':payload['max_outstanding_jobs'],
+           'retention':payload['snapshot_retention'],'now':now,'id':current['id']})
+        db.execute(text("""UPDATE attack_campaign_executions SET scheduled_end=:end WHERE id=(
+          SELECT id FROM attack_campaign_executions WHERE campaign_id=:c ORDER BY execution_number DESC LIMIT 1)
+          AND status NOT IN ('completed','cancelled')"""),{'end':payload['end_at'],'c':current['id']})
+        db.commit(); return {'success':True,'campaign':get_campaign(uuid),'history_preserved':True}
+    except Exception:
+        db.rollback(); raise
+    finally: db.close()
+
+
+def campaign_next_cycle_now(uuid: str):
+    """Force the current Campaign to close its active cycle and advance."""
+    db=db_session()
+    try:
+        c=db.execute(text('SELECT * FROM attack_campaigns WHERE campaign_uuid=:u FOR UPDATE'),{'u':uuid}).mappings().first()
+        if not c: raise ValueError('Campaign não encontrada.')
+        e=db.execute(text('SELECT * FROM attack_campaign_executions WHERE campaign_id=:c ORDER BY execution_number DESC LIMIT 1'),{'c':c['id']}).mappings().first()
+        if not e or e['status'] in ('completed','cancelled'): raise ValueError('Campaign sem execução ativa.')
+        now=_campaign_now(); cancelled=0
+        cy=db.execute(text("SELECT * FROM attack_campaign_cycles WHERE execution_id=:e AND status='running' ORDER BY id DESC LIMIT 1"),{'e':e['id']}).mappings().first()
+        if cy:
+            ids=[r[0] for r in db.execute(text("SELECT runner_job_id FROM attack_campaign_paths WHERE cycle_id=:cy AND runner_job_id IS NOT NULL AND status IN ('queued','running')"),{'cy':cy['id']}).all()]
+            if ids:
+                cancelled=db.execute(text("UPDATE runner_jobs SET status='cancelled',error='manual_next_cycle',finished_at=:ts WHERE id=ANY(:ids) AND status IN ('pending','running')"),{'ts':datetime.utcnow(),'ids':ids}).rowcount or 0
+            db.execute(text("UPDATE attack_campaign_paths SET status='cancelled',result='manual_next_cycle',finished_at=:ts WHERE cycle_id=:cy AND status IN ('queued','running')"),{'ts':datetime.utcnow(),'cy':cy['id']})
+            db.execute(text("UPDATE attack_campaign_cycles SET status='completed',finished_at=:ts,stop_reason='manual_next_cycle' WHERE id=:id"),{'ts':datetime.utcnow(),'id':cy['id']})
+        db.execute(text("UPDATE attack_campaign_executions SET status='active',next_cycle_at=:now WHERE id=:id"),{'now':now,'id':e['id']})
+        db.execute(text("UPDATE attack_campaigns SET status='active',updated_at=:now WHERE id=:id"),{'now':now,'id':c['id']})
+        db.commit(); return {'success':True,'campaign':get_campaign(uuid),'cancelled_jobs':int(cancelled)}
+    except Exception:
+        db.rollback(); raise
+    finally: db.close()
+
+
 def campaign_delete(uuid: str):
     # Deleting a Campaign must not leave orphaned pending work in the Runner queue.
     db=db_session()
@@ -279,10 +337,9 @@ def _candidate_for_origin(db,c:dict[str,Any],e:dict[str,Any],origin:str)->str|No
         if x in seen: continue
         seen.add(x)
         if x==origin or x in tested: continue
-        # Prefer never-evaluated hosts, but permit a different origin to validate a distinct path later.
+        # Stateful: never probe the same target twice in one execution.
+        # Confirmed hosts remain reusable as origins/seeds.
         if x not in all_tested: return x
-    for x in ordered:
-        if x!=origin and x not in tested: return x
     return None
 
 
@@ -481,7 +538,8 @@ def _finalize_cycle(db,c,e,cy,reason):
       COUNT(*) FILTER(WHERE status='not_confirmed') AS not_confirmed FROM attack_campaign_paths WHERE cycle_id=:cy"""),{'cy':cy['id']}).mappings().first())
     db.execute(text("UPDATE attack_campaign_cycles SET status='completed',finished_at=:now,stop_reason=:r,stats=CAST(:s AS JSONB) WHERE id=:id"),
                {'now':datetime.utcnow(),'r':reason,'s':__import__('json').dumps(stats,default=int),'id':cy['id']})
-    now_local=_campaign_now(); base=cy.get('started_at') or now_local; planned=base+timedelta(minutes=int(c.get('cycle_interval_minutes') or 15)); nxt=max(now_local,planned)
+    # A cycle may last up to 15 minutes; completion does not impose idle time.
+    now_local=_campaign_now(); nxt=now_local
     db.execute(text("UPDATE attack_campaign_executions SET next_cycle_at=:n,stats=CAST(:s AS JSONB) WHERE id=:e"),{'n':nxt,'s':__import__('json').dumps(_execution_stats(db,e['id']),default=int),'e':e['id']})
 
 
@@ -542,6 +600,15 @@ def process_campaigns_once(now:datetime|None=None):
                 cy=dict(active); _fill_cycle(db,c,e,cy)
                 if now >= cy['deadline_at']:
                     _sync_paths(db,c,e,cy); _finalize_cycle(db,c,e,cy,'cycle_timeout')
+                    continue
+                outstanding=db.execute(text("SELECT COUNT(*) FROM attack_campaign_paths WHERE cycle_id=:cy AND status IN ('queued','running')"),{'cy':cy['id']}).scalar() or 0
+                before=db.execute(text('SELECT COUNT(*) FROM attack_campaign_paths WHERE cycle_id=:cy'),{'cy':cy['id']}).scalar() or 0
+                if int(outstanding)==0:
+                    _fill_cycle(db,c,e,cy)
+                    after=db.execute(text('SELECT COUNT(*) FROM attack_campaign_paths WHERE cycle_id=:cy'),{'cy':cy['id']}).scalar() or 0
+                    outstanding2=db.execute(text("SELECT COUNT(*) FROM attack_campaign_paths WHERE cycle_id=:cy AND status IN ('queued','running')"),{'cy':cy['id']}).scalar() or 0
+                    if int(outstanding2)==0 and int(after)==int(before):
+                        _finalize_cycle(db,c,e,cy,'cycle_completed')
                 continue
             if not _inside_daily_window(now,c): continue
             if _window_remaining_minutes(now,c) < int(c.get('cycle_timeout_minutes') or 15): continue
