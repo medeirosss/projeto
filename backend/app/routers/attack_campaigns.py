@@ -1,6 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter, Body, HTTPException, Request
-from app.services.attack_campaign_service import create_attack_campaign,campaign_list,campaign_detail,campaign_pause,campaign_resume,campaign_delete,campaign_update,campaign_next_cycle_now
+from app.services.attack_campaign_service import create_attack_campaign,campaign_list,campaign_detail,campaign_pause,campaign_resume,campaign_delete,campaign_update,campaign_next_cycle_now,campaign_attack_path
 router=APIRouter(prefix='/api/attack-simulator/campaigns',tags=['attack-campaigns'])
 
 def _user(req:Request):
@@ -12,6 +12,11 @@ def list_all(): return campaign_list()
 def create(req:Request,payload:dict=Body(...)):
     try:return create_attack_campaign(payload,_user(req))
     except Exception as exc:raise HTTPException(400,str(exc))
+@router.get('/{campaign_uuid}/attack-path')
+def attack_path(campaign_uuid:str):
+    try:return campaign_attack_path(campaign_uuid)
+    except Exception as exc:raise HTTPException(404,str(exc))
+
 @router.get('/{campaign_uuid}')
 def detail(campaign_uuid:str):
     try:return campaign_detail(campaign_uuid)

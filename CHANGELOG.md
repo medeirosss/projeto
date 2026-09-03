@@ -1,3 +1,6 @@
+## 5.4.0
+- Attack Path & Evidence por Campaign, resumo, barriers e rastreabilidade por execução/cycle/job.
+
 ## 5.3.12
 - Campaign stateful, cycles event-driven (máx. 15 min), branch 10/5/3/0 e controles Ajustar/Próximo ciclo/Excluir.
 

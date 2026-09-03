@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>MAGI Attack Simulator 5.2</title>
   <link rel="stylesheet" href="/assets/style.css" />
+
+  <style>
+    .ap-tabs{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}
+    .ap-panel{border:1px solid var(--border,#d8dee8);border-radius:10px;padding:14px;margin-top:10px}
+    .ap-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px;margin:12px 0}
+    .ap-kpis>div{border:1px solid var(--border,#d8dee8);border-radius:8px;padding:10px}
+    .ap-graph{overflow:auto;padding:14px;border:1px solid var(--border,#d8dee8);border-radius:8px}
+    .ap-row{display:flex;align-items:center;gap:8px;margin:8px 0;white-space:nowrap}
+    .ap-node{display:inline-block;border:1px solid currentColor;border-radius:8px;padding:7px 10px;font-weight:600}
+    .ap-edge{font-family:monospace}
+    .ap-evidence{max-height:420px;overflow:auto}
+    .ap-badge{display:inline-block;padding:2px 7px;border:1px solid currentColor;border-radius:999px;font-size:12px}
+  </style>
 </head>
 <body class="centric-page">
   <div class="topbar modern-topbar">

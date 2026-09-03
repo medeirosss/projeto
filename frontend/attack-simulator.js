@@ -76,7 +76,43 @@ async function deleteCampaign(id){
 
 async function campaignAction(id,action){try{await api(`/api/attack-simulator/campaigns/${id}/${action}`,{method:'POST'});await loadCampaigns();await viewCampaign(id);}catch(e){document.getElementById('campaignResult').textContent=e.message;}}
 async function viewCampaign(id){
-  try{const d=await api(`/api/attack-simulator/campaigns/${id}`),c=d.campaign||{},ex=(c.executions||[])[0]||{},st=ex.stats||{},paths=c.paths||[],assets=c.assets||[];document.getElementById('campaignDetail').innerHTML=`<h3>${esc(c.name)} — Execution #${esc(ex.execution_number||'--')}</h3><div class="campaign-kpis"><div><small>Hosts conhecidos</small><br><strong>${esc(st.discovered||assets.length)}</strong></div><div><small>Acessados</small><br><strong>${esc(st.accessed||assets.filter(x=>x.access_confirmed).length)}</strong></div><div><small>Paths confirmados</small><br><strong>${esc(st.confirmed||paths.filter(x=>x.status==='confirmed').length)}</strong></div><div><small>Cycles</small><br><strong>${esc((c.cycles||[]).length)}</strong></div></div><p><strong>Frontier persistente:</strong> a seleção do próximo ciclo prioriza pivots confirmados menos utilizados como seed. Um host confirmado pode virar Host A em ciclos posteriores.</p><pre>${esc(pretty({latest_cycles:(c.cycles||[]).slice(0,5),latest_paths:paths.slice(0,20),assets:assets.slice(0,30)}))}</pre>`;}catch(e){document.getElementById('campaignResult').textContent=e.message;}
+  try{
+    const d=await api(`/api/attack-simulator/campaigns/${id}`),c=d.campaign||{},ex=(c.executions||[])[0]||{},st=ex.stats||{},paths=c.paths||[],assets=c.assets||[];
+    document.getElementById('campaignDetail').innerHTML=`<h3>${esc(c.name)} — Execution #${esc(ex.execution_number||'--')}</h3>
+      <div class="ap-tabs"><button class="btn secondary btn-sm ap-tab" data-tab="summary">Resumo</button><button class="btn primary btn-sm ap-tab" data-tab="path">Attack Path</button><button class="btn secondary btn-sm ap-tab" data-tab="evidence">Evidências</button><button class="btn secondary btn-sm ap-tab" data-tab="cycles">Ciclos</button></div>
+      <div id="attackPathPanel" class="ap-panel">Carregando Attack Path...</div>`;
+    document.querySelectorAll('.ap-tab').forEach(b=>b.onclick=()=>renderCampaignTab(id,b.dataset.tab,c));
+    await renderCampaignTab(id,'path',c);
+  }catch(e){document.getElementById('campaignResult').textContent=e.message;}
+}
+function attackKindLabel(k){return ({ACCESS:'✓ ACCESS CONFIRMED',SNMP:'● SNMP / DISCOVERY ONLY',AUTHENTICATION_FAILED:'! AUTHENTICATION FAILED',TRANSPORT_FAILED:'! TRANSPORT FAILED',SERVICE_UNAVAILABLE:'! SERVICE UNAVAILABLE',BARRIER:'! BARRIER',DISCOVERY:'● DISCOVERY'})[k]||k;}
+async function renderCampaignTab(id,tab,cached){
+  const panel=document.getElementById('attackPathPanel'); if(!panel)return;
+  try{
+    if(tab==='cycles'){panel.innerHTML=`<h4>Ciclos</h4><pre>${esc(pretty((cached.cycles||[])))}</pre>`;return;}
+    const d=await api(`/api/attack-simulator/campaigns/${id}/attack-path`),a=d.attack_path||{},sum=a.summary||{},edges=a.edges||[];
+    if(tab==='summary'){
+      panel.innerHTML=`<h4>Resumo da Campaign</h4><div class="ap-kpis">
+        <div><small>IPs avaliados</small><br><strong>${esc(sum.ips_evaluated||0)}</strong></div>
+        <div><small>Hosts conhecidos</small><br><strong>${esc(sum.hosts_known||0)}</strong></div>
+        <div><small>Acessos confirmados</small><br><strong>${esc(sum.access_confirmed||0)}</strong></div>
+        <div><small>Maior hop</small><br><strong>${esc(sum.max_hop||0)}</strong></div>
+        <div><small>SNMP</small><br><strong>${esc(sum.snmp_discovered||0)}</strong></div>
+        <div><small>Barreiras</small><br><strong>${esc(sum.barriers||0)}</strong></div>
+        <div><small>Cycles</small><br><strong>${esc(sum.cycles||0)}</strong></div></div>
+        <p><strong>Acessos por protocolo:</strong> ${esc(pretty(sum.confirmed_by_protocol||{}))}</p>
+        <p><strong>Encerramento/estado:</strong> ${esc(sum.stop_reason||'--')}</p>`;return;
+    }
+    if(tab==='evidence'){
+      panel.innerHTML=`<h4>Evidências rastreáveis</h4><div class="ap-evidence">${(a.evidence||[]).map(e=>`<div class="ap-panel"><span class="ap-badge">${esc(attackKindLabel(e.kind))}</span> <strong>${esc(e.origin)} → ${esc(e.target||'--')}</strong><br><small>Protocol: ${esc(e.protocol||'--')} | Hop: ${esc(e.hop??'--')} | Cycle: ${esc(e.cycle_id||'--')} | Runner Job: ${esc(e.runner_job_id||'--')}</small>${e.result?`<pre>${esc(String(e.result))}</pre>`:''}</div>`).join('')||'<p>Sem evidências nesta execução.</p>'}</div>`;return;
+    }
+    const visible=edges.filter(e=>['ACCESS','SNMP','AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'].includes(e.kind));
+    panel.innerHTML=`<h4>Attack Path — somente esta Campaign / Execution #${esc(a.execution_number||'--')}</h4>
+      <p>O grafo abaixo não mistura resultados de outras Campaigns. Falhas relevantes são exibidas como barreiras.</p>
+      <div class="ap-graph"><div class="ap-row"><span class="ap-node">MAGI Runner</span></div>
+      ${visible.map(e=>`<div class="ap-row"><span class="ap-node">${esc(e.origin)}</span><span class="ap-edge">── ${esc(e.protocol||e.relation_type||'path')} / ${esc(attackKindLabel(e.kind))} ──►</span><span class="ap-node">${esc(e.target)}</span></div>`).join('')||'<p>Nenhum path relevante consolidado ainda.</p>'}</div>
+      <div class="ap-kpis"><div><small>Acessos</small><br><strong>${esc(sum.access_confirmed||0)}</strong></div><div><small>Maior hop</small><br><strong>${esc(sum.max_hop||0)}</strong></div><div><small>Barreiras</small><br><strong>${esc(sum.barriers||0)}</strong></div></div>`;
+  }catch(e){panel.textContent=e.message;}
 }
 
 window.addEventListener('load',()=>{setTimeout(()=>{copyCredentialsToCampaign();loadCampaigns();const rc=document.getElementById('refreshCampaigns'),cc=document.getElementById('createCampaign');if(rc)rc.onclick=loadCampaigns;if(cc)cc.onclick=createCampaign;},250);});

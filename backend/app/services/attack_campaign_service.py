@@ -68,6 +68,77 @@ def create_attack_campaign(data: dict[str, Any], requested_by: str) -> dict[str,
 
 
 def campaign_list() -> dict[str, Any]: return {'success':True,'campaigns':list_campaigns()}
+
+def _attack_path_payload(c: dict[str, Any]) -> dict[str, Any]:
+    """Build a campaign-local attack graph from the latest execution only."""
+    executions=c.get('executions') or []
+    ex=executions[0] if executions else {}
+    paths=c.get('paths') or []
+    assets=c.get('assets') or []
+    cycles=c.get('cycles') or []
+    asset_by_addr={str(a.get('address')):a for a in assets if a.get('address')}
+
+    def status_kind(p):
+        st=str(p.get('status') or '').lower()
+        ev=p.get('evidence') or {}
+        result=str(p.get('result') or '')
+        if st=='confirmed' or bool(ev.get('access_confirmed')): return 'ACCESS'
+        if p.get('relation_type')=='discovery' and (ev.get('snmp_confirmed') or ev.get('confirmation_status')=='snmp_confirmed'): return 'SNMP'
+        blob=(st+' '+result+' '+__import__('json').dumps(ev,default=str)).lower()
+        if 'authentication_failed' in blob or 'auth_failed' in blob: return 'AUTHENTICATION_FAILED'
+        if 'transport_failed' in blob or 'unreachable' in blob: return 'TRANSPORT_FAILED'
+        if 'service' in blob and ('unavailable' in blob or 'closed' in blob): return 'SERVICE_UNAVAILABLE'
+        if p.get('relation_type')=='discovery': return 'DISCOVERY'
+        return 'BARRIER' if st in ('failed','error','timeout','cancelled','not_confirmed') else 'DISCOVERY'
+
+    addresses=set(asset_by_addr)
+    for p in paths:
+        if p.get('origin_address'): addresses.add(str(p['origin_address']))
+        if p.get('target_address'): addresses.add(str(p['target_address']))
+    nodes=[{'id':'runner','label':'MAGI Runner','type':'runner','address':None,'access_confirmed':True}]
+    for addr in sorted(addresses):
+        a=asset_by_addr.get(addr,{})
+        nodes.append({'id':addr,'label':a.get('hostname') or addr,'address':addr,'type':'asset',
+                      'state':a.get('state'),'access_confirmed':bool(a.get('access_confirmed')),
+                      'access_method':a.get('access_method'),'first_seen_at':a.get('first_seen_at'),'last_seen_at':a.get('last_seen_at')})
+    edges=[]; evidence=[]; barriers=[]
+    for p in reversed(paths):  # chronological graph/evidence
+        ev=p.get('evidence') or {}; kind=status_kind(p)
+        origin=str(p.get('origin_address') or 'runner'); target=str(p.get('target_address') or '')
+        protocol=p.get('protocol') or ev.get('protocol') or ev.get('access_method')
+        item={'path_id':p.get('id'),'cycle_id':p.get('cycle_id'),'hop':p.get('hop'),'origin':origin,'target':target,
+              'protocol':protocol,'relation_type':p.get('relation_type'),'status':p.get('status'),'kind':kind,
+              'runner_job_id':p.get('runner_job_id'),'credential_ref':ev.get('credential_id') or ev.get('credential_ref'),
+              'result':p.get('result'),'evidence':ev,'started_at':p.get('started_at'),'finished_at':p.get('finished_at')}
+        evidence.append(item)
+        if target:
+            edges.append(item)
+        if kind in ('AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'):
+            barriers.append(item)
+    confirmed=[e for e in edges if e['kind']=='ACCESS']
+    snmp=[e for e in edges if e['kind']=='SNMP']
+    max_hop=max([int(e.get('hop') or 0) for e in confirmed],default=0)
+    summary={'ips_evaluated':len({e['target'] for e in edges if e.get('target')}),
+             'hosts_known':len(assets),'access_confirmed':len({e['target'] for e in confirmed}),
+             'seeds_confirmed':len({e['target'] for e in confirmed}),
+             'max_hop':max_hop,'snmp_discovered':len({e['target'] for e in snmp}),
+             'barriers':len(barriers),'cycles':len(cycles)}
+    protocols={}
+    for e in confirmed:
+        k=str(e.get('protocol') or 'unknown').upper(); protocols[k]=protocols.get(k,0)+1
+    summary['confirmed_by_protocol']=protocols
+    stop_reason=(cycles[0].get('stop_reason') if cycles else None) or ex.get('status')
+    summary['stop_reason']=stop_reason
+    return {'campaign_uuid':c.get('campaign_uuid'),'campaign_name':c.get('name'),
+            'execution_id':ex.get('id'),'execution_number':ex.get('execution_number'),
+            'summary':summary,'nodes':nodes,'edges':edges,'barriers':barriers,'evidence':evidence}
+
+
+def campaign_attack_path(uuid: str) -> dict[str, Any]:
+    c=get_campaign(uuid)
+    if not c: raise ValueError('Campaign não encontrada.')
+    return {'success':True,'attack_path':_attack_path_payload(c)}
+
 def campaign_detail(uuid: str) -> dict[str, Any]:
     row=get_campaign(uuid)
     if not row: raise ValueError('Campaign não encontrada.')
