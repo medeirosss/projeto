@@ -29,3 +29,4 @@ def test_windows_timeout_is_not_reachable():
     with patch.object(sc.os, "name", "nt"), patch.object(sc.subprocess, "run", return_value=_cp(output, 1)):
         result = sc._icmp_probe("192.168.0.87")
     assert result["reachable"] is False
+

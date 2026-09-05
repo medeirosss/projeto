@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 import socket
 import subprocess
 from datetime import datetime, timezone
@@ -36,8 +37,14 @@ def _icmp_alive(target: str, timeout_seconds: int) -> bool:
             timeout=max(2, timeout_seconds + 1),
             shell=False,
         )
-        output = f"{p.stdout or ''}\n{p.stderr or ''}".upper()
-        return p.returncode == 0 and "TTL=" in output
+        output = f"{p.stdout or ''}\n{p.stderr or ''}"
+        target_token = str(ipaddress.ip_address(target))
+        echo_reply_from_target = any(
+            "TTL=" in line.upper()
+            and re.search(rf"(?<![0-9.]){re.escape(target_token)}(?![0-9.])", line)
+            for line in output.splitlines()
+        )
+        return p.returncode == 0 and echo_reply_from_target
     except Exception:
         return False
 
@@ -158,7 +165,7 @@ class CampaignProbeExecutor:
                 "applicable_protocols": [],
                 "snmp_confirmed": False,
                 "snmp_error": None,
-                "protocol": "preflight",
+                "protocol": "icmp",
                 "relation_type": "discovery",
                 "authenticated": False,
                 "executed_real_test": True,
@@ -166,7 +173,8 @@ class CampaignProbeExecutor:
                 "campaign_context": payload.get("campaign_context") or {},
                 "attack_result": confirmation,
                 "confirmation_status": confirmation,
-                "admission_reason": "icmp_echo_reply_required",
+                "admission_reason": "no_echo_reply_from_target",
+                "barrier_reason": "No ICMP Echo Reply received from the target IP.",
                 "finding": {
                     "status": confirmation,
                     "detected": False,
@@ -232,7 +240,7 @@ class CampaignProbeExecutor:
             "applicable_protocols": applicable,
             "snmp_confirmed": snmp_confirmed,
             "snmp_error": snmp_error,
-            "protocol": "preflight",
+            "protocol": "icmp",
             "relation_type": "discovery",
             "authenticated": False,
             "executed_real_test": True,
@@ -240,7 +248,7 @@ class CampaignProbeExecutor:
             "campaign_context": payload.get("campaign_context") or {},
             "attack_result": confirmation,
             "confirmation_status": confirmation,
-            "admission_reason": "icmp_echo_reply_confirmed",
+            "admission_reason": "icmp_echo_reply_from_target_confirmed",
             "finding": {
                 "status": confirmation,
                 "detected": alive,

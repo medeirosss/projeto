@@ -22,3 +22,11 @@ Attack Paths nunca são consolidados globalmente entre Campaigns. Cada grafo per
 
 ## Próximo marco
 Após validação da 5.4, a Build 5.5 permanece reservada para Pentest manual/controlado.
+
+## Build 5.4.1 — Evidence Integrity Hotfix
+- `Ver` renomeado para `Attack Path`.
+- ICMP só confirma discovery quando TTL e o IPv4 exato do target aparecem na mesma resposta.
+- Resposta de gateway/roteador/outro IP não promove o candidato a host.
+- `preflight` é apresentado como `Discovery / ICMP`.
+- Discovery não confirmado permanece em Evidências, mas não entra no Attack Path.
+- Barriers passam a carregar `reason` legível, preservando o resultado técnico bruto.

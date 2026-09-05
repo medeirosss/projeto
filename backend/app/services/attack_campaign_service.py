@@ -106,12 +106,23 @@ def _attack_path_payload(c: dict[str, Any]) -> dict[str, Any]:
         ev=p.get('evidence') or {}; kind=status_kind(p)
         origin=str(p.get('origin_address') or 'runner'); target=str(p.get('target_address') or '')
         protocol=p.get('protocol') or ev.get('protocol') or ev.get('access_method')
+        display_protocol='Discovery / ICMP' if str(protocol).lower() in ('preflight','icmp') else protocol
+        blob=(str(p.get('status') or '')+' '+str(p.get('result') or '')+' '+__import__('json').dumps(ev,default=str)).lower()
+        reason=ev.get('barrier_reason') or ev.get('reason') or ev.get('error') or ev.get('snmp_error')
+        if not reason:
+            if 'authentication_failed' in blob or 'auth_failed' in blob: reason='Credential rejected by the destination.'
+            elif 'transport_failed' in blob or 'unreachable' in blob: reason='Transport to the destination could not be established.'
+            elif 'service' in blob and ('unavailable' in blob or 'closed' in blob): reason='Required service is unavailable on the destination.'
+            elif 'timeout' in blob: reason='The test exceeded the allowed execution time.'
+            elif 'runner_dependency_missing' in blob: reason='Runner dependency required for this test is missing.'
+            elif str(p.get('result') or '')=='discovery_not_confirmed': reason='No ICMP Echo Reply received from the target IP.'
+            elif str(p.get('status') or '').lower() in ('failed','error','cancelled','not_confirmed'): reason=str(p.get('result') or 'Execution did not confirm the path.')
         item={'path_id':p.get('id'),'cycle_id':p.get('cycle_id'),'hop':p.get('hop'),'origin':origin,'target':target,
-              'protocol':protocol,'relation_type':p.get('relation_type'),'status':p.get('status'),'kind':kind,
+              'protocol':display_protocol,'raw_protocol':protocol,'reason':reason,'relation_type':p.get('relation_type'),'status':p.get('status'),'kind':kind,
               'runner_job_id':p.get('runner_job_id'),'credential_ref':ev.get('credential_id') or ev.get('credential_ref'),
               'result':p.get('result'),'evidence':ev,'started_at':p.get('started_at'),'finished_at':p.get('finished_at')}
         evidence.append(item)
-        if target:
+        if target and str(p.get('result') or '')!='discovery_not_confirmed':
             edges.append(item)
         if kind in ('AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'):
             barriers.append(item)
@@ -522,7 +533,7 @@ def _sync_paths(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
         relation=str(r.get('relation_type') or ('discovery' if protocol in {'snmp_v2c','preflight'} else 'access'))
 
         if protocol=='preflight':
-            alive=bool(meta.get('alive'))
+            alive=bool(meta.get('alive')) and bool(meta.get('icmp')) and str(meta.get('confirmation_status') or '')=='discovery_confirmed'
             result='discovery_confirmed' if alive else 'discovery_not_confirmed'
             status='confirmed' if alive else 'not_confirmed'
             db.execute(text("UPDATE attack_campaign_paths SET status=:s,result=:r,evidence=CAST(:ev AS JSONB),finished_at=:now WHERE id=:id"),
