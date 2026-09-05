@@ -48,3 +48,13 @@ Após validação da 5.4, a Build 5.5 permanece reservada para Pentest manual/co
 - Em SMB confirmado, o Runner tenta criar e verificar o mesmo artefato via `C$`.
 - Falha ao criar a evidência não apaga um acesso já confirmado; é registrada separadamente em `evidence_error`.
 - Attack Campaign Asset recebe `access_method`, `evidence_requested`, `evidence_created`, `evidence_verified` e `evidence_path`.
+
+## Build 5.4.4 — Protocol Visibility & Same-Flow Evidence
+- Runner Jobs passa a exibir a coluna `Protocol`, resolvida por `attack_campaign_paths.protocol` ou pelo payload do job.
+- WinRM cria e verifica a evidência na mesma sessão remota que confirma o acesso; não abre uma segunda autenticação.
+- SMB mantém `IPC$` como prova de acesso e, no mesmo fluxo PowerShell, tenta `C$` apenas para a evidência.
+- Falha de escrita em `C$` não invalida o acesso SMB confirmado; fica registrada em `evidence_error`.
+- Conteúdo do artefato foi simplificado para `MAGI esteve aqui` e `Data/Hora: dd/MM/yyyy HH:mm:ss`.
+- Caminho Windows: `C:\MAGI\MAGI_EVIDENCE.txt`.
+- Texto da UI atualizado para `Criar evidência benigna no host`.
+- O ajuste geral de timezone da interface não faz parte desta build.

@@ -34,95 +34,128 @@ def _windows_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[
             errors.append(str(exc))
     return False,None,'windows',2,' | '.join(e for e in errors if e)[-1600:]
 
-def _winrm_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[bool,str|None,str,int,str]:
-    """Validate WinRM using the same transport contract as MAGI-ATK-END-101."""
+def _winrm_validate(target:str, credential:dict[str,Any], timeout:int, payload:dict[str,Any]|None=None)->tuple[bool,str|None,str,int,str,dict[str,Any]]:
+    payload=payload or {}
     user=str(credential.get('username') or '').strip()
     domain=str(credential.get('domain') or '').strip()
     secret=str(credential.get('secret') or '')
     identity=f"{domain}\\{user}" if domain and '\\' not in user and '@' not in user else user
+    evidence_requested=bool(payload.get('create_benign_evidence'))
+    evidence_path=str(payload.get('evidence_path') or r'C:\\MAGI\\MAGI_EVIDENCE.txt')
     env=os.environ.copy()
-    env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret})
+    env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret,'MAGI_EVIDENCE_REQUESTED':'1' if evidence_requested else '0','MAGI_EVIDENCE_PATH':evidence_path})
     script=r'''$ErrorActionPreference='Stop'
 $s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force
 $c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s)
-$trustedState=$null
-$trustedChanged=$false
-$stage='trustedhosts_snapshot'
-
+$trustedState=$null;$trustedChanged=$false;$stage='trustedhosts_snapshot'
 function Get-MagiTrustedState {
   $wsmanPath='WSMan:\localhost\Client\TrustedHosts'
-  try {
-    if(Test-Path $wsmanPath){
-      return [pscustomobject]@{method='wsman_provider';value=((Get-Item $wsmanPath -ErrorAction Stop).Value -as [string]);existed=$true}
-    }
-  } catch {}
-  $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'
-  $prop=$null
-  try { $prop=Get-ItemProperty -Path $regPath -Name 'trusted_hosts' -ErrorAction Stop } catch {}
-  if($null -ne $prop){ return [pscustomobject]@{method='registry';value=($prop.trusted_hosts -as [string]);existed=$true} }
+  try { if(Test-Path $wsmanPath){return [pscustomobject]@{method='wsman_provider';value=((Get-Item $wsmanPath -ErrorAction Stop).Value -as [string]);existed=$true}} } catch {}
+  $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client';$prop=$null
+  try {$prop=Get-ItemProperty -Path $regPath -Name 'trusted_hosts' -ErrorAction Stop} catch {}
+  if($null -ne $prop){return [pscustomobject]@{method='registry';value=($prop.trusted_hosts -as [string]);existed=$true}}
   return [pscustomobject]@{method='registry';value='';existed=$false}
 }
-function Set-MagiTrustedValue([object]$state,[string]$value) {
+function Set-MagiTrustedValue([object]$state,[string]$value){
   if($state.method -eq 'wsman_provider'){Set-Item 'WSMan:\localhost\Client\TrustedHosts' -Value $value -Force -ErrorAction Stop;return}
-  $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'
-  if(-not(Test-Path $regPath)){New-Item -Path $regPath -Force|Out-Null}
+  $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client';if(-not(Test-Path $regPath)){New-Item -Path $regPath -Force|Out-Null}
   New-ItemProperty -Path $regPath -Name 'trusted_hosts' -PropertyType String -Value $value -Force|Out-Null
 }
-function Restore-MagiTrustedValue([object]$state) {
+function Restore-MagiTrustedValue([object]$state){
   if($state.method -eq 'wsman_provider'){Set-Item 'WSMan:\localhost\Client\TrustedHosts' -Value ($state.value -as [string]) -Force -ErrorAction Stop;return}
   $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'
-  if($state.existed){
-    if(-not(Test-Path $regPath)){New-Item -Path $regPath -Force|Out-Null}
-    New-ItemProperty -Path $regPath -Name 'trusted_hosts' -PropertyType String -Value ($state.value -as [string]) -Force|Out-Null
-  } else {Remove-ItemProperty -Path $regPath -Name 'trusted_hosts' -ErrorAction SilentlyContinue}
+  if($state.existed){if(-not(Test-Path $regPath)){New-Item -Path $regPath -Force|Out-Null};New-ItemProperty -Path $regPath -Name 'trusted_hosts' -PropertyType String -Value ($state.value -as [string]) -Force|Out-Null}
+  else{Remove-ItemProperty -Path $regPath -Name 'trusted_hosts' -ErrorAction SilentlyContinue}
 }
-try {
+try{
   $trustedState=Get-MagiTrustedState
-  $items=@()
-  if($trustedState.value){$items=@($trustedState.value -split ',' | ForEach-Object {$_.Trim()} | Where-Object {$_})}
-  if(-not (($items -contains '*') -or ($items -contains $env:MAGI_TARGET))){
-    $stage='trustedhosts_update'
-    $newItems=@($items + $env:MAGI_TARGET | Select-Object -Unique)
-    Set-MagiTrustedValue $trustedState ($newItems -join ',')
-    $trustedChanged=$true
-  }
+  $items=@();if($trustedState.value){$items=@($trustedState.value -split ','|ForEach-Object{$_.Trim()}|Where-Object{$_})}
+  if(-not (($items -contains '*') -or ($items -contains $env:MAGI_TARGET))){$stage='trustedhosts_update';Set-MagiTrustedValue $trustedState ((@($items+$env:MAGI_TARGET|Select-Object -Unique)) -join ',');$trustedChanged=$true}
   $stage='winrm_negotiate'
-  $hostResult=Invoke-Command -ComputerName $env:MAGI_TARGET -Authentication Negotiate -Credential $c -ScriptBlock { hostname } -ErrorAction Stop
-  $hostResult | Select-Object -Last 1
-}
-catch {
-  [Console]::Error.WriteLine(("MAGI_WINRM_STAGE="+$stage+"; "+$_.Exception.Message))
-  exit 11
-}
-finally {
-  if($trustedChanged -and $null -ne $trustedState){
-    try {Restore-MagiTrustedValue $trustedState}
-    catch {[Console]::Error.WriteLine(("MAGI_WINRM_RESTORE_FAILED; "+$_.Exception.Message))}
-  }
-}'''
+  $r=Invoke-Command -ComputerName $env:MAGI_TARGET -Authentication Negotiate -Credential $c -ArgumentList $env:MAGI_EVIDENCE_REQUESTED,$env:MAGI_EVIDENCE_PATH -ScriptBlock {
+    param($evidenceRequested,$evidencePath)
+    $requested=($evidenceRequested -eq '1');$created=$false;$verified=$false;$evError=$null
+    if($requested){
+      try{
+        $dir=Split-Path $evidencePath -Parent;New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop|Out-Null
+        $stamp=Get-Date -Format 'dd/MM/yyyy HH:mm:ss'
+        Set-Content -Path $evidencePath -Value "MAGI esteve aqui`r`nData/Hora: $stamp" -Encoding UTF8 -ErrorAction Stop
+        $created=Test-Path $evidencePath
+        if($created){$read=Get-Content -Path $evidencePath -Raw -ErrorAction Stop;$verified=($read -like '*MAGI esteve aqui*')}
+      }catch{$evError=$_.Exception.Message}
+    }
+    [pscustomobject]@{hostname=$env:COMPUTERNAME;evidence_requested=$requested;evidence_created=$created;evidence_verified=$verified;evidence_path=$(if($created){$evidencePath}else{$null});evidence_error=$evError}
+  } -ErrorAction Stop
+  $r|ConvertTo-Json -Compress
+}catch{[Console]::Error.WriteLine(("MAGI_WINRM_STAGE="+$stage+"; "+$_.Exception.Message));exit 11}
+finally{if($trustedChanged -and $null -ne $trustedState){try{Restore-MagiTrustedValue $trustedState}catch{[Console]::Error.WriteLine(("MAGI_WINRM_RESTORE_FAILED; "+$_.Exception.Message))}}}'''
+    default_ev={'evidence_requested':evidence_requested,'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':None}
     try:
-        p=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],
-            capture_output=True,text=True,timeout=max(8,timeout),env=env,shell=False)
-        host=(p.stdout or '').strip().splitlines()[-1].strip() if (p.stdout or '').strip() else None
-        ok=p.returncode==0 and bool(host)
-        error='' if ok else (p.stderr or p.stdout or f'exit {p.returncode}')[-1600:]
-        return ok,host,'winrm',1,error
+        proc=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],capture_output=True,text=True,timeout=max(8,timeout),env=env,shell=False)
+        if proc.returncode!=0:
+            return False,None,'winrm',1,(proc.stderr or proc.stdout or f'exit {proc.returncode}')[-1600:],default_ev
+        parsed=None
+        for line in reversed((proc.stdout or '').strip().splitlines()):
+            try:
+                candidate=json.loads(line.strip())
+                if isinstance(candidate,dict) and candidate.get('hostname'):
+                    parsed=candidate;break
+            except Exception:
+                pass
+        if not parsed:
+            return False,None,'winrm',1,'WinRM returned success without structured hostname result.',default_ev
+        host=str(parsed.get('hostname') or '').strip() or None
+        ev={'evidence_requested':bool(parsed.get('evidence_requested')),'evidence_created':bool(parsed.get('evidence_created')),'evidence_verified':bool(parsed.get('evidence_verified')),'evidence_path':parsed.get('evidence_path'),'evidence_error':parsed.get('evidence_error')}
+        return bool(host),host,'winrm',1,'',ev
     except subprocess.TimeoutExpired:
-        return False,None,'winrm',1,'MAGI_WINRM_STAGE=timeout; WinRM validation timed out.'
+        return False,None,'winrm',1,'MAGI_WINRM_STAGE=timeout; WinRM validation timed out.',default_ev
     except Exception as exc:
-        return False,None,'winrm',1,str(exc)[-1600:]
+        return False,None,'winrm',1,str(exc)[-1600:],default_ev
 
-def _smb_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[bool,str|None,str,int,str]:
-    user=str(credential.get('username') or '').strip(); domain=str(credential.get('domain') or '').strip(); secret=str(credential.get('secret') or '')
+def _smb_validate(target:str, credential:dict[str,Any], timeout:int, payload:dict[str,Any]|None=None)->tuple[bool,str|None,str,int,str,dict[str,Any]]:
+    payload=payload or {}
+    user=str(credential.get('username') or '').strip();domain=str(credential.get('domain') or '').strip();secret=str(credential.get('secret') or '')
     identity=f"{domain}\\{user}" if domain and '\\' not in user and '@' not in user else user
-    env=os.environ.copy(); env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret})
-    script=r'''$ErrorActionPreference='Stop';$s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force;$c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s);$n='MAGI'+([guid]::NewGuid().ToString('N').Substring(0,8));New-PSDrive -Name $n -PSProvider FileSystem -Root ("\\\\"+$env:MAGI_TARGET+"\\IPC$") -Credential $c -ErrorAction Stop|Out-Null;Remove-PSDrive -Name $n -Force;Write-Output $env:MAGI_TARGET'''
+    evidence_requested=bool(payload.get('create_benign_evidence'))
+    env=os.environ.copy();env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret,'MAGI_EVIDENCE_REQUESTED':'1' if evidence_requested else '0'})
+    script=r'''$ErrorActionPreference='Stop'
+$s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force;$c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s)
+$ipc='MAGI'+([guid]::NewGuid().ToString('N').Substring(0,8));$admin='MAGI'+([guid]::NewGuid().ToString('N').Substring(0,8))
+$requested=($env:MAGI_EVIDENCE_REQUESTED -eq '1');$created=$false;$verified=$false;$evPath=$null;$evError=$null
+try{
+  New-PSDrive -Name $ipc -PSProvider FileSystem -Root ("\\"+$env:MAGI_TARGET+"\IPC$") -Credential $c -ErrorAction Stop|Out-Null
+  if($requested){
+    try{
+      New-PSDrive -Name $admin -PSProvider FileSystem -Root ("\\"+$env:MAGI_TARGET+"\C$") -Credential $c -ErrorAction Stop|Out-Null
+      $dir="${admin}:\MAGI";New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop|Out-Null
+      $file="${dir}\MAGI_EVIDENCE.txt";$stamp=Get-Date -Format 'dd/MM/yyyy HH:mm:ss'
+      Set-Content -Path $file -Value "MAGI esteve aqui`r`nData/Hora: $stamp" -Encoding UTF8 -ErrorAction Stop
+      $created=Test-Path $file
+      if($created){$read=Get-Content -Path $file -Raw -ErrorAction Stop;$verified=($read -like '*MAGI esteve aqui*');$evPath='C:\MAGI\MAGI_EVIDENCE.txt'}
+    }catch{$evError=$_.Exception.Message}
+    finally{Remove-PSDrive -Name $admin -Force -ErrorAction SilentlyContinue}
+  }
+  [pscustomobject]@{target=$env:MAGI_TARGET;evidence_requested=$requested;evidence_created=$created;evidence_verified=$verified;evidence_path=$evPath;evidence_error=$evError}|ConvertTo-Json -Compress
+}finally{Remove-PSDrive -Name $ipc -Force -ErrorAction SilentlyContinue}'''
+    default_ev={'evidence_requested':evidence_requested,'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':None}
     try:
-        p=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],capture_output=True,text=True,timeout=max(8,timeout),env=env,shell=False)
-        ok=p.returncode==0; return ok,(target if ok else None),'smb',1,'' if ok else (p.stderr or p.stdout or f'exit {p.returncode}')[-1600:]
-    except Exception as exc: return False,None,'smb',1,str(exc)[-1600:]
-
-
+        proc=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],capture_output=True,text=True,timeout=max(8,timeout),env=env,shell=False)
+        if proc.returncode!=0:
+            return False,None,'smb',1,(proc.stderr or proc.stdout or f'exit {proc.returncode}')[-1600:],default_ev
+        parsed=None
+        for line in reversed((proc.stdout or '').strip().splitlines()):
+            try:
+                candidate=json.loads(line.strip())
+                if isinstance(candidate,dict) and candidate.get('target'):
+                    parsed=candidate;break
+            except Exception:
+                pass
+        if not parsed:
+            return False,None,'smb',1,'SMB returned success without structured target result.',default_ev
+        ev={'evidence_requested':bool(parsed.get('evidence_requested')),'evidence_created':bool(parsed.get('evidence_created')),'evidence_verified':bool(parsed.get('evidence_verified')),'evidence_path':parsed.get('evidence_path'),'evidence_error':parsed.get('evidence_error')}
+        return True,target,'smb',1,'',ev
+    except Exception as exc:
+        return False,None,'smb',1,str(exc)[-1600:],default_ev
 
 def _create_benign_evidence(target:str, credential:dict[str,Any], protocol:str, payload:dict[str,Any], timeout:int)->dict[str,Any]:
     requested=bool(payload.get('create_benign_evidence'))
@@ -317,8 +350,9 @@ class CredentialValidateExecutor:
         cred=payload.get('credential') or {}; ctype=str(cred.get('type') or payload.get('credential_type') or '').lower()
         if not target or not cred.get('secret'): raise ValueError('Job de credencial sem target ou segredo transitório.')
         forced=str(payload.get('protocol') or '').lower()
-        if forced=='smb': ok,hostname,protocol,attempts,error=_smb_validate(target,cred,timeout_seconds)
-        elif forced=='winrm': ok,hostname,protocol,attempts,error=_winrm_validate(target,cred,timeout_seconds)
+        evidence={'evidence_requested':bool(payload.get('create_benign_evidence')),'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':None}
+        if forced=='smb': ok,hostname,protocol,attempts,error,evidence=_smb_validate(target,cred,timeout_seconds,payload)
+        elif forced=='winrm': ok,hostname,protocol,attempts,error,evidence=_winrm_validate(target,cred,timeout_seconds,payload)
         elif ctype in {'windows','wmi','winrm'}: ok,hostname,protocol,attempts,error=_windows_validate(target,cred,timeout_seconds)
         elif ctype in {'ssh','linux'}: ok,hostname,protocol,attempts,error=_ssh_validate(target,cred,timeout_seconds)
         elif ctype in {'snmp','snmp_v2c','snmpv2c'}: ok,hostname,protocol,attempts,error=_snmp_validate(target,cred,timeout_seconds)
@@ -332,10 +366,6 @@ class CredentialValidateExecutor:
         else:
             finding_status=_failure_status(protocol,error,attempts)
         executed = finding_status != 'runner_dependency_missing'
-        evidence=_create_benign_evidence(target,cred,protocol,payload,timeout_seconds) if ok and relation=='access' else {
-            'evidence_requested':bool(payload.get('create_benign_evidence')),
-            'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':None
-        }
         metadata={'target':target,'credential_id':payload.get('credential_id'),'credential_name':cred.get('name'),'credential_type':ctype,'authenticated':ok,
                   'hostname':hostname,'protocol':protocol,'attempts_used':min(2,attempts),'max_attempts':2,'message':None if ok else error,
                   'campaign_context':payload.get('campaign_context') or {},'relation_type':relation,'executed_real_test':executed,

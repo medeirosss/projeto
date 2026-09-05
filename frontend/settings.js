@@ -477,12 +477,12 @@ bootSettings();
 
 async function loadRunnerJobs(runnerId){
   const body=document.getElementById('runnerJobsTableBody'); if(!body||!runnerId)return;
-  body.innerHTML='<tr><td colspan="7">Carregando jobs...</td></tr>';
+  body.innerHTML='<tr><td colspan="8">Carregando jobs...</td></tr>';
   try{
     const res=await fetch(`/api/settings/runners/${encodeURIComponent(runnerId)}/jobs?limit=100`); const data=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(data.detail||'Falha ao carregar jobs.'); const jobs=data.jobs||[];
-    body.innerHTML=jobs.length?jobs.map(j=>`<tr><td>${j.id}</td><td>${j.controlled ? (j.source_module||'-') : '<strong>ORPHAN / UNCONTROLLED</strong>'}</td><td>${j.job_type||'-'}</td><td>${j.target||'-'}</td><td>${j.status||'-'}</td><td>${formatRunnerDate(j.created_at)}</td><td>${['pending','running'].includes(j.status)?`<button class="btn danger btn-sm runner-job-cancel" data-id="${j.id}" data-runner="${runnerId}">Cancelar</button>`:'-'}</td></tr>`).join(''):'<tr><td colspan="7">Nenhum job encontrado.</td></tr>';
+    body.innerHTML=jobs.length?jobs.map(j=>`<tr><td>${j.id}</td><td>${j.controlled ? (j.source_module||'-') : '<strong>ORPHAN / UNCONTROLLED</strong>'}</td><td>${j.job_type||'-'}</td><td>${j.target||'-'}</td><td>${(j.protocol||'-').toUpperCase()}</td><td>${j.status||'-'}</td><td>${formatRunnerDate(j.created_at)}</td><td>${['pending','running'].includes(j.status)?`<button class="btn danger btn-sm runner-job-cancel" data-id="${j.id}" data-runner="${runnerId}">Cancelar</button>`:'-'}</td></tr>`).join(''):'<tr><td colspan="8">Nenhum job encontrado.</td></tr>';
     document.querySelectorAll('.runner-job-cancel').forEach(b=>b.addEventListener('click',async()=>{const r=await fetch(`/api/settings/runners/${encodeURIComponent(b.dataset.runner)}/jobs/${b.dataset.id}/cancel`,{method:'POST'});if(r.ok)await loadRunnerJobs(b.dataset.runner);}));
     setMessage('runnerJobsStatusBox',`${jobs.length} job(s) recentes. Jobs sem controle são bloqueados e não são entregues ao Runner.`);
-  }catch(e){body.innerHTML=`<tr><td colspan="7">${e.message}</td></tr>`;setMessage('runnerJobsStatusBox',e.message);}
+  }catch(e){body.innerHTML=`<tr><td colspan="8">${e.message}</td></tr>`;setMessage('runnerJobsStatusBox',e.message);}
 }

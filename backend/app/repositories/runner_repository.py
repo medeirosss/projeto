@@ -535,6 +535,7 @@ def list_runner_jobs(runner_id: str, limit: int=100) -> list[dict[str,Any]]:
     with SessionLocal() as db:
         rows=db.execute(text("""
         SELECT j.id,j.runner_id,j.job_type,j.target,j.status,j.created_at,j.started_at,j.finished_at,j.error,
+          COALESCE(cp.protocol, j.payload->>'protocol') AS protocol,
           CASE
             WHEN cp.id IS NOT NULL THEN 'Campaign'
             WHEN dij.runner_job_id IS NOT NULL THEN 'Deep Inventory'
