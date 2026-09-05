@@ -35,15 +35,82 @@ def _windows_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[
     return False,None,'windows',2,' | '.join(e for e in errors if e)[-1600:]
 
 def _winrm_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[bool,str|None,str,int,str]:
-    user=str(credential.get('username') or '').strip(); domain=str(credential.get('domain') or '').strip(); secret=str(credential.get('secret') or '')
+    """Validate WinRM using the same transport contract as MAGI-ATK-END-101."""
+    user=str(credential.get('username') or '').strip()
+    domain=str(credential.get('domain') or '').strip()
+    secret=str(credential.get('secret') or '')
     identity=f"{domain}\\{user}" if domain and '\\' not in user and '@' not in user else user
-    env=os.environ.copy(); env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret})
-    script=r'''$ErrorActionPreference='Stop';$s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force;$c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s);Invoke-Command -ComputerName $env:MAGI_TARGET -Credential $c -ScriptBlock { hostname } -ErrorAction Stop'''
+    env=os.environ.copy()
+    env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret})
+    script=r'''$ErrorActionPreference='Stop'
+$s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force
+$c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s)
+$trustedState=$null
+$trustedChanged=$false
+$stage='trustedhosts_snapshot'
+
+function Get-MagiTrustedState {
+  $wsmanPath='WSMan:\localhost\Client\TrustedHosts'
+  try {
+    if(Test-Path $wsmanPath){
+      return [pscustomobject]@{method='wsman_provider';value=((Get-Item $wsmanPath -ErrorAction Stop).Value -as [string]);existed=$true}
+    }
+  } catch {}
+  $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'
+  $prop=$null
+  try { $prop=Get-ItemProperty -Path $regPath -Name 'trusted_hosts' -ErrorAction Stop } catch {}
+  if($null -ne $prop){ return [pscustomobject]@{method='registry';value=($prop.trusted_hosts -as [string]);existed=$true} }
+  return [pscustomobject]@{method='registry';value='';existed=$false}
+}
+function Set-MagiTrustedValue([object]$state,[string]$value) {
+  if($state.method -eq 'wsman_provider'){Set-Item 'WSMan:\localhost\Client\TrustedHosts' -Value $value -Force -ErrorAction Stop;return}
+  $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'
+  if(-not(Test-Path $regPath)){New-Item -Path $regPath -Force|Out-Null}
+  New-ItemProperty -Path $regPath -Name 'trusted_hosts' -PropertyType String -Value $value -Force|Out-Null
+}
+function Restore-MagiTrustedValue([object]$state) {
+  if($state.method -eq 'wsman_provider'){Set-Item 'WSMan:\localhost\Client\TrustedHosts' -Value ($state.value -as [string]) -Force -ErrorAction Stop;return}
+  $regPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client'
+  if($state.existed){
+    if(-not(Test-Path $regPath)){New-Item -Path $regPath -Force|Out-Null}
+    New-ItemProperty -Path $regPath -Name 'trusted_hosts' -PropertyType String -Value ($state.value -as [string]) -Force|Out-Null
+  } else {Remove-ItemProperty -Path $regPath -Name 'trusted_hosts' -ErrorAction SilentlyContinue}
+}
+try {
+  $trustedState=Get-MagiTrustedState
+  $items=@()
+  if($trustedState.value){$items=@($trustedState.value -split ',' | ForEach-Object {$_.Trim()} | Where-Object {$_})}
+  if(-not (($items -contains '*') -or ($items -contains $env:MAGI_TARGET))){
+    $stage='trustedhosts_update'
+    $newItems=@($items + $env:MAGI_TARGET | Select-Object -Unique)
+    Set-MagiTrustedValue $trustedState ($newItems -join ',')
+    $trustedChanged=$true
+  }
+  $stage='winrm_negotiate'
+  $hostResult=Invoke-Command -ComputerName $env:MAGI_TARGET -Authentication Negotiate -Credential $c -ScriptBlock { hostname } -ErrorAction Stop
+  $hostResult | Select-Object -Last 1
+}
+catch {
+  [Console]::Error.WriteLine(("MAGI_WINRM_STAGE="+$stage+"; "+$_.Exception.Message))
+  exit 11
+}
+finally {
+  if($trustedChanged -and $null -ne $trustedState){
+    try {Restore-MagiTrustedValue $trustedState}
+    catch {[Console]::Error.WriteLine(("MAGI_WINRM_RESTORE_FAILED; "+$_.Exception.Message))}
+  }
+}'''
     try:
-        p=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],capture_output=True,text=True,timeout=max(8,timeout),env=env,shell=False)
+        p=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],
+            capture_output=True,text=True,timeout=max(8,timeout),env=env,shell=False)
         host=(p.stdout or '').strip().splitlines()[-1].strip() if (p.stdout or '').strip() else None
-        return (p.returncode==0 and bool(host)),host,'winrm',1,'' if p.returncode==0 else (p.stderr or p.stdout or f'exit {p.returncode}')[-1600:]
-    except Exception as exc: return False,None,'winrm',1,str(exc)[-1600:]
+        ok=p.returncode==0 and bool(host)
+        error='' if ok else (p.stderr or p.stdout or f'exit {p.returncode}')[-1600:]
+        return ok,host,'winrm',1,error
+    except subprocess.TimeoutExpired:
+        return False,None,'winrm',1,'MAGI_WINRM_STAGE=timeout; WinRM validation timed out.'
+    except Exception as exc:
+        return False,None,'winrm',1,str(exc)[-1600:]
 
 def _smb_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[bool,str|None,str,int,str]:
     user=str(credential.get('username') or '').strip(); domain=str(credential.get('domain') or '').strip(); secret=str(credential.get('secret') or '')
@@ -154,8 +221,15 @@ def _failure_status(protocol: str, error: str, attempts: int) -> str:
         'permission denied','user name or password is incorrect','username or password is incorrect',
         'the specified network password is not correct','account restriction'
     )
+    if 'magi_winrm_stage=trustedhosts_' in msg or 'magi_winrm_restore_failed' in msg:
+        return 'trustedhosts_failed'
+    if 'magi_winrm_stage=timeout' in msg or 'timed out' in msg or 'timeout' in msg:
+        return 'timeout'
+    service_tokens=('winrm cannot complete the operation','winrm service','ws-management service','wsmanfault')
     if any(t in msg for t in auth_tokens):
         return 'authentication_failed'
+    if any(t in msg for t in service_tokens):
+        return 'service_unavailable'
     if any(t in msg for t in transport_tokens):
         return 'transport_failed'
     return 'access_not_confirmed'

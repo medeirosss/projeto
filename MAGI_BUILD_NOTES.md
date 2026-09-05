@@ -30,3 +30,11 @@ Após validação da 5.4, a Build 5.5 permanece reservada para Pentest manual/co
 - `preflight` é apresentado como `Discovery / ICMP`.
 - Discovery não confirmado permanece em Evidências, mas não entra no Attack Path.
 - Barriers passam a carregar `reason` legível, preservando o resultado técnico bruto.
+
+## Build 5.4.2 — WinRM Campaign Consistency
+- WinRM do `credential_validate` da Campaign passa a usar o mesmo contrato de transporte do `MAGI-ATK-END-101`.
+- TrustedHosts é lido, ajustado temporariamente para o target e restaurado em `finally`.
+- `Invoke-Command` usa explicitamente `-Authentication Negotiate`.
+- Falhas WinRM ganham classificação adicional: `trustedhosts_failed`, `timeout`, `service_unavailable`, além de `authentication_failed` e `transport_failed`.
+- Attack Path/Evidências traduzem essas classes em motivos legíveis.
+- Nenhum novo ataque, payload ou mudança de política/branch da Campaign foi introduzido.

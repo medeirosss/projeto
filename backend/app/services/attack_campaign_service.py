@@ -111,9 +111,10 @@ def _attack_path_payload(c: dict[str, Any]) -> dict[str, Any]:
         reason=ev.get('barrier_reason') or ev.get('reason') or ev.get('error') or ev.get('snmp_error')
         if not reason:
             if 'authentication_failed' in blob or 'auth_failed' in blob: reason='Credential rejected by the destination.'
+            elif 'trustedhosts_failed' in blob: reason='MAGI could not apply or restore the temporary WinRM TrustedHosts configuration.'
             elif 'transport_failed' in blob or 'unreachable' in blob: reason='Transport to the destination could not be established.'
-            elif 'service' in blob and ('unavailable' in blob or 'closed' in blob): reason='Required service is unavailable on the destination.'
-            elif 'timeout' in blob: reason='The test exceeded the allowed execution time.'
+            elif 'service_unavailable' in blob or ('service' in blob and ('unavailable' in blob or 'closed' in blob)): reason='Required service is unavailable on the destination.'
+            elif 'timeout' in blob: reason='The WinRM validation exceeded the allowed execution time.'
             elif 'runner_dependency_missing' in blob: reason='Runner dependency required for this test is missing.'
             elif str(p.get('result') or '')=='discovery_not_confirmed': reason='No ICMP Echo Reply received from the target IP.'
             elif str(p.get('status') or '').lower() in ('failed','error','cancelled','not_confirmed'): reason=str(p.get('result') or 'Execution did not confirm the path.')
