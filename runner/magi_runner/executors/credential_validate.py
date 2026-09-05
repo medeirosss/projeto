@@ -123,6 +123,81 @@ def _smb_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[bool
     except Exception as exc: return False,None,'smb',1,str(exc)[-1600:]
 
 
+
+def _create_benign_evidence(target:str, credential:dict[str,Any], protocol:str, payload:dict[str,Any], timeout:int)->dict[str,Any]:
+    requested=bool(payload.get('create_benign_evidence'))
+    if not requested:
+        return {'evidence_requested':False,'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':None}
+
+    campaign_context=payload.get('campaign_context') or {}
+    campaign_uuid=str(campaign_context.get('campaign_uuid') or '')
+    user=str(credential.get('username') or '').strip()
+    domain=str(credential.get('domain') or '').strip()
+    secret=str(credential.get('secret') or '')
+    identity=f"{domain}\\{user}" if domain and '\\' not in user and '@' not in user else user
+    content=f"MAGI esteve aqui\\nCampaign: {campaign_uuid}\\nTarget: {target}\\nProtocol: {protocol}\\n"
+
+    if protocol=='winrm':
+        evidence_path=str(payload.get('evidence_path') or r'C:\MAGI\MAGI_EVIDENCE.txt')
+        env=os.environ.copy()
+        env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret,'MAGI_EVIDENCE_PATH':evidence_path,'MAGI_EVIDENCE_CONTENT':content})
+        script=r'''$ErrorActionPreference='Stop'
+$s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force
+$c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s)
+$old=(Get-Item WSMan:\localhost\Client\TrustedHosts -ErrorAction SilentlyContinue).Value
+$changed=$false
+try{
+  $items=@();if($old){$items=@($old -split ','|ForEach-Object{$_.Trim()}|Where-Object{$_})}
+  if(-not (($items -contains '*') -or ($items -contains $env:MAGI_TARGET))){
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Value ((@($items+$env:MAGI_TARGET|Select-Object -Unique)) -join ',') -Force -ErrorAction Stop
+    $changed=$true
+  }
+  $ok=Invoke-Command -ComputerName $env:MAGI_TARGET -Authentication Negotiate -Credential $c -ArgumentList $env:MAGI_EVIDENCE_PATH,$env:MAGI_EVIDENCE_CONTENT -ScriptBlock {
+    param($path,$content)
+    $dir=Split-Path $path -Parent
+    New-Item -ItemType Directory -Path $dir -Force|Out-Null
+    Set-Content -Path $path -Value $content -Encoding UTF8
+    Test-Path $path
+  } -ErrorAction Stop
+  if($ok){Write-Output 'VERIFIED'}
+}
+finally{
+  if($changed){try{Set-Item WSMan:\localhost\Client\TrustedHosts -Value ($old -as [string]) -Force -ErrorAction SilentlyContinue}catch{}}
+}'''
+        try:
+            proc=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],
+                capture_output=True,text=True,timeout=max(8,timeout),env=env,shell=False)
+            ok=proc.returncode==0 and 'VERIFIED' in (proc.stdout or '')
+            return {'evidence_requested':True,'evidence_created':ok,'evidence_verified':ok,'evidence_path':evidence_path if ok else None,
+                    'evidence_error':None if ok else (proc.stderr or proc.stdout or f'exit {proc.returncode}')[-1600:]}
+        except Exception as exc:
+            return {'evidence_requested':True,'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':str(exc)[-1600:]}
+
+    if protocol=='smb':
+        env=os.environ.copy()
+        env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret,'MAGI_EVIDENCE_CONTENT':content})
+        script=r'''$ErrorActionPreference='Stop'
+$s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force
+$c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s)
+$n='MAGI'+([guid]::NewGuid().ToString('N').Substring(0,8))
+try{
+  New-PSDrive -Name $n -PSProvider FileSystem -Root ("\\"+$env:MAGI_TARGET+"\C$") -Credential $c -ErrorAction Stop|Out-Null
+  $dir="${n}:\MAGI";New-Item -ItemType Directory -Path $dir -Force|Out-Null
+  $file="${dir}\MAGI_EVIDENCE.txt";Set-Content -Path $file -Value $env:MAGI_EVIDENCE_CONTENT -Encoding UTF8
+  if(Test-Path $file){Write-Output 'VERIFIED'}
+}finally{Remove-PSDrive -Name $n -Force -ErrorAction SilentlyContinue}'''
+        try:
+            proc=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],
+                capture_output=True,text=True,timeout=max(8,timeout),env=env,shell=False)
+            ok=proc.returncode==0 and 'VERIFIED' in (proc.stdout or '')
+            return {'evidence_requested':True,'evidence_created':ok,'evidence_verified':ok,'evidence_path':r'C:\MAGI\MAGI_EVIDENCE.txt' if ok else None,
+                    'evidence_error':None if ok else (proc.stderr or proc.stdout or f'exit {proc.returncode}')[-1600:]}
+        except Exception as exc:
+            return {'evidence_requested':True,'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':str(exc)[-1600:]}
+
+    return {'evidence_requested':True,'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':f'Evidence not implemented for protocol {protocol}.'}
+
+
 def _ssh_validate(target:str, credential:dict[str,Any], timeout:int)->tuple[bool,str|None,str,int,str]:
     try:
         import paramiko
@@ -257,11 +332,16 @@ class CredentialValidateExecutor:
         else:
             finding_status=_failure_status(protocol,error,attempts)
         executed = finding_status != 'runner_dependency_missing'
+        evidence=_create_benign_evidence(target,cred,protocol,payload,timeout_seconds) if ok and relation=='access' else {
+            'evidence_requested':bool(payload.get('create_benign_evidence')),
+            'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':None
+        }
         metadata={'target':target,'credential_id':payload.get('credential_id'),'credential_name':cred.get('name'),'credential_type':ctype,'authenticated':ok,
                   'hostname':hostname,'protocol':protocol,'attempts_used':min(2,attempts),'max_attempts':2,'message':None if ok else error,
                   'campaign_context':payload.get('campaign_context') or {},'relation_type':relation,'executed_real_test':executed,
                   'execution_scope':'campaign_remote','attack_result':finding_status,'confirmation_status':finding_status,
                   'failure_class':None if ok else finding_status,
+                  **evidence,
                   'finding':{'status':finding_status,'detected':ok,'message':(f'{protocol} confirmado em {target}.' if ok else f'{protocol} não confirmado em {target}: {error}')}}
         Path(workdir,'credential_validation.json').write_text(json.dumps(metadata,indent=2,ensure_ascii=False),encoding='utf-8')
         runner_error=finding_status=='runner_dependency_missing'

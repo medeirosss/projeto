@@ -38,3 +38,13 @@ Após validação da 5.4, a Build 5.5 permanece reservada para Pentest manual/co
 - Falhas WinRM ganham classificação adicional: `trustedhosts_failed`, `timeout`, `service_unavailable`, além de `authentication_failed` e `transport_failed`.
 - Attack Path/Evidências traduzem essas classes em motivos legíveis.
 - Nenhum novo ataque, payload ou mudança de política/branch da Campaign foi introduzido.
+
+## Build 5.4.3 — Campaign Result Ingestion & Evidence
+- Resultado terminal de `credential_validate` da Campaign é ingerido imediatamente no recebimento do Runner.
+- A promoção para `access_confirmed` não depende mais de o ciclo continuar com status `running`.
+- `_sync_paths()` permanece como reconciliação/fallback.
+- `create_benign_evidence` passa a ser enviado no payload dos jobs de acesso.
+- Em WinRM confirmado, o Runner cria e verifica `C:\MAGI\MAGI_EVIDENCE.txt` usando WinRM/Negotiate e TrustedHosts temporário.
+- Em SMB confirmado, o Runner tenta criar e verificar o mesmo artefato via `C$`.
+- Falha ao criar a evidência não apaga um acesso já confirmado; é registrada separadamente em `evidence_error`.
+- Attack Campaign Asset recebe `access_method`, `evidence_requested`, `evidence_created`, `evidence_verified` e `evidence_path`.

@@ -178,14 +178,22 @@ def job_result_v2_service(job_id: int, data: dict, headers):
         discovery = ingest_runner_discovery_result(int(job_id), runner_id, status, data, data.get("error"))
     if result and result.get("job_type") == "service_discovery":
         service_discovery = ingest_runner_service_result(int(job_id), runner_id, status, data, data.get("error"))
+    campaign_ingestion = None
     if result and result.get("job_type") == "credential_validate":
         credential_engine = ingest_runner_credential_result(int(job_id), runner_id, status, data, data.get("error"))
+        try:
+            from app.services.attack_campaign_service import ingest_campaign_runner_result
+            campaign_ingestion = ingest_campaign_runner_result(int(job_id), status, data)
+        except Exception:
+            # Generic credential ingestion must not be broken by Campaign reconciliation.
+            # _sync_paths remains the fallback and will retry on the scheduler.
+            campaign_ingestion = None
     if result and result.get("job_type") == "deep_inventory":
         deep_inventory = ingest_runner_deep_result(int(job_id), runner_id, status, data, data.get("error"))
     if result and result.get("job_type") in {"security_check", "nuclei", "attack_simulation"}:
         from app.repositories.validation_repository import ingest_execution_result
         security_check = ingest_execution_result(int(job_id), status, data, data.get("error"))
-    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery, "credential_engine": credential_engine, "deep_inventory": deep_inventory, "security_check": security_check}
+    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery, "credential_engine": credential_engine, "campaign_ingestion": campaign_ingestion, "deep_inventory": deep_inventory, "security_check": security_check}
 
 
 # Legacy /api/runner compatibility used by previous Magi builds.

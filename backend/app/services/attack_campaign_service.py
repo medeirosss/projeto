@@ -507,6 +507,8 @@ def _queue_access_vectors(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],or
         payload={'executor':'credential_validate','target':target,'credential_id':credential_id,'protocol':protocol,
                  'credential_type':'windows' if protocol in {'winrm','smb'} else 'ssh',
                  'max_attempts':2,'timeout_seconds':30,
+                 'create_benign_evidence':bool(c.get('create_benign_evidence')),
+                 'evidence_path':r'C:\\MAGI\\MAGI_EVIDENCE.txt',
                  'campaign_context':{'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],'cycle_id':cy['id'],'origin':origin,'target':target,'depth':depth,'protocol':protocol}}
         job=create_runner_job(runner_id,'credential_validate',target,payload)
         task=_task_for_protocol(db,protocol); vex_id=None
@@ -519,6 +521,93 @@ def _queue_access_vectors(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],or
         queued+=1
     return queued
 
+
+
+def ingest_campaign_runner_result(job_id:int, status:str, data:dict[str,Any]) -> dict[str,Any] | None:
+    """Promote a terminal Campaign credential job immediately.
+
+    This path is intentionally independent from the cycle status. A job that
+    finishes after its cycle was closed must still update its Campaign path,
+    asset and evidence. _sync_paths remains a reconciliation fallback.
+    """
+    with db_session() as db:
+        row=db.execute(text("""
+          SELECT p.*,e.id AS execution_pk,c.id AS campaign_pk,c.campaign_uuid,c.runner_id
+          FROM attack_campaign_paths p
+          JOIN attack_campaign_executions e ON e.id=p.execution_id
+          JOIN attack_campaigns c ON c.id=e.campaign_id
+          WHERE p.runner_job_id=:j
+          LIMIT 1
+        """),{'j':int(job_id)}).mappings().first()
+        if not row:
+            return None
+
+        r=dict(row)
+        meta=(data or {}).get('metadata') or {}
+        protocol=str(r.get('protocol') or meta.get('protocol') or 'unknown')
+        relation=str(r.get('relation_type') or ('discovery' if protocol in {'snmp_v2c','preflight'} else 'access'))
+        authenticated=bool(meta.get('authenticated'))
+        confirmation=str(meta.get('confirmation_status') or '')
+
+        if authenticated:
+            path_status='confirmed'
+            result='access_confirmed' if relation=='access' else 'discovery_confirmed'
+        elif confirmation in {'runner_dependency_missing','execution_error'} or str(status).lower()=='error':
+            path_status='error'
+            result=confirmation or 'execution_error'
+        else:
+            path_status='not_confirmed'
+            result=confirmation or ('discovery_not_confirmed' if relation=='discovery' else 'access_not_confirmed')
+
+        evidence=meta or data or {}
+        db.execute(text("""
+          UPDATE attack_campaign_paths
+          SET status=:s,result=:r,evidence=CAST(:ev AS JSONB),finished_at=:now
+          WHERE id=:id
+        """),{
+            's':path_status,'r':result,
+            'ev':__import__('json').dumps(evidence,ensure_ascii=False,default=str),
+            'now':datetime.utcnow(),'id':r['id']
+        })
+
+        if authenticated and relation=='access':
+            hostname=meta.get('hostname')
+            inv={
+                'ip':r['target'],'hostname':hostname,'source':'attack_campaign',
+                'protocol':protocol,'relation_type':relation,'last_origin':r['origin'],
+                'access_method':protocol,
+                'evidence_requested':bool(meta.get('evidence_requested')),
+                'evidence_created':bool(meta.get('evidence_created')),
+                'evidence_verified':bool(meta.get('evidence_verified')),
+                'evidence_path':meta.get('evidence_path'),
+            }
+            _upsert_asset(
+                db,int(r['execution_id']),r['target'],confirmed=True,
+                hostname=hostname,inventory=inv,state='access_confirmed'
+            )
+            try:
+                upsert_discovered_target(
+                    hostname=hostname,
+                    hostname_normalized=(hostname or '').lower() or None,
+                    ip_address=r['target'],mac_address=None,mac_normalized=None,
+                    status='online',source='attack_campaign',
+                    runner_id=r.get('runner_id'),dns_name=None,
+                    hostname_source='attack_campaign'
+                )
+            except Exception:
+                pass
+
+        db.commit()
+        return {
+            'campaign_uuid':r.get('campaign_uuid'),
+            'execution_id':r.get('execution_id'),
+            'path_id':r.get('id'),
+            'path_status':path_status,
+            'result':result,
+            'authenticated':authenticated,
+            'protocol':protocol,
+            'target':r.get('target'),
+        }
 
 def _sync_paths(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
     rows=db.execute(text("""SELECT p.*,j.status AS job_status,j.result AS job_result,j.error AS job_error
