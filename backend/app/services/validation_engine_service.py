@@ -69,12 +69,15 @@ def plan_task(task_id:int,target:str,options:dict[str,Any]|None=None)->dict[str,
 def execute_task(task_id:int,target:str,requested_by:str='ui',options:dict[str,Any]|None=None):
     prepared=plan_task(task_id,target,options=options); plan=prepared['plan']; task=prepared['task']
     metadata=task.get('metadata') or {}
-    validation_type="nuclei" if task.get("executor")=="nuclei" else "attack_simulation" if task.get("executor")=="attack_simulation" else "security_check"
+    validation_type="nuclei" if task.get("executor")=="nuclei" else "attack_simulation" if task.get("executor") in {"attack_simulation","metasploit"} else "security_check"
     payload={"executor":task['executor'],"validation_type":validation_type,"task_id":task_id,"task_key":task['task_key'],"repository_key":task['repository_key'],"target":target,"detection":task.get('detection') or {},"impact":task.get('impact'),"remediation":task.get('remediation')}
     if validation_type=="attack_simulation":
         payload.update({"simulation":task.get("detection") or {},"scenario_name":task.get("name"),"attack_category":task.get("category"),"attack_metadata":metadata,"safe_mode":True,"destructive":False,"scope":plan.get("scope") or {}})
         if (options or {}).get("credential_id"): payload["credential_id"]=(options or {}).get("credential_id")
         if (plan.get("scope") or {}).get("secondary_target"): payload["host_b"]=plan["scope"]["secondary_target"]
+        payload["provider"]=metadata.get("provider") or ("metasploit" if task.get("executor")=="metasploit" else "magi_native")
+        if (options or {}).get("technique_parameter") is not None:
+            payload["technique_parameter"]=(options or {}).get("technique_parameter")
     if validation_type=="nuclei":
         payload.update({"template":metadata.get("template") or (task.get("detection") or {}).get("template"),"severity":metadata.get("severity"),"tags":metadata.get("tags") or [],"profile_name":metadata.get("profile_name") or task.get("name"),"protocol":metadata.get("protocol"),"ports":metadata.get("ports") or (task.get("detection") or {}).get("ports") or []})
     job=create_runner_job(plan['runner_id'],validation_type,target,payload)

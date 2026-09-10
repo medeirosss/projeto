@@ -772,3 +772,13 @@ th{color:#475467;background:#fbfcfe}
 .ap-badge-success { color:#34d399; border-color:rgba(52,211,153,.65); background:rgba(52,211,153,.10); }
 .ap-badge-danger { color:#f87171; border-color:rgba(248,113,113,.65); background:rgba(248,113,113,.10); }
 .ap-badge-neutral { color:#93c5fd; border-color:rgba(147,197,253,.55); background:rgba(147,197,253,.08); }
+
+/* MAGI 5.5.0 — Attack Simulator workspace */
+.attack-workspace{display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;align-items:start}
+.attack-subnav{position:sticky;top:84px;border:1px solid var(--border,#273244);border-radius:10px;padding:12px;background:var(--panel,#111827)}
+.attack-subnav h3{margin:2px 6px 12px;font-size:14px;opacity:.85}
+.attack-nav-item{width:100%;display:block;text-align:left;padding:10px 12px;margin:4px 0;border:1px solid transparent;border-radius:8px;background:transparent;color:inherit;cursor:pointer;font-weight:600}
+.attack-nav-item:hover{border-color:var(--border,#3b475a)}
+.attack-nav-item.active{background:rgba(59,130,246,.12);border-color:rgba(96,165,250,.55)}
+.attack-workspace-content{min-width:0}
+@media(max-width:900px){.attack-workspace{grid-template-columns:1fr}.attack-subnav{position:static;display:flex;gap:6px;overflow:auto}.attack-subnav h3{display:none}.attack-nav-item{width:auto;white-space:nowrap}}

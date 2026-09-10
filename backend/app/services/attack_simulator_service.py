@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.repositories.validation_repository import list_executions, list_tasks, upsert_repository, upsert_task
+from app.repositories.runner_repository import get_single_online_runner
 
 
 ATTACK_SIMULATIONS: list[dict[str, Any]] = [
@@ -179,6 +180,55 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
         "remediation": "Restrinja WinRM e administração remota por segmentação, firewall, JEA/PAM e contas administrativas separadas; impeça reutilização de credenciais administrativas entre endpoints.",
         "metadata": {"attack_phase": "lateral_movement", "safe_mode": True, "credential_required": True, "secondary_target_required": True, "creates_benign_artifact": True, "automatic_cleanup": True, "scope_engine": "5.2"},
     },
+
+    {
+        "task_key": "MAGI-M-ATK-END-001",
+        "name": "SMB Version Detection",
+        "description": "Executa o scanner SMB Version do Metasploit contra um único alvo e normaliza versão SMB, dialect, signing, criptografia, versão provável do Windows e domínio de autenticação.",
+        "category": "Endpoint",
+        "platform": "Windows",
+        "executor": "metasploit",
+        "impact": "safe",
+        "detection": {"type": "metasploit_module", "module": "auxiliary/scanner/smb/smb_version", "port": 445},
+        "remediation": "Restrinja SMB às redes necessárias, mantenha assinatura SMB conforme política e elimine exposição de TCP/445 entre segmentos sem necessidade.",
+        "metadata": {"attack_phase": "discovery", "safe_mode": True, "credential_required": False, "provider": "metasploit", "payload": False, "changes_target": False, "cleanup_supported": False, "execution_scope": "target_remote"},
+    },
+    {
+        "task_key": "MAGI-M-ATK-AD-001",
+        "name": "Kerberos Authentication Validation",
+        "description": "Valida uma única credencial Kerberos informada pelo operador contra o controlador de domínio selecionado. Não executa brute force nem listas de usuários/senhas.",
+        "category": "Active Directory",
+        "platform": "Domain Controller",
+        "executor": "metasploit",
+        "impact": "low",
+        "detection": {"type": "metasploit_module", "module": "auxiliary/scanner/kerberos/kerberos_login", "port": 88},
+        "remediation": "Revise políticas de autenticação, bloqueio de conta e exposição do serviço Kerberos. Use credenciais de laboratório durante validações.",
+        "metadata": {"attack_phase": "credential_validation", "safe_mode": True, "credential_required": True, "provider": "metasploit", "single_credential_only": True, "payload": False, "changes_target": False, "cleanup_supported": False, "execution_scope": "target_remote"},
+    },
+    {
+        "task_key": "MAGI-M-ATK-APP-001",
+        "name": "HTTP Methods Detection",
+        "description": "Executa o módulo HTTP OPTIONS do Metasploit contra uma aplicação para identificar métodos HTTP anunciados, sem alteração de estado.",
+        "category": "Application",
+        "platform": "Web",
+        "executor": "metasploit",
+        "impact": "safe",
+        "detection": {"type": "metasploit_module", "module": "auxiliary/scanner/http/options", "port": 80, "path": "/", "ssl": False},
+        "remediation": "Desabilite métodos HTTP desnecessários e aplique controles de método/rota no servidor web, proxy ou WAF.",
+        "metadata": {"attack_phase": "discovery", "safe_mode": True, "credential_required": False, "provider": "metasploit", "technique_parameter": "TARGETURI", "payload": False, "changes_target": False, "cleanup_supported": False, "execution_scope": "target_remote"},
+    },
+    {
+        "task_key": "MAGI-M-ATK-NET-001",
+        "name": "SNMP Enumeration",
+        "description": "Executa enumeração SNMP v2c com uma única community fornecida pelo operador e coleta informações do dispositivo sem executar SNMP SET.",
+        "category": "Network Node",
+        "platform": "Network",
+        "executor": "metasploit",
+        "impact": "low",
+        "detection": {"type": "metasploit_module", "module": "auxiliary/scanner/snmp/snmp_enum", "port": 161, "transport": "udp"},
+        "remediation": "Restrinja SNMP às redes de gestão, utilize communities não padrão e prefira SNMPv3 quando suportado.",
+        "metadata": {"attack_phase": "discovery", "safe_mode": True, "credential_required": False, "provider": "metasploit", "technique_parameter": "COMMUNITY", "payload": False, "changes_target": False, "cleanup_supported": False, "execution_scope": "target_remote"},
+    },
 ]
 
 
@@ -187,11 +237,11 @@ def sync_attack_simulator() -> dict[str, Any]:
         "repository_key": "magi_attack",
         "name": "MAGI Attack Simulator",
         "provider": "magi",
-        "description": "Catálogo nativo de simulações remotas, controladas e não destrutivas do MAGI 5.3.",
+        "description": "Catálogo de Attack/Pentest do MAGI: técnicas nativas e providers externos controlados.",
         "available": True,
         "metadata": {
             "execution": "runner",
-            "version": "5.3",
+            "version": "5.5.0",
             "semantics": "attack_simulation",
             "safe_mode": True,
             "destructive": False,
@@ -210,3 +260,26 @@ def attack_catalog(search: str | None = None, category: str | None = None) -> di
 def attack_history(limit: int = 100) -> dict[str, Any]:
     rows = [r for r in list_executions(limit=max(limit * 3, 100)) if r.get("repository_key") == "magi_attack"][:limit]
     return {"success": True, "executions": rows}
+
+
+def provider_status() -> dict[str, Any]:
+    runner = get_single_online_runner()
+    if not runner:
+        return {"success": True, "runner_online": False, "providers": {"magi_native": {"available": False}, "metasploit": {"available": False, "message": "Nenhum Runner online."}}}
+    metadata = runner.get("metadata") or {}
+    capabilities = metadata.get("capabilities") or {}
+    msf = capabilities.get("metasploit") or {}
+    return {
+        "success": True,
+        "runner_online": True,
+        "runner_id": runner.get("runner_id"),
+        "providers": {
+            "magi_native": {"available": True},
+            "metasploit": {
+                "available": bool(msf.get("available")),
+                "version": msf.get("version"),
+                "path": msf.get("path"),
+                "message": msf.get("message"),
+            },
+        },
+    }

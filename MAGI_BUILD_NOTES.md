@@ -66,3 +66,23 @@ Após validação da 5.4, a Build 5.5 permanece reservada para Pentest manual/co
 - Badges confirmados (`ACCESS`, `DISCOVERY`, `SNMP`) recebem destaque verde.
 - Barreiras e falhas recebem destaque vermelho; estados neutros permanecem informativos.
 - Build candidata a baseline final da série 5.4 após validação em laboratório.
+
+## Build 5.5.0 — Pentest Framework
+- Attack Simulator reorganizado em três áreas laterais: Attack, Campaign e Histórico.
+- Campaign/Attack Path 5.4.5 preservados sem mudança funcional.
+- Arquitetura de providers introduzida: `magi_native` e `metasploit`.
+- Nomenclatura Metasploit: `MAGI-M-ATK-*`; técnicas MAGI Native existentes permanecem `MAGI-ATK-*`.
+- Catálogo inicial Metasploit deliberadamente limitado a quatro técnicas:
+  - `MAGI-M-ATK-END-001` — SMB Version Detection.
+  - `MAGI-M-ATK-AD-001` — Kerberos Authentication Validation (uma única credencial; sem brute force).
+  - `MAGI-M-ATK-APP-001` — HTTP Methods Detection.
+  - `MAGI-M-ATK-NET-001` — SNMP Enumeration (sem SNMP SET).
+- Novo executor `metasploit` do Runner com allowlist fixa dos quatro módulos da 5.5.0.
+- Metasploit é dependência opcional instalada no host do Runner; não é empacotado dentro de `tools`.
+- Detecção do `msfconsole`: caminho explícito, `MAGI_METASPLOIT_PATH`, PATH e caminhos conhecidos do Windows.
+- Heartbeat/Doctor reportam capability, versão e path do Metasploit.
+- Execução não interativa via `msfconsole -q -x`, com valores validados para impedir injeção de comandos no console.
+- Resultado normalizado preserva `stdout/stderr` como Raw Evidence e publica evidência estruturada.
+- Warning do Ruby/Recog não é tratado automaticamente como falha.
+- Histórico passa a exibir Provider, Runner Job e evidência normalizada.
+- Nenhum exploit destrutivo, Meterpreter, reverse shell, brute force, árvore automática ou atualização automática do Metasploit entra na 5.5.0.

@@ -30,23 +30,32 @@
   <main class="page-content">
     <section class="page-heading">
       <div>
-        <p class="eyebrow">BUILD 5.2</p>
+        <p class="eyebrow">BUILD 5.5.0</p>
         <h1>MAGI Attack Simulator</h1>
-        <p>Simulações remotas controladas para validar exposição, caminhos de movimento lateral e telemetria de aplicação sem exploração destrutiva.</p>
+        <p>Execuções pontuais MAGI Native e Metasploit, Campaign controlada e histórico rastreável em áreas separadas.</p>
       </div>
       <button id="syncAttackCatalog" class="btn secondary">Sincronizar catálogo</button>
     </section>
 
-    <section class="grid-cards" id="attackSummaryCards">
+    <div class="attack-workspace">
+      <aside class="attack-subnav">
+        <h3>Attack Simulator</h3>
+        <button class="attack-nav-item active" data-view="attack">Attack</button>
+        <button class="attack-nav-item" data-view="campaign">Campaign</button>
+        <button class="attack-nav-item" data-view="history">Histórico</button>
+      </aside>
+      <div class="attack-workspace-content">
+
+    <section class="grid-cards" id="attackSummaryCards" data-attack-view="attack">
       <article class="metric-card"><span>Simulações</span><strong id="attackSimulationCount">--</strong></article>
       <article class="metric-card"><span>Modo</span><strong>SAFE</strong></article>
       <article class="metric-card"><span>Execução</span><strong>Runner remoto</strong></article>
-      <article class="metric-card"><span>Modo</span><strong>Safe + evidência benigna</strong></article>
+      <article class="metric-card"><span>Metasploit</span><strong id="metasploitProviderStatus">Verificando...</strong></article>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-attack-view="attack">
       <div class="panel-header">
-        <div><h2>Catálogo 5.2</h2><p>Endpoint, Active Directory, nó de rede e aplicação.</p></div>
+        <div><h2>Attack — Catálogo 5.5</h2><p>MAGI Native e providers externos controlados. Metasploit é opcional por Runner.</p></div>
       </div>
       <div class="form-grid">
         <label>Host A / Initial Target<input id="attackTarget" placeholder="192.168.0.10 ou host-a.exemplo.local" /></label>
@@ -54,6 +63,8 @@
         <label>Credential Profile<select id="attackCredential"><option value="">Nenhuma / não necessária</option></select></label>
         <label>Categoria<select id="attackCategory"><option value="">Todas</option><option>Endpoint</option><option>Active Directory</option><option>Network Node</option><option>Application</option></select></label>
         <label>Buscar<input id="attackSearch" placeholder="RDP, WinRM, HTTP..." /></label>
+        <label>Provider<select id="attackProvider"><option value="">Todos</option><option value="magi_native">MAGI Native</option><option value="metasploit">Metasploit</option></select></label>
+        <label>Parâmetro da técnica<input id="attackTechniqueParameter" placeholder="Ex.: /admin ou community SNMP" /></label>
       </div>
       <details class="scope-box" open>
         <summary><strong>Attack Scope 5.2</strong> — limites nativos de exploração</summary>
@@ -68,15 +79,15 @@
       </details>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Simulação</th><th>Categoria</th><th>Fase</th><th>Impacto</th><th>Comportamento</th><th>Ação</th></tr></thead>
-          <tbody id="attackCatalogTable"><tr><td colspan="6">Carregando...</td></tr></tbody>
+          <thead><tr><th>Simulação</th><th>Provider</th><th>Categoria</th><th>Fase</th><th>Impacto</th><th>Comportamento</th><th>Ação</th></tr></thead>
+          <tbody id="attackCatalogTable"><tr><td colspan="7">Carregando...</td></tr></tbody>
         </table>
       </div>
       <pre id="attackResult" class="result-box">Selecione uma simulação para planejar ou executar.</pre>
     </section>
 
 
-    <section class="panel" id="campaignPanel">
+    <section class="panel" id="campaignPanel" data-attack-view="campaign">
       <div class="panel-header">
         <div><h2>Attack Campaign 5.3</h2><p>Campaign multi-protocolo: WinRM/SMB para Windows, SSH para Linux e SNMP v2c para descoberta de dispositivos. Mantém ciclos, scope e expansão controlada.</p></div>
         <button id="refreshCampaigns" class="btn secondary">Atualizar</button>
@@ -112,15 +123,17 @@
       <div id="campaignDetail" class="campaign-detail"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-attack-view="history">
       <div class="panel-header"><div><h2>Histórico de simulações</h2><p>Evidências produzidas pelo Runner e normalizadas pelo MAGI.</p></div><button id="refreshAttackHistory" class="btn secondary">Atualizar</button></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>ID</th><th>Simulação</th><th>Categoria</th><th>Target</th><th>Execução</th><th>Resultado do ataque</th><th>Executado em</th></tr></thead>
-          <tbody id="attackHistoryTable"><tr><td colspan="7">Nenhuma execução carregada.</td></tr></tbody>
+          <thead><tr><th>ID</th><th>Simulação</th><th>Provider</th><th>Categoria</th><th>Target</th><th>Execução</th><th>Resultado</th><th>Executado em</th></tr></thead>
+          <tbody id="attackHistoryTable"><tr><td colspan="8">Nenhuma execução carregada.</td></tr></tbody>
         </table>
       </div>
     </section>
+      </div>
+    </div>
   </main>
   <script src="/assets/common.js"></script>
   <script src="/assets/attack-simulator.js"></script>

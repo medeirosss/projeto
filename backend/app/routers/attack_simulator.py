@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, HTTPException, Request
 
-from app.services.attack_simulator_service import attack_catalog, attack_history, sync_attack_simulator
+from app.services.attack_simulator_service import attack_catalog, attack_history, sync_attack_simulator, provider_status
 from app.services.validation_engine_service import execute_task, plan_task
 
 router = APIRouter(prefix="/api/attack-simulator", tags=["attack-simulator"])
@@ -18,7 +18,7 @@ def summary():
         categories[key] = categories.get(key, 0) + 1
     return {
         "success": True,
-        "version": "5.2",
+        "version": "5.5.0",
         "safe_mode": True,
         "destructive": False,
         "credential_execution": True,
@@ -26,6 +26,12 @@ def summary():
         "categories": categories,
     }
 
+
+
+
+@router.get("/providers")
+def providers():
+    return provider_status()
 
 @router.post("/sync")
 def sync():

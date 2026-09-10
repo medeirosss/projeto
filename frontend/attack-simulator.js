@@ -4,14 +4,83 @@ async function api(url,opts){const r=await fetch(url,opts);let d={};try{d=await 
 function badge(v){const s=String(v||'').toLowerCase();const ok=['success','precondition_confirmed','lateral_movement_confirmed','confirmed'].includes(s);const bad=['failed','error','timeout','target_unreachable'].includes(s);return `<span class="badge ${ok?'badge-ok':bad?'badge-danger':'badge-muted'}">${esc(v||'--')}</span>`;}
 let catalogById={};
 let editingCampaignId=null;
+function providerOfTask(r){const m=r.metadata||{};return m.provider||((r.task_key||'').startsWith('MAGI-M-ATK-')?'metasploit':'magi_native');}
+function providerLabel(p){return p==='metasploit'?'Metasploit':'MAGI Native';}
+function switchAttackView(view){
+  document.querySelectorAll('[data-attack-view]').forEach(el=>{el.style.display=(el.dataset.attackView===view)?'':'none';});
+  document.querySelectorAll('.attack-nav-item').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
+  if(view==='history') loadHistory();
+  if(view==='campaign') loadCampaigns();
+}
+async function loadProviderStatus(){
+  const el=document.getElementById('metasploitProviderStatus'); if(!el)return;
+  try{
+    const d=await api('/api/attack-simulator/providers'),m=(d.providers||{}).metasploit||{};
+    el.textContent=m.available?`AVAILABLE${m.version?' · '+m.version:''}`:'NOT INSTALLED';
+    el.title=m.path||m.message||'';
+  }catch(e){el.textContent='UNKNOWN';el.title=e.message;}
+}
 async function loadSummary(){const d=await api('/api/attack-simulator/summary');document.getElementById('attackSimulationCount').textContent=d.simulations??0;}
 async function loadCredentials(){try{const d=await api('/api/actions/credentials');const all=d.credentials||[];const windows=all.filter(c=>['windows','wmi','winrm'].includes(String(c.type||c.credential_type||'').toLowerCase()));const ssh=all.filter(c=>['ssh','linux'].includes(String(c.type||c.credential_type||'').toLowerCase()));const snmp=all.filter(c=>['snmp','snmp_v2c','snmpv2c'].includes(String(c.type||c.credential_type||'').toLowerCase()));const opts=(rows,empty)=>`<option value="">${empty}</option>`+rows.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} — ${esc(c.domain?c.domain+'\\':'')}${esc(c.username||c.type||'')}</option>`).join('');document.getElementById('attackCredential').innerHTML=opts(windows,'Nenhuma / não necessária');const cw=document.getElementById('campaignCredential');if(cw)cw.innerHTML=opts(windows,'Sem credencial Windows');const cs=document.getElementById('campaignSshCredential');if(cs)cs.innerHTML=opts(ssh,'Sem credencial SSH');const cn=document.getElementById('campaignSnmpCredential');if(cn)cn.innerHTML=opts(snmp,'Sem community SNMP');}catch(_e){}}
-async function loadCatalog(){const url=new URL('/api/attack-simulator/catalog',location.origin);const q=document.getElementById('attackSearch').value.trim();const c=document.getElementById('attackCategory').value;if(q)url.searchParams.set('search',q);if(c)url.searchParams.set('category',c);const d=await api(url);const rows=d.simulations||[];catalogById={};rows.forEach(r=>catalogById[String(r.id)]=r);document.getElementById('attackCatalogTable').innerHTML=rows.map(r=>{const req=(r.metadata||{}).credential_required?' <span class="badge badge-muted">Credential</span>':'';return `<tr><td><strong>${esc(r.task_key)} - ${esc(r.name)}</strong>${req}<br><small>${esc(r.description)}</small></td><td>${esc(r.category)}</td><td>${esc((r.metadata||{}).attack_phase)}</td><td>${badge(r.impact)}</td><td><code>${esc(JSON.stringify(r.detection||{}))}</code></td><td><button class="btn secondary btn-sm atk-plan" data-id="${r.id}">Planejar</button> <button class="btn primary btn-sm atk-run" data-id="${r.id}">Executar</button></td></tr>`}).join('')||'<tr><td colspan="6">Nenhuma simulação.</td></tr>';document.querySelectorAll('.atk-plan').forEach(b=>b.onclick=()=>runAttack(b.dataset.id,true));document.querySelectorAll('.atk-run').forEach(b=>b.onclick=()=>runAttack(b.dataset.id,false));}
-function executionPayload(id){const task=catalogById[String(id)]||{},meta=task.metadata||{};const p={target:document.getElementById('attackTarget').value.trim(),host_b:document.getElementById('attackHostB').value.trim(),credential_id:document.getElementById('attackCredential').value||null,max_hops:Number(document.getElementById('attackMaxHops').value||3),max_branches_per_host:Number(document.getElementById('attackMaxBranches').value||3),max_total_hosts:Number(document.getElementById('attackMaxHosts').value||15),max_job_duration_minutes:Number(document.getElementById('attackMaxMinutes').value||30),allowed_networks:document.getElementById('attackAllowedNetworks').value.split(',').map(x=>x.trim()).filter(Boolean)};if(meta.secondary_target_required&&!p.host_b)throw new Error('Host B / Destination é obrigatório para esta simulação.');if(meta.credential_required&&!p.credential_id)throw new Error('Credential Profile é obrigatório para esta simulação.');return p;}
+async function loadCatalog(){
+  const url=new URL('/api/attack-simulator/catalog',location.origin);
+  const q=document.getElementById('attackSearch').value.trim();
+  const c=document.getElementById('attackCategory').value;
+  const provider=document.getElementById('attackProvider')?.value||'';
+  if(q)url.searchParams.set('search',q);
+  if(c)url.searchParams.set('category',c);
+  const d=await api(url);
+  let rows=d.simulations||[];
+  if(provider) rows=rows.filter(r=>providerOfTask(r)===provider);
+  catalogById={};rows.forEach(r=>catalogById[String(r.id)]=r);
+  document.getElementById('attackCatalogTable').innerHTML=rows.map(r=>{
+    const meta=r.metadata||{},req=meta.credential_required?' <span class="badge badge-muted">Credential</span>':'';
+    const provider=providerOfTask(r);
+    const providerBadge=provider==='metasploit'?'<span class="badge badge-muted">Metasploit</span>':'<span class="badge badge-ok">MAGI Native</span>';
+    return `<tr><td><strong>${esc(r.task_key)} - ${esc(r.name)}</strong>${req}<br><small>${esc(r.description)}</small></td><td>${providerBadge}</td><td>${esc(r.category)}</td><td>${esc(meta.attack_phase)}</td><td>${badge(r.impact)}</td><td><code>${esc(JSON.stringify(r.detection||{}))}</code></td><td><button class="btn secondary btn-sm atk-plan" data-id="${r.id}">Planejar</button> <button class="btn primary btn-sm atk-run" data-id="${r.id}">Executar</button></td></tr>`;
+  }).join('')||'<tr><td colspan="7">Nenhuma simulação.</td></tr>';
+  document.querySelectorAll('.atk-plan').forEach(b=>b.onclick=()=>runAttack(b.dataset.id,true));
+  document.querySelectorAll('.atk-run').forEach(b=>b.onclick=()=>runAttack(b.dataset.id,false));
+}
+function executionPayload(id){
+  const task=catalogById[String(id)]||{},meta=task.metadata||{};
+  const p={
+    target:document.getElementById('attackTarget').value.trim(),
+    host_b:document.getElementById('attackHostB').value.trim(),
+    credential_id:document.getElementById('attackCredential').value||null,
+    technique_parameter:document.getElementById('attackTechniqueParameter')?.value.trim()||null,
+    max_hops:Number(document.getElementById('attackMaxHops').value||3),
+    max_branches_per_host:Number(document.getElementById('attackMaxBranches').value||3),
+    max_total_hosts:Number(document.getElementById('attackMaxHosts').value||15),
+    max_job_duration_minutes:Number(document.getElementById('attackMaxMinutes').value||30),
+    allowed_networks:document.getElementById('attackAllowedNetworks').value.split(',').map(x=>x.trim()).filter(Boolean)
+  };
+  if(meta.secondary_target_required&&!p.host_b)throw new Error('Host B / Destination é obrigatório para esta simulação.');
+  if(meta.credential_required&&!p.credential_id)throw new Error('Credential Profile é obrigatório para esta simulação.');
+  return p;
+}
 async function runAttack(id,plan){const out=document.getElementById('attackResult');let body;try{body=executionPayload(id);}catch(e){out.textContent=e.message;return;}if(!body.target){out.textContent='Host A / Target obrigatório.';return;}if(!plan&&!confirm(`Executar simulação controlada em ${body.target}${body.host_b?' → '+body.host_b:''}?`))return;out.textContent=plan?'Planejando...':'Enviando ao Runner...';try{const d=await api(`/api/attack-simulator/simulations/${id}/${plan?'plan':'execute'}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});out.textContent=pretty(d);if(!plan)setTimeout(loadHistory,1200);}catch(e){out.textContent=e.message;}}
-async function loadHistory(){const d=await api('/api/attack-simulator/history?limit=100');const rows=d.executions||[];document.getElementById('attackHistoryTable').innerHTML=rows.map(r=>{const e=r.evidence||{};const result=e.attack_result||r.finding_status;return `<tr><td>${esc(r.id)}</td><td><strong>${esc(r.task_key)}</strong><br><small>${esc(r.task_name)}</small></td><td>${esc(r.category)}</td><td>${esc(r.target)}${e.secondary_target?' → '+esc(e.secondary_target):''}</td><td>${badge(r.status)}<br><small>teste/job</small></td><td>${badge(result)}<br><small>${esc(r.finding_message||'')}</small></td><td>${esc(r.created_at)}</td></tr>`}).join('')||'<tr><td colspan="7">Nenhuma execução.</td></tr>';}
+async function loadHistory(){
+  const d=await api('/api/attack-simulator/history?limit=100'),rows=d.executions||[];
+  document.getElementById('attackHistoryTable').innerHTML=rows.map(r=>{
+    const e=r.evidence||{},meta=e.metadata||{},result=meta.attack_result||e.attack_result||r.finding_status;
+    const provider=meta.provider||((r.task_key||'').startsWith('MAGI-M-ATK-')?'metasploit':'magi_native');
+    const normalized=meta.normalized_evidence||{};
+    const detail=Object.keys(normalized).length?`<br><small>${esc(JSON.stringify(normalized))}</small>`:'';
+    return `<tr><td>${esc(r.id)}</td><td><strong>${esc(r.task_key)}</strong><br><small>${esc(r.task_name)}</small></td><td>${esc(providerLabel(provider))}</td><td>${esc(r.category)}</td><td>${esc(r.target)}${e.secondary_target?' → '+esc(e.secondary_target):''}</td><td>${badge(r.status)}<br><small>Runner ${esc(r.runner_id||'--')} / Job ${esc(r.runner_job_id||'--')}</small></td><td>${badge(result)}<br><small>${esc(r.finding_message||'')}</small>${detail}</td><td>${esc(r.created_at)}</td></tr>`;
+  }).join('')||'<tr><td colspan="8">Nenhuma execução.</td></tr>';
+}
 async function syncCatalog(){const out=document.getElementById('attackResult');out.textContent='Sincronizando catálogo...';try{out.textContent=pretty(await api('/api/attack-simulator/sync',{method:'POST'}));await Promise.all([loadSummary(),loadCatalog()]);}catch(e){out.textContent=e.message;}}
-document.addEventListener('DOMContentLoaded',()=>{buildHeader('attack');loadSummary();loadCredentials();loadCatalog();loadHistory();document.getElementById('attackSearch').addEventListener('input',loadCatalog);document.getElementById('attackCategory').addEventListener('change',loadCatalog);document.getElementById('refreshAttackHistory').onclick=loadHistory;document.getElementById('syncAttackCatalog').onclick=syncCatalog;});
+document.addEventListener('DOMContentLoaded',()=>{
+  buildHeader('attack');loadSummary();loadCredentials();loadCatalog();loadHistory();loadProviderStatus();
+  document.getElementById('attackSearch').addEventListener('input',loadCatalog);
+  document.getElementById('attackCategory').addEventListener('change',loadCatalog);
+  document.getElementById('attackProvider')?.addEventListener('change',loadCatalog);
+  document.getElementById('refreshAttackHistory').onclick=loadHistory;
+  document.getElementById('syncAttackCatalog').onclick=async()=>{await syncCatalog();await loadProviderStatus();};
+  document.querySelectorAll('.attack-nav-item').forEach(b=>b.onclick=()=>switchAttackView(b.dataset.view));
+  switchAttackView('attack');
+});
 
 function copyCredentialsToCampaign(){}
 function dtLocal(v){if(!v)return '--';try{return new Date(v).toLocaleString();}catch(_e){return v;}}

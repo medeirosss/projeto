@@ -14,11 +14,12 @@ from .security_check import SecurityCheckExecutor
 from .nuclei import NucleiExecutor
 from .attack_simulation import AttackSimulationExecutor
 from .campaign_probe import CampaignProbeExecutor
+from .metasploit import MetasploitExecutor
 
 
 class ExecutorRegistry:
     def __init__(self, allowed: list[str]) -> None:
-        executors = [CmdExecutor(), PowerShellExecutor(), PythonExecutor(), AtomicExecutor(), NmapDiscoveryExecutor(), ServiceDiscoveryExecutor(), CredentialValidateExecutor(), DeepInventoryExecutor(), SecurityCheckExecutor(), NucleiExecutor(), AttackSimulationExecutor(), CampaignProbeExecutor()]
+        executors = [CmdExecutor(), PowerShellExecutor(), PythonExecutor(), AtomicExecutor(), NmapDiscoveryExecutor(), ServiceDiscoveryExecutor(), CredentialValidateExecutor(), DeepInventoryExecutor(), SecurityCheckExecutor(), NucleiExecutor(), AttackSimulationExecutor(), CampaignProbeExecutor(), MetasploitExecutor()]
         self._executors = {e.name: e for e in executors if e.name in allowed}
         self._executors["ps"] = self._executors.get("powershell")
         self._executors["pwsh"] = self._executors.get("powershell")
