@@ -82,8 +82,11 @@ def _attack_path_payload(c: dict[str, Any]) -> dict[str, Any]:
         st=str(p.get('status') or '').lower()
         ev=p.get('evidence') or {}
         result=str(p.get('result') or '')
-        if st=='confirmed' or bool(ev.get('access_confirmed')): return 'ACCESS'
-        if p.get('relation_type')=='discovery' and (ev.get('snmp_confirmed') or ev.get('confirmation_status')=='snmp_confirmed'): return 'SNMP'
+        relation=str(p.get('relation_type') or '').lower()
+        if relation=='discovery':
+            if ev.get('snmp_confirmed') or ev.get('confirmation_status')=='snmp_confirmed': return 'SNMP'
+            return 'DISCOVERY'
+        if st=='confirmed' or bool(ev.get('access_confirmed')) or str(p.get('result') or '')=='access_confirmed': return 'ACCESS'
         blob=(st+' '+result+' '+__import__('json').dumps(ev,default=str)).lower()
         if 'authentication_failed' in blob or 'auth_failed' in blob: return 'AUTHENTICATION_FAILED'
         if 'transport_failed' in blob or 'unreachable' in blob: return 'TRANSPORT_FAILED'
@@ -129,10 +132,11 @@ def _attack_path_payload(c: dict[str, Any]) -> dict[str, Any]:
             barriers.append(item)
     confirmed=[e for e in edges if e['kind']=='ACCESS']
     snmp=[e for e in edges if e['kind']=='SNMP']
+    confirmed_assets={str(a.get('address')) for a in assets if a.get('address') and (bool(a.get('access_confirmed')) or str(a.get('state') or '')=='access_confirmed')}
     max_hop=max([int(e.get('hop') or 0) for e in confirmed],default=0)
     summary={'ips_evaluated':len({e['target'] for e in edges if e.get('target')}),
-             'hosts_known':len(assets),'access_confirmed':len({e['target'] for e in confirmed}),
-             'seeds_confirmed':len({e['target'] for e in confirmed}),
+             'hosts_known':len(assets),'access_confirmed':len(confirmed_assets),
+             'seeds_confirmed':len(confirmed_assets),
              'max_hop':max_hop,'snmp_discovered':len({e['target'] for e in snmp}),
              'barriers':len(barriers),'cycles':len(cycles)}
     protocols={}

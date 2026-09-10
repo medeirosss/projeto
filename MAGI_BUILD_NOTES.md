@@ -58,3 +58,11 @@ Após validação da 5.4, a Build 5.5 permanece reservada para Pentest manual/co
 - Caminho Windows: `C:\MAGI\MAGI_EVIDENCE.txt`.
 - Texto da UI atualizado para `Criar evidência benigna no host`.
 - O ajuste geral de timezone da interface não faz parte desta build.
+
+## Build 5.4.5 — Attack Path & Evidence Final
+- KPI `Acessos` do Attack Path passa a usar os assets `access_confirmed` da execução como fonte de verdade.
+- Discovery confirmado não é mais rotulado como `ACCESS CONFIRMED`; usa `DISCOVERY CONFIRMED`.
+- Evidências exibem o `Target`/IP diretamente, sem exigir consulta à tela do Runner.
+- Badges confirmados (`ACCESS`, `DISCOVERY`, `SNMP`) recebem destaque verde.
+- Barreiras e falhas recebem destaque vermelho; estados neutros permanecem informativos.
+- Build candidata a baseline final da série 5.4 após validação em laboratório.

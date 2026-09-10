@@ -85,7 +85,8 @@ async function viewCampaign(id){
     await renderCampaignTab(id,'path',c);
   }catch(e){document.getElementById('campaignResult').textContent=e.message;}
 }
-function attackKindLabel(k){return ({ACCESS:'✓ ACCESS CONFIRMED',SNMP:'● SNMP / DISCOVERY ONLY',AUTHENTICATION_FAILED:'! AUTHENTICATION FAILED',TRANSPORT_FAILED:'! TRANSPORT FAILED',SERVICE_UNAVAILABLE:'! SERVICE UNAVAILABLE',BARRIER:'! BARRIER',DISCOVERY:'● DISCOVERY'})[k]||k;}
+function attackKindLabel(k){return ({ACCESS:'✓ ACCESS CONFIRMED',SNMP:'✓ SNMP DISCOVERY CONFIRMED',AUTHENTICATION_FAILED:'✕ AUTHENTICATION FAILED',TRANSPORT_FAILED:'✕ TRANSPORT FAILED',SERVICE_UNAVAILABLE:'✕ SERVICE UNAVAILABLE',BARRIER:'✕ BARRIER',DISCOVERY:'✓ DISCOVERY CONFIRMED'})[k]||k;}
+function attackKindClass(k){return ['ACCESS','DISCOVERY','SNMP'].includes(k)?'ap-badge-success':['AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'].includes(k)?'ap-badge-danger':'ap-badge-neutral';}
 async function renderCampaignTab(id,tab,cached){
   const panel=document.getElementById('attackPathPanel'); if(!panel)return;
   try{
@@ -104,7 +105,7 @@ async function renderCampaignTab(id,tab,cached){
         <p><strong>Encerramento/estado:</strong> ${esc(sum.stop_reason||'--')}</p>`;return;
     }
     if(tab==='evidence'){
-      panel.innerHTML=`<h4>Evidências rastreáveis</h4><div class="ap-evidence">${(a.evidence||[]).map(e=>`<div class="ap-panel"><span class="ap-badge">${esc(attackKindLabel(e.kind))}</span> <strong>${esc(e.origin)} → ${esc(e.target||'--')}</strong><br><small>Protocol: ${esc(e.protocol||'--')} | Hop: ${esc(e.hop??'--')} | Cycle: ${esc(e.cycle_id||'--')} | Runner Job: ${esc(e.runner_job_id||'--')}</small>${e.reason?`<br><strong>Motivo:</strong> ${esc(e.reason)}`:''}${e.result?`<pre>${esc(String(e.result))}</pre>`:''}</div>`).join('')||'<p>Sem evidências nesta execução.</p>'}</div>`;return;
+      panel.innerHTML=`<h4>Evidências rastreáveis</h4><div class="ap-evidence">${(a.evidence||[]).map(e=>`<div class="ap-panel"><span class="ap-badge ${attackKindClass(e.kind)}">${esc(attackKindLabel(e.kind))}</span> <strong>${esc(e.origin)} → ${esc(e.target||'--')}</strong><br><small><strong>Target:</strong> ${esc(e.target||'--')} | Protocol: ${esc(e.protocol||'--')} | Hop: ${esc(e.hop??'--')} | Cycle: ${esc(e.cycle_id||'--')} | Runner Job: ${esc(e.runner_job_id||'--')}</small>${e.reason?`<br><strong>Motivo:</strong> ${esc(e.reason)}`:''}${e.result?`<pre>${esc(String(e.result))}</pre>`:''}</div>`).join('')||'<p>Sem evidências nesta execução.</p>'}</div>`;return;
     }
     const visible=edges.filter(e=>['ACCESS','SNMP','AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'].includes(e.kind));
     panel.innerHTML=`<h4>Attack Path — somente esta Campaign / Execution #${esc(a.execution_number||'--')}</h4>
