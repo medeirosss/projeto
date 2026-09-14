@@ -112,3 +112,13 @@ Após validação da 5.4, a Build 5.5 permanece reservada para Pentest manual/co
 - Credenciais embutidas na URL e fragmentos `#...` são rejeitados.
 - Evidência normalizada registra URL original, resolved target, porta, protocolo, path e SSL.
 - SMB, Kerberos, SNMP, Campaign e histórico/logs não recebem alteração funcional nesta build.
+
+## Build 5.5.3 — Application DNS Resolution / VHOST
+- Ajuste restrito ao fluxo `MAGI-M-ATK-APP-001`; nenhuma alteração funcional em SMB, Kerberos, SNMP ou Campaign.
+- O Runner resolve o hostname da Application URL antes de iniciar o Metasploit.
+- Para hostnames, `RHOSTS` recebe o IPv4 resolvido pelo Runner e `VHOST` preserva o hostname original.
+- O desenho evita a falha de resolução DNS observada no Metasploit/Ruby em Windows, sem perder virtual hosting HTTP.
+- URLs com IP literal continuam válidas e não exigem VHOST.
+- Evidência normalizada passa a registrar `hostname`, `resolved_ip`, `resolved_addresses`, `dns_resolution` e `vhost`.
+- Falha de resolução pelo próprio Runner retorna explicitamente `DNS_RESOLUTION_FAILED`.
+- Runner version: 2.18.3.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import re
+import socket
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -92,6 +93,47 @@ def _application_url(value: Any) -> dict[str, Any]:
         "port": int(port),
         "path": path,
         "ssl": scheme == "https",
+    }
+
+
+def _resolve_application_host(host: str, port: int) -> dict[str, Any]:
+    """Resolve Application host in the Runner before invoking Metasploit.
+
+    Metasploit/Ruby on Windows can fail name resolution even when the Windows
+    host resolver succeeds.  MAGI therefore resolves the hostname itself,
+    passes the IPv4 address as RHOSTS, and preserves the original hostname as
+    VHOST so HTTP virtual hosting continues to work.
+    """
+    try:
+        ip_obj = ipaddress.ip_address(host)
+        return {
+            "hostname": host,
+            "resolved_ip": str(ip_obj),
+            "dns_resolution": "not_required",
+            "vhost_required": False,
+        }
+    except ValueError:
+        pass
+
+    try:
+        infos = socket.getaddrinfo(host, int(port), socket.AF_INET, socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise RuntimeError(f"DNS_RESOLUTION_FAILED: não foi possível resolver {host} no Runner: {exc}") from exc
+
+    addresses: list[str] = []
+    for info in infos:
+        address = str(info[4][0])
+        if address not in addresses:
+            addresses.append(address)
+    if not addresses:
+        raise RuntimeError(f"DNS_RESOLUTION_FAILED: nenhuma resposta IPv4 para {host} no Runner.")
+
+    return {
+        "hostname": host,
+        "resolved_ip": addresses[0],
+        "resolved_addresses": addresses,
+        "dns_resolution": "runner",
+        "vhost_required": True,
     }
 
 def _extract(stdout: str, task_key: str, target: str) -> dict[str, Any]:
@@ -186,7 +228,11 @@ class MetasploitExecutor:
 
         raw_target = payload.get("target") or job.get("target")
         application = _application_url(raw_target) if key == "MAGI-M-ATK-APP-001" else None
-        target = application["host"] if application else _target(raw_target)
+        application_resolution = (
+            _resolve_application_host(application["host"], application["port"])
+            if application else None
+        )
+        target = application_resolution["resolved_ip"] if application_resolution else _target(raw_target)
         detection = payload.get("detection") or {}
         credential = payload.get("credential") or {}
         if spec["credential_required"] and not credential.get("secret"):
@@ -207,11 +253,15 @@ class MetasploitExecutor:
             if domain:
                 commands.append(f"set DOMAIN {domain}")
         elif key == "MAGI-M-ATK-APP-001":
-            # Application attacks accept a full URL. Host, port, TLS and URI are
-            # derived by the Runner rather than asking the operator to decompose it.
+            # Application attacks accept a full URL. The Runner resolves DNS
+            # itself and gives Metasploit an IP in RHOSTS.  VHOST preserves the
+            # original hostname for S3/static hosting, reverse proxies and other
+            # name-based virtual hosts.
             port = int(application["port"])
             uri = application["path"]
             commands += [f"set RPORT {port}", f"set TARGETURI {uri}"]
+            if application_resolution.get("vhost_required"):
+                commands.append(f"set VHOST {application['host']}")
             if application["ssl"]:
                 commands.append("set SSL true")
         elif key == "MAGI-M-ATK-NET-001":
@@ -233,7 +283,12 @@ class MetasploitExecutor:
         if key == "MAGI-M-ATK-APP-001" and application:
             evidence.update({
                 "application_url": application["url"],
-                "resolved_target": application["host"],
+                "hostname": application["host"],
+                "resolved_target": application_resolution["resolved_ip"],
+                "resolved_ip": application_resolution["resolved_ip"],
+                "resolved_addresses": application_resolution.get("resolved_addresses", [application_resolution["resolved_ip"]]),
+                "dns_resolution": application_resolution["dns_resolution"],
+                "vhost": application["host"] if application_resolution.get("vhost_required") else None,
                 "port": application["port"],
                 "protocol": application["scheme"].upper(),
                 "path": application["path"],
