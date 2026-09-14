@@ -270,6 +270,18 @@ def create_runner_job(runner_id: str | None, job_type: str, target: str | None, 
         return dict(row)
 
 
+
+def get_runner_job_result(job_id: int) -> dict | None:
+    with SessionLocal() as db:
+        row = db.execute(text("""
+            SELECT id, runner_id, job_type, target, payload, status, result, error,
+                   created_at, started_at, finished_at
+            FROM runner_jobs
+            WHERE id=:id
+            LIMIT 1
+        """), {"id": int(job_id)}).mappings().first()
+        return dict(row) if row else None
+
 def get_job_result_disposition(job_id: int, runner_id: str) -> dict | None:
     """Return the current backend disposition for a Runner result retry.
 

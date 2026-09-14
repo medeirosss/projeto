@@ -21,7 +21,7 @@ async function loadProviderStatus(){
   }catch(e){el.textContent='UNKNOWN';el.title=e.message;}
 }
 async function loadSummary(){const d=await api('/api/attack-simulator/summary');document.getElementById('attackSimulationCount').textContent=d.simulations??0;}
-async function loadCredentials(){try{const d=await api('/api/actions/credentials');const all=d.credentials||[];const windows=all.filter(c=>['windows','wmi','winrm'].includes(String(c.type||c.credential_type||'').toLowerCase()));const ssh=all.filter(c=>['ssh','linux'].includes(String(c.type||c.credential_type||'').toLowerCase()));const snmp=all.filter(c=>['snmp','snmp_v2c','snmpv2c'].includes(String(c.type||c.credential_type||'').toLowerCase()));const opts=(rows,empty)=>`<option value="">${empty}</option>`+rows.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} — ${esc(c.domain?c.domain+'\\':'')}${esc(c.username||c.type||'')}</option>`).join('');document.getElementById('attackCredential').innerHTML=opts(windows,'Nenhuma / não necessária');const cw=document.getElementById('campaignCredential');if(cw)cw.innerHTML=opts(windows,'Sem credencial Windows');const cs=document.getElementById('campaignSshCredential');if(cs)cs.innerHTML=opts(ssh,'Sem credencial SSH');const cn=document.getElementById('campaignSnmpCredential');if(cn)cn.innerHTML=opts(snmp,'Sem community SNMP');}catch(_e){}}
+async function loadCredentials(){try{const d=await api('/api/actions/credentials');const all=d.credentials||[];const windows=all.filter(c=>['windows','wmi','winrm'].includes(String(c.type||c.credential_type||'').toLowerCase()));const ssh=all.filter(c=>['ssh','linux'].includes(String(c.type||c.credential_type||'').toLowerCase()));const snmp=all.filter(c=>['snmp','snmp_v2c','snmpv2c'].includes(String(c.type||c.credential_type||'').toLowerCase()));const opts=(rows,empty)=>`<option value="">${empty}</option>`+rows.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} — ${esc(c.type||c.credential_type||'credential')} — ${esc(c.domain?c.domain+'\\':'')}${esc(c.username||'')}</option>`).join('');document.getElementById('attackCredential').innerHTML=opts(all,'Nenhuma / não necessária');const cw=document.getElementById('campaignCredential');if(cw)cw.innerHTML=opts(windows,'Sem credencial Windows');const cs=document.getElementById('campaignSshCredential');if(cs)cs.innerHTML=opts(ssh,'Sem credencial SSH');const cn=document.getElementById('campaignSnmpCredential');if(cn)cn.innerHTML=opts(snmp,'Sem community SNMP');}catch(_e){}}
 async function loadCatalog(){
   const url=new URL('/api/attack-simulator/catalog',location.origin);
   const q=document.getElementById('attackSearch').value.trim();
@@ -60,15 +60,63 @@ function executionPayload(id){
   return p;
 }
 async function runAttack(id,plan){const out=document.getElementById('attackResult');let body;try{body=executionPayload(id);}catch(e){out.textContent=e.message;return;}if(!body.target){out.textContent='Host A / Target obrigatório.';return;}if(!plan&&!confirm(`Executar simulação controlada em ${body.target}${body.host_b?' → '+body.host_b:''}?`))return;out.textContent=plan?'Planejando...':'Enviando ao Runner...';try{const d=await api(`/api/attack-simulator/simulations/${id}/${plan?'plan':'execute'}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});out.textContent=pretty(d);if(!plan)setTimeout(loadHistory,1200);}catch(e){out.textContent=e.message;}}
+let activeHistoryLog=null;
+let activeHistoryLogTab='summary';
+
+function historyLogSummary(d){
+  const e=d.execution||{};
+  return [
+    `Execution: ${e.id??'--'}`,
+    `Technique: ${e.task_key||'--'}${e.task_name?' — '+e.task_name:''}`,
+    `Provider: ${providerLabel(e.provider)}`,
+    `Target: ${e.target||'--'}`,
+    `Status: ${e.status||'--'}`,
+    `Finding: ${e.finding_status||'--'}`,
+    `Runner: ${e.runner_id||'--'}`,
+    `Runner Job: ${e.runner_job_id||'--'}`,
+    `Started: ${e.started_at||'--'}`,
+    `Finished: ${e.finished_at||'--'}`,
+    '',
+    e.finding_message||''
+  ].join('\n');
+}
+
+function renderHistoryLog(){
+  if(!activeHistoryLog)return;
+  const content=document.getElementById('attackHistoryLogContent');
+  const d=activeHistoryLog;
+  if(activeHistoryLogTab==='stdout') content.textContent=d.stdout||'(sem stdout)';
+  else if(activeHistoryLogTab==='stderr') content.textContent=d.stderr||'(sem stderr)';
+  else if(activeHistoryLogTab==='evidence') content.textContent=pretty(d.evidence||{});
+  else content.textContent=historyLogSummary(d);
+  document.querySelectorAll('.history-log-tab').forEach(b=>b.classList.toggle('active',b.dataset.logTab===activeHistoryLogTab));
+}
+
+async function openHistoryLog(id){
+  const panel=document.getElementById('attackHistoryLogPanel'),content=document.getElementById('attackHistoryLogContent');
+  panel.style.display='';
+  content.textContent='Carregando log persistido...';
+  try{
+    activeHistoryLog=await api(`/api/attack-simulator/history/${id}/log`);
+    activeHistoryLogTab='summary';
+    const e=activeHistoryLog.execution||{};
+    document.getElementById('attackHistoryLogTitle').textContent=`Log — ${e.task_key||'Execução'}`;
+    document.getElementById('attackHistoryLogSubtitle').textContent=`Runner Job ${e.runner_job_id||'--'} · ${e.target||'--'}`;
+    renderHistoryLog();
+    panel.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){content.textContent=e.message;}
+}
+
 async function loadHistory(){
   const d=await api('/api/attack-simulator/history?limit=100'),rows=d.executions||[];
   document.getElementById('attackHistoryTable').innerHTML=rows.map(r=>{
     const e=r.evidence||{},meta=e.metadata||{},result=meta.attack_result||e.attack_result||r.finding_status;
-    const provider=meta.provider||((r.task_key||'').startsWith('MAGI-M-ATK-')?'metasploit':'magi_native');
-    const normalized=meta.normalized_evidence||{};
+    const provider=meta.provider||e.provider||((r.task_key||'').startsWith('MAGI-M-ATK-')?'metasploit':'magi_native');
+    const normalized=meta.normalized_evidence||e.normalized_evidence||{};
     const detail=Object.keys(normalized).length?`<br><small>${esc(JSON.stringify(normalized))}</small>`:'';
-    return `<tr><td>${esc(r.id)}</td><td><strong>${esc(r.task_key)}</strong><br><small>${esc(r.task_name)}</small></td><td>${esc(providerLabel(provider))}</td><td>${esc(r.category)}</td><td>${esc(r.target)}${e.secondary_target?' → '+esc(e.secondary_target):''}</td><td>${badge(r.status)}<br><small>Runner ${esc(r.runner_id||'--')} / Job ${esc(r.runner_job_id||'--')}</small></td><td>${badge(result)}<br><small>${esc(r.finding_message||'')}</small>${detail}</td><td>${esc(r.created_at)}</td></tr>`;
-  }).join('')||'<tr><td colspan="8">Nenhuma execução.</td></tr>';
+    return `<tr><td>${esc(r.id)}</td><td><strong>${esc(r.task_key)}</strong><br><small>${esc(r.task_name)}</small></td><td>${esc(providerLabel(provider))}</td><td>${esc(r.category)}</td><td>${esc(r.target)}${e.secondary_target?' → '+esc(e.secondary_target):''}</td><td>${badge(r.status)}<br><small>Runner ${esc(r.runner_id||'--')} / Job ${esc(r.runner_job_id||'--')}</small></td><td>${badge(result)}<br><small>${esc(r.finding_message||'')}</small>${detail}</td><td>${esc(r.created_at)}</td><td><button class="btn secondary btn-sm atk-history-log" data-id="${esc(r.id)}">Log</button></td></tr>`;
+  }).join('')||'<tr><td colspan="9">Nenhuma execução.</td></tr>';
+  document.querySelectorAll('.atk-history-log').forEach(b=>b.onclick=()=>openHistoryLog(b.dataset.id));
 }
 async function syncCatalog(){const out=document.getElementById('attackResult');out.textContent='Sincronizando catálogo...';try{out.textContent=pretty(await api('/api/attack-simulator/sync',{method:'POST'}));await Promise.all([loadSummary(),loadCatalog()]);}catch(e){out.textContent=e.message;}}
 document.addEventListener('DOMContentLoaded',()=>{
@@ -79,6 +127,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('refreshAttackHistory').onclick=loadHistory;
   document.getElementById('syncAttackCatalog').onclick=async()=>{await syncCatalog();await loadProviderStatus();};
   document.querySelectorAll('.attack-nav-item').forEach(b=>b.onclick=()=>switchAttackView(b.dataset.view));
+  document.querySelectorAll('.history-log-tab').forEach(b=>b.onclick=()=>{activeHistoryLogTab=b.dataset.logTab;renderHistoryLog();});
+  const closeLog=document.getElementById('closeAttackHistoryLog');if(closeLog)closeLog.onclick=()=>{document.getElementById('attackHistoryLogPanel').style.display='none';};
   switchAttackView('attack');
 });
 

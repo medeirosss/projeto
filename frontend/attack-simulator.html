@@ -127,9 +127,22 @@
       <div class="panel-header"><div><h2>Histórico de simulações</h2><p>Evidências produzidas pelo Runner e normalizadas pelo MAGI.</p></div><button id="refreshAttackHistory" class="btn secondary">Atualizar</button></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>ID</th><th>Simulação</th><th>Provider</th><th>Categoria</th><th>Target</th><th>Execução</th><th>Resultado</th><th>Executado em</th></tr></thead>
-          <tbody id="attackHistoryTable"><tr><td colspan="8">Nenhuma execução carregada.</td></tr></tbody>
+          <thead><tr><th>ID</th><th>Simulação</th><th>Provider</th><th>Categoria</th><th>Target</th><th>Execução</th><th>Resultado</th><th>Executado em</th><th>Ações</th></tr></thead>
+          <tbody id="attackHistoryTable"><tr><td colspan="9">Nenhuma execução carregada.</td></tr></tbody>
         </table>
+      </div>
+      <div id="attackHistoryLogPanel" class="history-log-panel" style="display:none">
+        <div class="panel-header">
+          <div><h3 id="attackHistoryLogTitle">Log da execução</h3><p id="attackHistoryLogSubtitle"></p></div>
+          <button id="closeAttackHistoryLog" class="btn secondary btn-sm">Fechar</button>
+        </div>
+        <div class="history-log-tabs">
+          <button class="btn secondary btn-sm history-log-tab active" data-log-tab="summary">Resumo</button>
+          <button class="btn secondary btn-sm history-log-tab" data-log-tab="stdout">Log</button>
+          <button class="btn secondary btn-sm history-log-tab" data-log-tab="stderr">Erros</button>
+          <button class="btn secondary btn-sm history-log-tab" data-log-tab="evidence">Evidência</button>
+        </div>
+        <pre id="attackHistoryLogContent" class="result-box">Selecione uma execução.</pre>
       </div>
     </section>
       </div>

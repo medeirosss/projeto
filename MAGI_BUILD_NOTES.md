@@ -86,3 +86,18 @@ Após validação da 5.4, a Build 5.5 permanece reservada para Pentest manual/co
 - Warning do Ruby/Recog não é tratado automaticamente como falha.
 - Histórico passa a exibir Provider, Runner Job e evidência normalizada.
 - Nenhum exploit destrutivo, Meterpreter, reverse shell, brute force, árvore automática ou atualização automática do Metasploit entra na 5.5.0.
+
+## Build 5.5.1 — Secure Evidence & Persistent Logs
+- Histórico do Attack Simulator agora possui botão `Log` por execução.
+- O log é persistido no backend junto da execução e continua disponível após refresh/relogin.
+- Viewer do Histórico separado em Resumo / Log / Erros / Evidência.
+- stdout/stderr são sanitizados no Runner ANTES de gravação local, ZIP e envio ao backend.
+- Redaction cobre segredo do Credential Profile, PASSWORD/PASS/COMMUNITY/TOKEN/SECRET ecoados por providers, `with password ...` e material Kerberos `$krb5...`.
+- `job.json` continua persistindo credencial somente mascarada.
+- Endpoint de log aplica segunda sanitização no backend antes de responder ao navegador.
+- Compatibilidade: execuções 5.5.0 podem usar o resultado já persistido em `runner_jobs` como fallback, com sanitização antes da exibição.
+- Parser `MAGI-M-ATK-AD-001` reconhece `User found:` como autenticação Kerberos confirmada.
+- Conclusão do módulo Kerberos sem confirmação deixa de ser classificada como SUCCESS; retorna `AUTHENTICATION_FAILED`.
+- Artefatos de Kerberos gerados pelo módulo no Runner são detectados e removidos após a execução; o resultado registra somente status de cleanup.
+- SNMP Enumeration passa a exigir Credential Profile SNMP/community; community não é mais enviada como parâmetro livre persistente.
+- Campaign permanece funcionalmente congelada na baseline 5.4.5.

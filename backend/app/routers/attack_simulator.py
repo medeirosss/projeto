@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, HTTPException, Request
 
-from app.services.attack_simulator_service import attack_catalog, attack_history, sync_attack_simulator, provider_status
+from app.services.attack_simulator_service import attack_catalog, attack_history, sync_attack_simulator, provider_status, attack_execution_log
 from app.services.validation_engine_service import execute_task, plan_task
 
 router = APIRouter(prefix="/api/attack-simulator", tags=["attack-simulator"])
@@ -70,3 +70,11 @@ def execute(task_id: int, request: Request, payload: dict = Body(...)):
 @router.get("/history")
 def history(limit: int = 100):
     return attack_history(limit=max(1, min(limit, 500)))
+
+
+@router.get("/history/{execution_id}/log")
+def history_log(execution_id: int):
+    try:
+        return attack_execution_log(execution_id)
+    except Exception as exc:
+        raise HTTPException(404, str(exc))

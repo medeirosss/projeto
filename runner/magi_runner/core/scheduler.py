@@ -12,6 +12,59 @@ from magi_runner.core.state import LocalState
 from magi_runner.executors.registry import ExecutorRegistry
 
 
+
+def _secret_values_from_job(job: dict[str, Any]) -> list[str]:
+    payload = job.get("payload") or {}
+    values: list[str] = []
+    credential = payload.get("credential")
+    if isinstance(credential, dict):
+        for key in ("secret", "password", "community", "auth_key", "priv_key", "token"):
+            value = credential.get(key)
+            if value:
+                values.append(str(value))
+    for key in ("password", "community", "secret", "token"):
+        value = payload.get(key)
+        if value:
+            values.append(str(value))
+    # Longest first prevents partial redaction from exposing a suffix/prefix.
+    return sorted(set(values), key=len, reverse=True)
+
+
+def redact_sensitive_text(text: str | None, job: dict[str, Any]) -> str:
+    import re
+    safe = str(text or "")
+    for secret in _secret_values_from_job(job):
+        if secret:
+            safe = safe.replace(secret, "********")
+    # Provider output may echo values independently of our exact secret lookup.
+    safe = re.sub(r"(?im)^(\s*(?:PASSWORD|PASS|COMMUNITY|TOKEN|SECRET)\s*=>\s*).+$", r"\1********", safe)
+    safe = re.sub(r'(?i)(with password\s+)(\S+)', r'\1********', safe)
+    # Kerberos/credential material is evidence that a credential artifact was produced,
+    # but persisting the material itself is unnecessary and unsafe.
+    safe = re.sub(r'(?i)(Hash:\s*)\$krb5[^\r\n]+', r'\1[REDACTED_KERBEROS_MATERIAL]', safe)
+    return safe
+
+
+def redact_result_metadata(metadata: dict[str, Any] | None, job: dict[str, Any]) -> dict[str, Any]:
+    import copy
+    safe = copy.deepcopy(metadata or {})
+    # Never allow raw credential material in normalized evidence.
+    def scrub(value):
+        if isinstance(value, dict):
+            out = {}
+            for k, v in value.items():
+                if str(k).lower() in {"password","secret","community","token","hash","ticket","credential_material"}:
+                    out[k] = "********"
+                else:
+                    out[k] = scrub(v)
+            return out
+        if isinstance(value, list):
+            return [scrub(v) for v in value]
+        if isinstance(value, str):
+            return redact_sensitive_text(value, job)
+        return value
+    return scrub(safe)
+
 def redact_job(job: dict[str, Any]) -> dict[str, Any]:
     import copy
     safe=copy.deepcopy(job)
@@ -61,8 +114,11 @@ class JobScheduler:
         try:
             result = executor.run(job, str(job_dir), timeout)
             evidence = self.evidence.collect(job.get("collect") or {}, job_dir)
-            self.artifacts.write_text(job_dir, "stdout.txt", result.stdout)
-            self.artifacts.write_text(job_dir, "stderr.txt", result.stderr)
+            safe_stdout = redact_sensitive_text(result.stdout, job)
+            safe_stderr = redact_sensitive_text(result.stderr, job)
+            safe_metadata = redact_result_metadata(result.metadata, job)
+            self.artifacts.write_text(job_dir, "stdout.txt", safe_stdout)
+            self.artifacts.write_text(job_dir, "stderr.txt", safe_stderr)
             self.artifacts.write_json(job_dir, "job.json", redact_job(job))
             self.artifacts.write_json(job_dir, "evidence.json", evidence)
             summary = {
@@ -73,13 +129,13 @@ class JobScheduler:
                 "started_at": result.started_at,
                 "finished_at": result.finished_at,
                 "duration_seconds": result.duration_seconds,
-                "metadata": result.metadata,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "executed_real_test": bool((result.metadata or {}).get("executed_real_test")),
-                "confirmation_status": (result.metadata or {}).get("confirmation_status"),
-                "execution_scope": (result.metadata or {}).get("execution_scope"),
-                "requested_target": (result.metadata or {}).get("requested_target"),
+                "metadata": safe_metadata,
+                "stdout": safe_stdout,
+                "stderr": safe_stderr,
+                "executed_real_test": bool((safe_metadata or {}).get("executed_real_test")),
+                "confirmation_status": (safe_metadata or {}).get("confirmation_status"),
+                "execution_scope": (safe_metadata or {}).get("execution_scope"),
+                "requested_target": (safe_metadata or {}).get("requested_target"),
                 "evidence_summary": summarize_evidence(evidence),
             }
             self.artifacts.write_json(job_dir, "metadata.json", summary)

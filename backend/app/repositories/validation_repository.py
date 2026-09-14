@@ -62,6 +62,12 @@ def mark_execution_running(runner_job_id:int):
 
 def ingest_execution_result(runner_job_id:int,status:str,result:dict,error:str|None=None):
     meta=(result or {}).get('metadata') or {}; finding=meta.get('finding') or {}; evidence=dict(meta.get('evidence') or meta)
+    # Runner 5.5.1 sanitizes logs before delivery. Keep a durable copy with the
+    # execution so browser refreshes do not require access to runner_data.
+    evidence['logs'] = {
+        'stdout': (result or {}).get('stdout') or '',
+        'stderr': (result or {}).get('stderr') or '',
+    }
     for key in ('executed_real_test','execution_scope','requested_target','secondary_target','confirmation_status','execution_status','attack_result','payload_status','authentication_status','lateral_movement_status','detection_status'):
         if key in meta and key not in evidence:
             evidence[key]=meta.get(key)

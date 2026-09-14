@@ -31,7 +31,7 @@ TECHNIQUES = {
     "MAGI-M-ATK-NET-001": {
         "module": "auxiliary/scanner/snmp/snmp_enum",
         "category": "Network Node",
-        "credential_required": False,
+        "credential_required": True,
     },
 }
 
@@ -76,7 +76,7 @@ def _extract(stdout: str, task_key: str, target: str) -> dict[str, Any]:
     elif task_key == "MAGI-M-ATK-AD-001":
         low = stdout.lower()
         evidence["authentication_confirmed"] = any(x in low for x in (
-            "successful login", "valid credential", "success:", "login successful"
+            "successful login", "valid credential", "success:", "login successful", "user found:"
         ))
         evidence["account_status_signal"] = next((x for x in (
             "locked out", "disabled", "pre-authentication", "preauthentication"
@@ -91,12 +91,41 @@ def _normalized_status(task_key: str, stdout: str, stderr: str, returncode: int,
     if task_key == "MAGI-M-ATK-AD-001":
         if evidence.get("authentication_confirmed"):
             return "success", "SUCCESS"
-        if any(x in blob for x in ("incorrect", "invalid credential", "login failed", "authentication failed")):
-            return "failed", "AUTHENTICATION_FAILED"
+        # For credential validation, module completion alone is NOT a positive result.
+        if any(x in blob for x in ("incorrect", "invalid credential", "login failed", "authentication failed", "user not found")):
+            return "success", "AUTHENTICATION_FAILED"
+        if "module execution completed" in blob or returncode == 0:
+            return "success", "AUTHENTICATION_FAILED"
     # Scanner/enum modules completed successfully; findings are preserved in evidence.
     if "module execution completed" in blob or "scanned 1 of 1" in blob or returncode == 0:
         return "success", "SUCCESS"
     return "failed", "FAILED"
+
+
+def _cleanup_kerberos_loot(stdout: str) -> dict[str, Any]:
+    matches = re.findall(r"ticket saved to\s+(.+?)(?:\r?$)", stdout or "", re.I | re.M)
+    if not matches:
+        return {"required": False, "attempted": False, "success": True, "artifacts": []}
+    artifacts = []
+    overall = True
+    for raw in matches:
+        path = raw.strip().strip('"')
+        item = {"path": path, "deleted": False}
+        try:
+            artifact = Path(path)
+            if artifact.exists() and artifact.is_file():
+                artifact.unlink()
+            item["deleted"] = not artifact.exists()
+        except Exception as exc:
+            overall = False
+            item["error"] = str(exc)
+        artifacts.append(item)
+    return {
+        "required": True,
+        "attempted": True,
+        "success": overall and all(x.get("deleted") for x in artifacts),
+        "artifacts": artifacts,
+    }
 
 class MetasploitExecutor:
     name = "metasploit"
@@ -137,7 +166,9 @@ class MetasploitExecutor:
             commands += [f"set RPORT {port}", f"set TARGETURI {uri}"]
             if bool(detection.get("ssl")): commands.append("set SSL true")
         elif key == "MAGI-M-ATK-NET-001":
-            community = _safe_console_value(payload.get("technique_parameter") or detection.get("community") or "public", "COMMUNITY")
+            community = _safe_console_value(credential.get("secret"), "COMMUNITY")
+            if not community:
+                raise ValueError("SNMP Credential Profile/community é obrigatório para SNMP Enumeration.")
             commands += ["set RPORT 161", f"set COMMUNITY {community}"]
 
         commands += ["run", "exit"]
@@ -148,7 +179,15 @@ class MetasploitExecutor:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         stdout, stderr = proc.stdout or "", proc.stderr or ""
+        cleanup = _cleanup_kerberos_loot(stdout) if key == "MAGI-M-ATK-AD-001" else {"required": False, "attempted": False, "success": True, "artifacts": []}
         evidence = _extract(stdout, key, target)
+        if key == "MAGI-M-ATK-AD-001":
+            evidence["credential_material_produced"] = bool(cleanup.get("required"))
+            evidence["runner_cleanup"] = {
+                "required": bool(cleanup.get("required")),
+                "attempted": bool(cleanup.get("attempted")),
+                "success": bool(cleanup.get("success")),
+            }
         status, attack_result = _normalized_status(key, stdout, stderr, proc.returncode, evidence)
         finished_dt = datetime.now(timezone.utc)
         finished = finished_dt.isoformat()
@@ -165,7 +204,18 @@ class MetasploitExecutor:
             "finding": {
                 "status": attack_result.lower(),
                 "detected": attack_result == "SUCCESS",
-                "message": f"{key} concluída via Metasploit.",
+                "message": (
+                    "Autenticação Kerberos confirmada via Metasploit."
+                    if key == "MAGI-M-ATK-AD-001" and attack_result == "SUCCESS"
+                    else "Credencial Kerberos não confirmada."
+                    if key == "MAGI-M-ATK-AD-001"
+                    else f"{key} concluída via Metasploit."
+                ),
+            },
+            "runner_cleanup": {
+                "required": bool(cleanup.get("required")),
+                "attempted": bool(cleanup.get("attempted")),
+                "success": bool(cleanup.get("success")),
             },
             "normalized_evidence": evidence,
             "warning_present": "warning:" in (stdout + stderr).lower(),

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.repositories.validation_repository import list_executions, list_tasks, upsert_repository, upsert_task
-from app.repositories.runner_repository import get_single_online_runner
+from app.repositories.validation_repository import list_executions, list_tasks, upsert_repository, upsert_task, get_execution
+from app.repositories.runner_repository import get_single_online_runner, get_runner_job_result
 
 
 ATTACK_SIMULATIONS: list[dict[str, Any]] = [
@@ -227,7 +227,7 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
         "impact": "low",
         "detection": {"type": "metasploit_module", "module": "auxiliary/scanner/snmp/snmp_enum", "port": 161, "transport": "udp"},
         "remediation": "Restrinja SNMP às redes de gestão, utilize communities não padrão e prefira SNMPv3 quando suportado.",
-        "metadata": {"attack_phase": "discovery", "safe_mode": True, "credential_required": False, "provider": "metasploit", "technique_parameter": "COMMUNITY", "payload": False, "changes_target": False, "cleanup_supported": False, "execution_scope": "target_remote"},
+        "metadata": {"attack_phase": "discovery", "safe_mode": True, "credential_required": True, "provider": "metasploit", "credential_type": "snmp", "payload": False, "changes_target": False, "cleanup_supported": False, "execution_scope": "target_remote"},
     },
 ]
 
@@ -282,4 +282,76 @@ def provider_status() -> dict[str, Any]:
                 "message": msf.get("message"),
             },
         },
+    }
+
+
+def _sanitize_log_text(text: str | None, secrets: list[str] | None = None) -> str:
+    import re
+    safe = str(text or "")
+    for secret in sorted(set(secrets or []), key=len, reverse=True):
+        if secret:
+            safe = safe.replace(secret, "********")
+    safe = re.sub(r"(?im)^(\s*(?:PASSWORD|PASS|COMMUNITY|TOKEN|SECRET)\s*=>\s*).+$", r"\1********", safe)
+    safe = re.sub(r"(?i)(with password\s+)(\S+)", r"\1********", safe)
+    safe = re.sub(r"(?i)(Hash:\s*)\$krb5[^\r\n]+", r"\1[REDACTED_KERBEROS_MATERIAL]", safe)
+    return safe
+
+
+def attack_execution_log(execution_id: int) -> dict[str, Any]:
+    execution = get_execution(int(execution_id))
+    if not execution or execution.get("repository_key") != "magi_attack":
+        raise ValueError("Execução do Attack Simulator não encontrada.")
+
+    evidence = execution.get("evidence") or {}
+    logs = evidence.get("logs") or {}
+    stdout = logs.get("stdout") or ""
+    stderr = logs.get("stderr") or ""
+    job = None
+
+    # Compatibility fallback for executions created in 5.5.0. New executions
+    # read the durable sanitized copy from validation_task_executions.evidence.
+    if (not stdout and not stderr) and execution.get("runner_job_id"):
+        job = get_runner_job_result(int(execution["runner_job_id"]))
+        result = (job or {}).get("result") or {}
+        stdout = result.get("stdout") or ""
+        stderr = result.get("stderr") or ""
+
+    secrets: list[str] = []
+    payload = (job or {}).get("payload") or {}
+    credential_id = payload.get("credential_id")
+    if credential_id:
+        try:
+            from app.services.credentials_service import get_credential_by_id
+            credential = get_credential_by_id(credential_id, include_secret=True) or {}
+            if credential.get("password"):
+                secrets.append(str(credential.get("password")))
+        except Exception:
+            pass
+
+    stdout = _sanitize_log_text(stdout, secrets)
+    stderr = _sanitize_log_text(stderr, secrets)
+    meta = dict(evidence)
+    meta.pop("logs", None)
+
+    return {
+        "success": True,
+        "execution": {
+            "id": execution.get("id"),
+            "execution_uuid": execution.get("execution_uuid"),
+            "task_key": execution.get("task_key"),
+            "task_name": execution.get("task_name"),
+            "provider": (meta.get("provider") or ("metasploit" if str(execution.get("task_key") or "").startswith("MAGI-M-ATK-") else "magi_native")),
+            "target": execution.get("target"),
+            "runner_id": execution.get("runner_id"),
+            "runner_job_id": execution.get("runner_job_id"),
+            "status": execution.get("status"),
+            "finding_status": execution.get("finding_status"),
+            "finding_message": execution.get("finding_message"),
+            "created_at": execution.get("created_at"),
+            "started_at": execution.get("started_at"),
+            "finished_at": execution.get("finished_at"),
+        },
+        "stdout": stdout,
+        "stderr": stderr,
+        "evidence": meta,
     }

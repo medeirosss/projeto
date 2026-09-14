@@ -782,3 +782,9 @@ th{color:#475467;background:#fbfcfe}
 .attack-nav-item.active{background:rgba(59,130,246,.12);border-color:rgba(96,165,250,.55)}
 .attack-workspace-content{min-width:0}
 @media(max-width:900px){.attack-workspace{grid-template-columns:1fr}.attack-subnav{position:static;display:flex;gap:6px;overflow:auto}.attack-subnav h3{display:none}.attack-nav-item{width:auto;white-space:nowrap}}
+
+/* MAGI 5.5.1 — durable Attack History logs */
+.history-log-panel{margin-top:18px;border-top:1px solid var(--border,#273244);padding-top:16px}
+.history-log-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}
+.history-log-tab.active{font-weight:700}
+.history-log-panel .result-box{max-height:520px;overflow:auto;white-space:pre-wrap;word-break:break-word}
