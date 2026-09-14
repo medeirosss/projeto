@@ -58,7 +58,8 @@
         <div><h2>Attack — Catálogo 5.5</h2><p>MAGI Native e providers externos controlados. Metasploit é opcional por Runner.</p></div>
       </div>
       <div class="form-grid">
-        <label>Host A / Initial Target<input id="attackTarget" placeholder="192.168.0.10 ou host-a.exemplo.local" /></label>
+        <label id="attackTargetField">Host A / Initial Target<input id="attackTarget" placeholder="192.168.0.10 ou host-a.exemplo.local" /></label>
+        <label id="attackUrlField">Application URL<input id="attackUrl" placeholder="https://app.exemplo.com:8443/admin" /></label>
         <label>Host B / Destination<input id="attackHostB" placeholder="Usado no Lateral Movement Path" /></label>
         <label>Credential Profile<select id="attackCredential"><option value="">Nenhuma / não necessária</option></select></label>
         <label>Categoria<select id="attackCategory"><option value="">Todas</option><option>Endpoint</option><option>Active Directory</option><option>Network Node</option><option>Application</option></select></label>

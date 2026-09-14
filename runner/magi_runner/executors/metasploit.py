@@ -8,6 +8,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from .base import ExecutionResult
 from magi_runner.core.metasploit_capability import find_msfconsole
@@ -48,6 +49,50 @@ def _target(value: Any) -> str:
     if not s or not _SAFE_TARGET.fullmatch(s):
         raise ValueError("Target inválido para execução Metasploit.")
     return s
+
+
+def _application_url(value: Any) -> dict[str, Any]:
+    raw = _safe_console_value(value, "URL")
+    if not raw:
+        raise ValueError("URL da aplicação é obrigatória.")
+    try:
+        parsed = urlsplit(raw)
+    except Exception as exc:
+        raise ValueError("URL da aplicação inválida.") from exc
+
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in {"http", "https"}:
+        raise ValueError("URL da aplicação deve utilizar http:// ou https://.")
+    if not parsed.hostname:
+        raise ValueError("URL da aplicação não possui host válido.")
+    if parsed.username or parsed.password:
+        raise ValueError("Credenciais embutidas na URL não são permitidas.")
+    if parsed.fragment:
+        raise ValueError("Fragmentos (#...) não são usados em ataques HTTP e devem ser removidos.")
+
+    host = _target(parsed.hostname)
+    try:
+        port = parsed.port or (443 if scheme == "https" else 80)
+    except ValueError as exc:
+        raise ValueError("Porta inválida na URL da aplicação.") from exc
+    if port < 1 or port > 65535:
+        raise ValueError("Porta inválida na URL da aplicação.")
+
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    path = _safe_console_value(path, "TARGETURI")
+    if not path.startswith("/"):
+        path = "/" + path
+
+    return {
+        "url": raw,
+        "scheme": scheme,
+        "host": host,
+        "port": int(port),
+        "path": path,
+        "ssl": scheme == "https",
+    }
 
 def _extract(stdout: str, task_key: str, target: str) -> dict[str, Any]:
     evidence: dict[str, Any] = {"target": target}
@@ -139,7 +184,9 @@ class MetasploitExecutor:
         if not spec:
             raise ValueError("Técnica Metasploit não pertence à allowlist MAGI 5.5.0.")
 
-        target = _target(payload.get("target") or job.get("target"))
+        raw_target = payload.get("target") or job.get("target")
+        application = _application_url(raw_target) if key == "MAGI-M-ATK-APP-001" else None
+        target = application["host"] if application else _target(raw_target)
         detection = payload.get("detection") or {}
         credential = payload.get("credential") or {}
         if spec["credential_required"] and not credential.get("secret"):
@@ -160,11 +207,13 @@ class MetasploitExecutor:
             if domain:
                 commands.append(f"set DOMAIN {domain}")
         elif key == "MAGI-M-ATK-APP-001":
-            port = int(detection.get("port") or payload.get("port") or 80)
-            uri = _safe_console_value(payload.get("technique_parameter") or detection.get("path") or "/", "TARGETURI")
-            if not uri.startswith("/"): uri = "/" + uri
+            # Application attacks accept a full URL. Host, port, TLS and URI are
+            # derived by the Runner rather than asking the operator to decompose it.
+            port = int(application["port"])
+            uri = application["path"]
             commands += [f"set RPORT {port}", f"set TARGETURI {uri}"]
-            if bool(detection.get("ssl")): commands.append("set SSL true")
+            if application["ssl"]:
+                commands.append("set SSL true")
         elif key == "MAGI-M-ATK-NET-001":
             community = _safe_console_value(credential.get("secret"), "COMMUNITY")
             if not community:
@@ -181,6 +230,15 @@ class MetasploitExecutor:
         stdout, stderr = proc.stdout or "", proc.stderr or ""
         cleanup = _cleanup_kerberos_loot(stdout) if key == "MAGI-M-ATK-AD-001" else {"required": False, "attempted": False, "success": True, "artifacts": []}
         evidence = _extract(stdout, key, target)
+        if key == "MAGI-M-ATK-APP-001" and application:
+            evidence.update({
+                "application_url": application["url"],
+                "resolved_target": application["host"],
+                "port": application["port"],
+                "protocol": application["scheme"].upper(),
+                "path": application["path"],
+                "ssl": application["ssl"],
+            })
         if key == "MAGI-M-ATK-AD-001":
             evidence["credential_material_produced"] = bool(cleanup.get("required"))
             evidence["runner_cleanup"] = {
@@ -194,7 +252,7 @@ class MetasploitExecutor:
         metadata = {
             "executed_real_test": True,
             "execution_scope": "target_remote",
-            "requested_target": target,
+            "requested_target": application["url"] if application else target,
             "provider": "metasploit",
             "provider_path": msf,
             "module": spec["module"],

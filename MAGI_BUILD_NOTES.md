@@ -101,3 +101,14 @@ Após validação da 5.4, a Build 5.5 permanece reservada para Pentest manual/co
 - Artefatos de Kerberos gerados pelo módulo no Runner são detectados e removidos após a execução; o resultado registra somente status de cleanup.
 - SNMP Enumeration passa a exigir Credential Profile SNMP/community; community não é mais enviada como parâmetro livre persistente.
 - Campaign permanece funcionalmente congelada na baseline 5.4.5.
+
+## Build 5.5.2 — Application URL Target
+- Ajuste restrito à técnica `MAGI-M-ATK-APP-001`.
+- Attack UI ganha campo dedicado `Application URL`.
+- Técnicas Application usam a URL; Endpoint/AD/Network Node continuam usando Host A / Initial Target.
+- O Runner aceita somente URLs `http://` e `https://` para a técnica Application.
+- Parsing automático de URL para Host/RHOSTS, RPORT, SSL e TARGETURI.
+- Exemplos suportados: `http://host/`, `https://host/`, `https://host:8443/admin`, caminhos e query string.
+- Credenciais embutidas na URL e fragmentos `#...` são rejeitados.
+- Evidência normalizada registra URL original, resolved target, porta, protocolo, path e SSL.
+- SMB, Kerberos, SNMP, Campaign e histórico/logs não recebem alteração funcional nesta build.

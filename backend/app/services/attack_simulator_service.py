@@ -208,14 +208,14 @@ ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     {
         "task_key": "MAGI-M-ATK-APP-001",
         "name": "HTTP Methods Detection",
-        "description": "Executa o módulo HTTP OPTIONS do Metasploit contra uma aplicação para identificar métodos HTTP anunciados, sem alteração de estado.",
+        "description": "Executa o módulo HTTP OPTIONS do Metasploit contra uma URL HTTP/HTTPS completa para identificar métodos HTTP anunciados, sem alteração de estado.",
         "category": "Application",
         "platform": "Web",
         "executor": "metasploit",
         "impact": "safe",
         "detection": {"type": "metasploit_module", "module": "auxiliary/scanner/http/options", "port": 80, "path": "/", "ssl": False},
         "remediation": "Desabilite métodos HTTP desnecessários e aplique controles de método/rota no servidor web, proxy ou WAF.",
-        "metadata": {"attack_phase": "discovery", "safe_mode": True, "credential_required": False, "provider": "metasploit", "technique_parameter": "TARGETURI", "payload": False, "changes_target": False, "cleanup_supported": False, "execution_scope": "target_remote"},
+        "metadata": {"attack_phase": "discovery", "safe_mode": True, "credential_required": False, "provider": "metasploit", "target_type": "url", "supported_schemes": ["http", "https"], "payload": False, "changes_target": False, "cleanup_supported": False, "execution_scope": "target_remote"},
     },
     {
         "task_key": "MAGI-M-ATK-NET-001",
@@ -241,7 +241,7 @@ def sync_attack_simulator() -> dict[str, Any]:
         "available": True,
         "metadata": {
             "execution": "runner",
-            "version": "5.5.0",
+            "version": "5.5.2",
             "semantics": "attack_simulation",
             "safe_mode": True,
             "destructive": False,

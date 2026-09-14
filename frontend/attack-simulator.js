@@ -44,8 +44,9 @@ async function loadCatalog(){
 }
 function executionPayload(id){
   const task=catalogById[String(id)]||{},meta=task.metadata||{};
+  const isApplication=String(task.category||'').toLowerCase()==='application';
   const p={
-    target:document.getElementById('attackTarget').value.trim(),
+    target:isApplication?document.getElementById('attackUrl').value.trim():document.getElementById('attackTarget').value.trim(),
     host_b:document.getElementById('attackHostB').value.trim(),
     credential_id:document.getElementById('attackCredential').value||null,
     technique_parameter:document.getElementById('attackTechniqueParameter')?.value.trim()||null,
@@ -59,7 +60,7 @@ function executionPayload(id){
   if(meta.credential_required&&!p.credential_id)throw new Error('Credential Profile é obrigatório para esta simulação.');
   return p;
 }
-async function runAttack(id,plan){const out=document.getElementById('attackResult');let body;try{body=executionPayload(id);}catch(e){out.textContent=e.message;return;}if(!body.target){out.textContent='Host A / Target obrigatório.';return;}if(!plan&&!confirm(`Executar simulação controlada em ${body.target}${body.host_b?' → '+body.host_b:''}?`))return;out.textContent=plan?'Planejando...':'Enviando ao Runner...';try{const d=await api(`/api/attack-simulator/simulations/${id}/${plan?'plan':'execute'}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});out.textContent=pretty(d);if(!plan)setTimeout(loadHistory,1200);}catch(e){out.textContent=e.message;}}
+async function runAttack(id,plan){const out=document.getElementById('attackResult');const task=catalogById[String(id)]||{};let body;try{body=executionPayload(id);}catch(e){out.textContent=e.message;return;}if(!body.target){out.textContent=String(task.category||'').toLowerCase()==='application'?'Application URL obrigatória.':'Host A / Target obrigatório.';return;}if(!plan&&!confirm(`Executar simulação controlada em ${body.target}${body.host_b?' → '+body.host_b:''}?`))return;out.textContent=plan?'Planejando...':'Enviando ao Runner...';try{const d=await api(`/api/attack-simulator/simulations/${id}/${plan?'plan':'execute'}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});out.textContent=pretty(d);if(!plan)setTimeout(loadHistory,1200);}catch(e){out.textContent=e.message;}}
 let activeHistoryLog=null;
 let activeHistoryLogTab='summary';
 
@@ -119,10 +120,19 @@ async function loadHistory(){
   document.querySelectorAll('.atk-history-log').forEach(b=>b.onclick=()=>openHistoryLog(b.dataset.id));
 }
 async function syncCatalog(){const out=document.getElementById('attackResult');out.textContent='Sincronizando catálogo...';try{out.textContent=pretty(await api('/api/attack-simulator/sync',{method:'POST'}));await Promise.all([loadSummary(),loadCatalog()]);}catch(e){out.textContent=e.message;}}
+function updateAttackTargetFields(){
+  // Both are intentionally visible: the catalog can show multiple categories at once.
+  // executionPayload chooses URL only for Application techniques.
+  const urlField=document.getElementById('attackUrlField');
+  const targetField=document.getElementById('attackTargetField');
+  if(urlField)urlField.style.display='';
+  if(targetField)targetField.style.display='';
+}
+
 document.addEventListener('DOMContentLoaded',()=>{
-  buildHeader('attack');loadSummary();loadCredentials();loadCatalog();loadHistory();loadProviderStatus();
+  buildHeader('attack');loadSummary();loadCredentials();loadCatalog();loadHistory();loadProviderStatus();updateAttackTargetFields();
   document.getElementById('attackSearch').addEventListener('input',loadCatalog);
-  document.getElementById('attackCategory').addEventListener('change',loadCatalog);
+  document.getElementById('attackCategory').addEventListener('change',()=>{loadCatalog();updateAttackTargetFields();});
   document.getElementById('attackProvider')?.addEventListener('change',loadCatalog);
   document.getElementById('refreshAttackHistory').onclick=loadHistory;
   document.getElementById('syncAttackCatalog').onclick=async()=>{await syncCatalog();await loadProviderStatus();};
