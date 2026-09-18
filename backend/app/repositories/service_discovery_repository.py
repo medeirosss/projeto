@@ -34,12 +34,32 @@ def set_run_service_totals(discovery_run_id:int,total:int):
         db.execute(text("""UPDATE discovery_runs SET service_jobs_total=:total,service_jobs_completed=0,service_jobs_failed=0,services_found_count=0,new_services_count=0,
             pipeline_status=CASE WHEN :total>0 THEN 'service_discovery' ELSE 'completed' END WHERE id=:id"""),{"id":discovery_run_id,"total":total}); db.commit()
 
-def ingest_services(*,runner_job_id:int,runner_id:str,status:str,services:list[dict],error:str|None=None,raw_xml:str|None=None)->dict|None:
+def ingest_services(*,runner_job_id:int,runner_id:str,status:str,services:list[dict],error:str|None=None,raw_xml:str|None=None,name_enrichment:dict|None=None)->dict|None:
     job=get_service_job_by_runner_job(runner_job_id)
     if not job: return None
     new_count=0; found=0
     with SessionLocal() as db:
         if status=='success':
+            # Hostname enrichment is independent from credential validation. A name learned
+            # from NetBIOS/SMB may enrich an IP-only asset, but never overwrites an existing name.
+            ne=name_enrichment or {}
+            hostname=(ne.get('hostname') or '').strip() or None
+            fqdn=(ne.get('fqdn') or '').strip() or None
+            source=(ne.get('hostname_source') or '').strip() or None
+            if hostname or fqdn:
+                chosen=hostname or fqdn.split('.')[0]
+                db.execute(text("""UPDATE targets SET hostname=COALESCE(NULLIF(hostname,''),:hostname),
+                    hostname_normalized=COALESCE(NULLIF(hostname_normalized,''),lower(:hostname)),
+                    dns_name=COALESCE(NULLIF(dns_name,''),:fqdn),
+                    hostname_source=COALESCE(NULLIF(hostname_source,''),:source),
+                    display_name=CASE WHEN display_name IS NULL OR display_name='' OR display_name=host(ip_address) THEN :hostname ELSE display_name END,
+                    updated_at=:now WHERE id=:tid"""),{'hostname':chosen,'fqdn':fqdn,'source':source,'now':_now(),'tid':job['target_id']})
+                try:
+                    from app.repositories.asset_identity_repository import record_identifier
+                    record_identifier(db,int(job['target_id']),'hostname',chosen.lower(),source=source or 'service_discovery',confidence=85 if source=='smb_os_discovery' else 75)
+                    if fqdn: record_identifier(db,int(job['target_id']),'fqdn',fqdn.lower(),source=source or 'service_discovery',confidence=90)
+                except Exception:
+                    pass
             # Current-state view: services not observed in this successful pass become inactive,
             # while history remains in asset_service_observations.
             db.execute(text("UPDATE asset_services SET active=FALSE WHERE target_id=:tid"), {"tid": job['target_id']})

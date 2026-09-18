@@ -27,7 +27,7 @@ def ingest_runner_service_result(job_id:int,runner_id:str,status:str,result:dict
     services=[]
     for raw in metadata.get('services') or []:
         item=dict(raw); item.update(lookup_service(int(item.get('port') or 0),str(item.get('protocol') or 'tcp'),item.get('service_name'))); services.append(item)
-    out=repo.ingest_services(runner_job_id=job_id,runner_id=runner_id,status=status,services=services,error=error or result.get('error') or result.get('stderr'),raw_xml=metadata.get('raw_xml'))
+    out=repo.ingest_services(runner_job_id=job_id,runner_id=runner_id,status=status,services=services,error=error or result.get('error') or result.get('stderr'),raw_xml=metadata.get('raw_xml'),name_enrichment=metadata.get('name_enrichment') or {})
     if out and out.get('pipeline_completed'):
         from app.services.credential_engine_service import enqueue_for_discovery_run
         out['credential_engine']=enqueue_for_discovery_run(int(out['discovery_run_id']),runner_id)
