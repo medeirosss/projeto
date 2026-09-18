@@ -353,7 +353,7 @@ class CredentialValidateExecutor:
         evidence={'evidence_requested':bool(payload.get('create_benign_evidence')),'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':None}
         if forced=='smb': ok,hostname,protocol,attempts,error,evidence=_smb_validate(target,cred,timeout_seconds,payload)
         elif forced=='winrm': ok,hostname,protocol,attempts,error,evidence=_winrm_validate(target,cred,timeout_seconds,payload)
-        elif ctype in {'windows','wmi','winrm'}: ok,hostname,protocol,attempts,error=_windows_validate(target,cred,timeout_seconds)
+        elif ctype in {'windows','wmi','winrm','windows_local','windows_domain'}: ok,hostname,protocol,attempts,error=_windows_validate(target,cred,timeout_seconds)
         elif ctype in {'ssh','linux'}: ok,hostname,protocol,attempts,error=_ssh_validate(target,cred,timeout_seconds)
         elif ctype in {'snmp','snmp_v2c','snmpv2c'}: ok,hostname,protocol,attempts,error=_snmp_validate(target,cred,timeout_seconds)
         else: ok,hostname,protocol,attempts,error=False,None,ctype,0,f'Tipo de credencial não suportado nesta versão: {ctype}'

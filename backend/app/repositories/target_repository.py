@@ -598,3 +598,37 @@ def release_scan_by_run(run:dict):
     with SessionLocal() as db:
         scan=db.execute(text("SELECT interval_minutes,is_enabled FROM discovery_scans WHERE id=:id"),{"id":sid}).mappings().first()
     release_scan(int(sid),int(scan["interval_minutes"]) if scan and scan["is_enabled"] and scan["interval_minutes"] else None)
+
+
+# MAGI 5.6.2 - Scan Engine V2 helpers
+def set_scan_credentials(scan_id:int, credential_ids:list[int]):
+    with SessionLocal() as db:
+        db.execute(text("DELETE FROM discovery_scan_credentials WHERE scan_id=:s"),{"s":scan_id})
+        for pos,cid in enumerate(credential_ids or []):
+            db.execute(text("INSERT INTO discovery_scan_credentials(scan_id,credential_id,priority,enabled) VALUES(:s,:c,:p,TRUE) ON CONFLICT DO NOTHING"),{"s":scan_id,"c":int(cid),"p":(pos+1)*10})
+        db.commit()
+
+def set_scan_exclusions(scan_id:int, specs:list[str]):
+    import ipaddress
+    with SessionLocal() as db:
+        db.execute(text("DELETE FROM discovery_scan_exclusions WHERE scan_id=:s"),{"s":scan_id})
+        for raw in specs or []:
+            v=str(raw).strip()
+            if not v: continue
+            typ='range' if '-' in v else ('cidr' if '/' in v else 'ip')
+            if typ=='ip': ipaddress.ip_address(v)
+            elif typ=='cidr': ipaddress.ip_network(v,strict=False)
+            else:
+                a,b=v.split('-',1); ipaddress.ip_address(a.strip()); ipaddress.ip_address(b.strip())
+            db.execute(text("INSERT INTO discovery_scan_exclusions(scan_id,exclusion_spec,exclusion_type) VALUES(:s,:v,:t) ON CONFLICT DO NOTHING"),{"s":scan_id,"v":v,"t":typ})
+        db.commit()
+
+def scan_v2_config(scan_id:int)->dict:
+    with SessionLocal() as db:
+        creds=[dict(x) for x in db.execute(text("SELECT sc.credential_id,sc.priority,c.name,c.credential_type,c.metadata FROM discovery_scan_credentials sc JOIN stored_credentials c ON c.id=sc.credential_id WHERE sc.scan_id=:s AND sc.enabled=TRUE AND c.enabled=TRUE ORDER BY sc.priority"),{"s":scan_id}).mappings().all()]
+        exclusions=[dict(x) for x in db.execute(text("SELECT exclusion_spec,exclusion_type FROM discovery_scan_exclusions WHERE scan_id=:s ORDER BY id"),{"s":scan_id}).mappings().all()]
+    return {'credentials':[_serialize(x) for x in creds],'exclusions':exclusions}
+
+def origin_scans_for_target(target_id:int)->list[dict]:
+    with SessionLocal() as db:
+        return [_serialize(dict(x)) for x in db.execute(text("SELECT s.id,s.scan_uuid,s.name,dst.last_successful_credential_id,dst.last_successful_method,dst.last_seen_at FROM discovery_scan_targets dst JOIN discovery_scans s ON s.id=dst.scan_id WHERE dst.target_id=:t ORDER BY dst.last_seen_at DESC"),{'t':target_id}).mappings().all()]

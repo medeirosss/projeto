@@ -18,7 +18,7 @@ class RunnerDiscoveryProvider:
             raise DiscoveryExecutionError("Nenhum Runner online com Nmap disponível. Instale o Nmap no Windows do Runner e aguarde o próximo heartbeat.")
         timeout=30 if target_address_count(spec)==1 else int(os.getenv("DISCOVERY_RUNNER_TIMEOUT_SECONDS","180"))
         dns_cfg=(get_settings_data().get("discovery", {}).get("dns", {}) or {})
-        payload={"executor":"nmap_discovery","target":spec,"target_type":target_type(spec),"scan_uuid":scan.get("scan_uuid"),"provider":"runner","timeout_seconds":timeout,"dns":dns_cfg}
+        payload={"executor":"nmap_discovery","target":spec,"target_type":target_type(spec),"scan_uuid":scan.get("scan_uuid"),"provider":"runner","timeout_seconds":timeout,"dns":dns_cfg,"exclusions":scan.get("exclusions") or []}
         job=create_runner_job(runner_id=runner["runner_id"],job_type="nmap_discovery",target=spec,payload=payload)
         run=target_repo.create_queued_discovery_run(spec,int(scan["id"]),trigger_type,target_address_count(spec),runner["runner_id"],int(job["id"]),"runner")
         return {"success":True,"queued":True,"status":"queued","run_uuid":run["run_uuid"],"runner_job_id":job["id"],"runner_id":runner["runner_id"],"discovered_count":0}

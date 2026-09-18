@@ -103,3 +103,20 @@ def ingest_attempt_result(*,runner_job_id:int,runner_id:str,status:str,result:di
             {"total":int(totals['total']),"done":completed,"failed":int(totals['failed']),"ok":int(totals['ok']),"pipeline":pipeline,"run":job['discovery_run_id']})
         db.commit()
     return {"discovery_run_id":job['discovery_run_id'],"target_id":job['target_id'],"credential_id":job['credential_id'],"target_ip":str(job['target_ip']),"protocol":protocol,"status":final_status,"authenticated":auth_ok,"hostname":hostname,"attempts_used":attempts_used,"pipeline_status":pipeline}
+
+def credentials_for_run(discovery_run_id:int)->list[dict]:
+    with SessionLocal() as db:
+        rows=db.execute(text("""SELECT sc.credential_id,sc.priority,c.credential_type,c.name,c.metadata
+          FROM discovery_runs r JOIN discovery_scan_credentials sc ON sc.scan_id=r.scan_id
+          JOIN stored_credentials c ON c.id=sc.credential_id
+          WHERE r.id=:r AND sc.enabled=TRUE AND c.enabled=TRUE ORDER BY sc.priority"""),{'r':discovery_run_id}).mappings().all()
+        return [dict(x) for x in rows]
+
+def attempted_credentials(discovery_run_id:int,target_id:int)->set[int]:
+    with SessionLocal() as db:
+        return {int(x[0]) for x in db.execute(text("SELECT credential_id FROM credential_attempts WHERE discovery_run_id=:r AND target_id=:t"),{'r':discovery_run_id,'t':target_id}).all()}
+
+def remember_scan_credential(discovery_run_id:int,target_id:int,credential_id:int,method:str):
+    with SessionLocal() as db:
+        db.execute(text("""UPDATE discovery_scan_targets dst SET last_successful_credential_id=:c,last_successful_method=:m
+          FROM discovery_runs r WHERE r.id=:r AND dst.scan_id=r.scan_id AND dst.target_id=:t"""),{'c':credential_id,'m':method,'r':discovery_run_id,'t':target_id}); db.commit()

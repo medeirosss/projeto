@@ -94,7 +94,8 @@ def create_scan(payload):
     cleanup_enabled=bool(payload.get("cleanup_enabled",False))
     cleanup_missed=int(payload.get("cleanup_missed_scans") or 10)
     if cleanup_missed<3: raise ValueError("A política de cleanup deve aguardar pelo menos 3 scans ausentes.")
-    credential_id=payload.get("credential_id")
+    credential_ids=payload.get('credential_ids') or []
+    credential_id=payload.get("credential_id") or (credential_ids[0] if credential_ids else None)
     if credential_id in ("",None): credential_id=None
     elif not str(credential_id).isdigit(): raise ValueError("Credencial inválida.")
     else:
@@ -104,7 +105,7 @@ def create_scan(payload):
     deep_enabled=bool(payload.get("deep_inventory_enabled",False))
     deep_interval=int(payload.get("deep_inventory_interval_minutes") or 30)
     if deep_interval not in {10,30,60}: raise ValueError("Deep Inventory aceita intervalos de 10, 30 ou 60 minutos.")
-    if deep_enabled and not credential_id: raise ValueError("Deep Inventory requer uma credencial selecionada no scan.")
+    if deep_enabled and not (credential_id or credential_ids): raise ValueError("Deep Inventory requer ao menos uma credencial selecionada no scan.")
     return repo.create_scan(name,spec,target_type(spec),sched,interval,bool(payload.get("is_enabled") and sched=="interval"),cleanup_enabled,cleanup_missed,bool(payload.get("service_discovery_enabled",False)),credential_id,deep_enabled,deep_interval)
 
 

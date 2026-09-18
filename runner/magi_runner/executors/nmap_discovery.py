@@ -153,6 +153,10 @@ class NmapDiscoveryExecutor:
             raise RuntimeError("Nmap não encontrado. Instale o Nmap no Windows do Runner e reinicie o serviço.")
         dns_config = payload.get("dns") or {}
         args = [nmap, "-sn", "-T4", "--max-retries", "1", "--reason"]
+        exclusions=payload.get("exclusions") or []
+        specs=[str(x.get("exclusion_spec") if isinstance(x,dict) else x).strip() for x in exclusions]
+        specs=[x for x in specs if x]
+        if specs: args += ["--exclude", ",".join(specs)]
         if dns_config.get("enabled"):
             args.append("-n")
         args += ["-oX", "-", target]

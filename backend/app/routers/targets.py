@@ -66,6 +66,9 @@ async def api_list_scans(): return {"items":repo.list_scans()}
 async def api_create_scan(payload:dict=Body(...)):
     try:
         scan=create_scan(payload)
+        repo.set_scan_credentials(int(scan['id']), [int(x) for x in (payload.get('credential_ids') or ([payload.get('credential_id')] if payload.get('credential_id') else []))])
+        repo.set_scan_exclusions(int(scan['id']), payload.get('exclusions') or [])
+        scan.update(repo.scan_v2_config(int(scan['id'])))
         if payload.get("run_now") and repo.mark_scan_running(scan["scan_uuid"]):
             result=await asyncio.to_thread(execute_scan,{**scan,"is_running":True},"manual")
             return {"scan":scan,"run":result}
@@ -84,6 +87,9 @@ async def api_update_scan(scan_uuid:str,payload:dict=Body(...)):
         if "cleanup_missed_scans" in payload and int(payload.get("cleanup_missed_scans") or 0)<3: raise ValueError("Cleanup requer no mínimo 3 scans ausentes.")
         if "deep_inventory_interval_minutes" in payload and int(payload.get("deep_inventory_interval_minutes") or 0) not in {10,30,60}: raise ValueError("Deep Inventory aceita 10, 30 ou 60 minutos.")
         scan=repo.update_scan(scan_uuid,**payload)
+        if scan and 'credential_ids' in payload: repo.set_scan_credentials(int(scan['id']), [int(x) for x in (payload.get('credential_ids') or [])])
+        if scan and 'exclusions' in payload: repo.set_scan_exclusions(int(scan['id']), payload.get('exclusions') or [])
+        if scan: scan.update(repo.scan_v2_config(int(scan['id'])))
         if not scan: raise HTTPException(404,"Scan não encontrado.")
         return scan
     except (DiscoveryInputError,ValueError) as exc: raise HTTPException(422,str(exc)) from exc
@@ -103,6 +109,23 @@ async def api_delete_scan(scan_uuid:str,remove_exclusive_targets:bool=Query(Fals
         return {"success":True}
     except ValueError as exc: raise HTTPException(409,str(exc)) from exc
 
+
+@router.post("/{target_uuid}/rescan")
+async def api_rescan_target(target_uuid:str):
+    target=repo.get_target(target_uuid)
+    if not target: raise HTTPException(404,"Ativo não encontrado.")
+    scans=repo.origin_scans_for_target(int(target["id"]))
+    if not scans: raise HTTPException(409,"Ativo não possui Scan de origem para reutilizar credenciais e política.")
+    # Safe identity-first rescan contract. Execution reuses the origin scan as a host-only scan.
+    from app.services.asset_rescan_service import rescan_asset
+    return await asyncio.to_thread(rescan_asset,target,scans[0])
+
+@router.get("/{target_uuid}/attacks")
+async def api_target_attacks(target_uuid:str):
+    target=repo.get_target(target_uuid)
+    if not target: raise HTTPException(404,"Ativo não encontrado.")
+    from app.services.attack_exposure_service import correlate_target
+    return correlate_target(int(target["id"]))
 
 @router.get("/{target_uuid}/services")
 async def api_target_services(target_uuid:str):
