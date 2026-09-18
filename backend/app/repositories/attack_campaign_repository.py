@@ -80,6 +80,7 @@ def ensure_attack_campaign_schema() -> None:
         CREATE TABLE IF NOT EXISTS attack_campaign_assets (
           id SERIAL PRIMARY KEY,
           execution_id INTEGER NOT NULL REFERENCES attack_campaign_executions(id) ON DELETE CASCADE,
+          target_id INTEGER REFERENCES targets(id) ON DELETE SET NULL,
           address VARCHAR(255) NOT NULL,
           hostname VARCHAR(255),
           fqdn VARCHAR(255),
@@ -119,6 +120,7 @@ def ensure_attack_campaign_schema() -> None:
         ALTER TABLE attack_campaigns ADD COLUMN IF NOT EXISTS create_benign_evidence BOOLEAN NOT NULL DEFAULT FALSE;
         ALTER TABLE attack_campaign_paths ADD COLUMN IF NOT EXISTS protocol VARCHAR(30) NOT NULL DEFAULT 'winrm';
         ALTER TABLE attack_campaign_paths ADD COLUMN IF NOT EXISTS relation_type VARCHAR(30) NOT NULL DEFAULT 'access';
+        ALTER TABLE attack_campaign_assets ADD COLUMN IF NOT EXISTS target_id INTEGER REFERENCES targets(id) ON DELETE SET NULL;
         """))
         db.commit()
 

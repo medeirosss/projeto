@@ -34,6 +34,18 @@ def ensure_target_schema() -> None:
             last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, is_current BOOLEAN NOT NULL DEFAULT TRUE,
             UNIQUE(target_id, ip_address)
         );
+        CREATE TABLE IF NOT EXISTS asset_identifiers (
+            id SERIAL PRIMARY KEY, target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+            identifier_type VARCHAR(40) NOT NULL, identifier_value VARCHAR(512) NOT NULL, source VARCHAR(60) NOT NULL DEFAULT 'discovery',
+            confidence INTEGER NOT NULL DEFAULT 50, first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, is_current BOOLEAN NOT NULL DEFAULT TRUE,
+            UNIQUE(target_id,identifier_type,identifier_value)
+        );
+        CREATE TABLE IF NOT EXISTS asset_identity_events (
+            id BIGSERIAL PRIMARY KEY, target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+            match_status VARCHAR(30) NOT NULL, confidence INTEGER NOT NULL DEFAULT 0, reason VARCHAR(100) NOT NULL,
+            evidence JSONB NOT NULL DEFAULT '{}'::jsonb, observed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE TABLE IF NOT EXISTS discovery_scans (
             id SERIAL PRIMARY KEY, scan_uuid VARCHAR(40) UNIQUE NOT NULL, name VARCHAR(150) NOT NULL,
             target_spec VARCHAR(255) NOT NULL, target_type VARCHAR(20) NOT NULL,
@@ -111,6 +123,10 @@ def ensure_target_schema() -> None:
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'online';
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS last_scan_id INTEGER REFERENCES discovery_scans(id) ON DELETE SET NULL;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS runner_id VARCHAR(80);
+        ALTER TABLE targets ADD COLUMN IF NOT EXISTS identity_status VARCHAR(30) NOT NULL DEFAULT 'LEGACY';
+        ALTER TABLE targets ADD COLUMN IF NOT EXISTS identity_confidence INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE targets ADD COLUMN IF NOT EXISTS identity_reason VARCHAR(100);
+        ALTER TABLE targets ADD COLUMN IF NOT EXISTS identity_evaluated_at TIMESTAMP;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS active_in_inventory BOOLEAN NOT NULL DEFAULT TRUE;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS retired_at TIMESTAMP;
         ALTER TABLE targets ADD COLUMN IF NOT EXISTS retired_reason VARCHAR(80);
@@ -181,6 +197,14 @@ def ensure_target_schema() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_exposure_findings_status ON exposure_findings(status,severity);
         CREATE INDEX IF NOT EXISTS idx_exposure_findings_target ON exposure_findings(target_id,status);
+        CREATE TABLE IF NOT EXISTS exposure_finding_occurrences (
+            id BIGSERIAL PRIMARY KEY, finding_id INTEGER NOT NULL REFERENCES exposure_findings(id) ON DELETE CASCADE,
+            opened_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP,status VARCHAR(20) NOT NULL DEFAULT 'open'
+        );
+        CREATE INDEX IF NOT EXISTS idx_asset_identifiers_lookup ON asset_identifiers(identifier_type,identifier_value);
+        CREATE INDEX IF NOT EXISTS idx_asset_identity_events_target ON asset_identity_events(target_id,observed_at);
+        CREATE INDEX IF NOT EXISTS idx_exposure_occurrence_finding ON exposure_finding_occurrences(finding_id,opened_at);
         CREATE INDEX IF NOT EXISTS idx_service_discovery_jobs_run ON service_discovery_jobs(discovery_run_id,status);
         """))
         db.commit()
@@ -282,20 +306,16 @@ def finish_discovery_run(run_uuid:str,status:str,count:int,error:str|None=None):
         db.execute(text("UPDATE discovery_runs SET status=:s,discovered_count=:c,error=:e,finished_at=:n,pipeline_status=:p WHERE run_uuid=:u"),{"s":status,"c":count,"e":error,"n":_now(),"p":"completed" if status=="success" else status,"u":run_uuid}); db.commit()
 
 
-def _find_existing(db, hostname_normalized, ip_address, mac_normalized):
-    if mac_normalized:
-        r=db.execute(text("SELECT * FROM targets WHERE mac_normalized=:m LIMIT 1"),{"m":mac_normalized}).mappings().first()
-        if r:return r
-    if hostname_normalized:
-        r=db.execute(text("SELECT * FROM targets WHERE hostname_normalized=:h ORDER BY last_seen_at DESC LIMIT 1"),{"h":hostname_normalized}).mappings().first()
-        if r:return r
-    return db.execute(text("SELECT * FROM targets WHERE ip_address=CAST(:ip AS INET) ORDER BY last_seen_at DESC LIMIT 1"),{"ip":ip_address}).mappings().first()
+def _find_existing(db, hostname_normalized, ip_address, mac_normalized, dns_name=None):
+    from app.repositories.asset_identity_repository import resolve_discovered_target
+    return resolve_discovered_target(db,hostname_normalized=hostname_normalized,ip_address=ip_address,mac_normalized=mac_normalized,dns_name=dns_name)
 
 
 def upsert_discovered_target(*,hostname,hostname_normalized,ip_address,mac_address,mac_normalized,vendor=None,status="online",source="nmap",scan_id=None,runner_id=None,dns_name=None,hostname_source=None)->dict:
     now=_now()
     with SessionLocal() as db:
-        existing=_find_existing(db,hostname_normalized,ip_address,mac_normalized)
+        identity=_find_existing(db,hostname_normalized,ip_address,mac_normalized,dns_name)
+        existing=identity.get('target')
         is_new = existing is None
         if existing:
             tid=existing["id"]
@@ -312,6 +332,11 @@ def upsert_discovered_target(*,hostname,hostname_normalized,ip_address,mac_addre
             {"u":_uuid("TGT"),"h":hostname,"hn":hostname_normalized,"dns":dns_name or hostname,"hostname_source":hostname_source,"display_name":hostname or dns_name or ip_address,"ip":ip_address,"m":mac_address,"mn":mac_normalized,"vendor":vendor,"status":status,"src":source,"sid":scan_id,"runner_id":runner_id,"n":now}).mappings().first(); tid=row["id"]
         db.execute(text("""INSERT INTO target_addresses(target_id,ip_address,first_seen_at,last_seen_at,is_current) VALUES(:id,CAST(:ip AS INET),:n,:n,TRUE)
         ON CONFLICT(target_id,ip_address) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at,is_current=TRUE"""),{"id":tid,"ip":ip_address,"n":now})
+        from app.repositories.asset_identity_repository import record_identifier, record_identity_event
+        record_identifier(db,tid,'mac',mac_normalized or mac_address,source=source,confidence=95)
+        record_identifier(db,tid,'hostname',hostname_normalized or hostname,source=hostname_source or source,confidence=80)
+        record_identifier(db,tid,'fqdn',dns_name,source=hostname_source or source,confidence=85)
+        record_identity_event(db,tid,identity.get('status') if not is_new else 'NEW_ASSET',identity.get('confidence',0),identity.get('reason','NO_IDENTITY_MATCH'),identity.get('evidence') or {})
         if scan_id:
             db.execute(text("""INSERT INTO discovery_scan_targets(scan_id,target_id,first_seen_at,last_seen_at,consecutive_misses) VALUES(:sid,:tid,:n,:n,0)
             ON CONFLICT(scan_id,target_id) DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at,consecutive_misses=0"""),{"sid":scan_id,"tid":tid,"n":now})
@@ -492,6 +517,10 @@ def get_target(target_uuid):
         cred=db.execute(text("""SELECT ac.protocol,ac.last_success_at,ac.hostname_result,c.id AS credential_id,c.name AS credential_name,c.credential_type
             FROM asset_credentials ac JOIN stored_credentials c ON c.id=ac.credential_id WHERE ac.target_id=:id ORDER BY ac.last_success_at DESC"""),{"id":r["id"]}).mappings().all()
         result["credentials"]=[_serialize(dict(x)) for x in cred]
+        identifiers=db.execute(text("SELECT identifier_type,identifier_value,source,confidence,first_seen_at,last_seen_at,is_current FROM asset_identifiers WHERE target_id=:id ORDER BY identifier_type,is_current DESC,last_seen_at DESC"),{"id":r["id"]}).mappings().all()
+        result["asset_identifiers"]=[_serialize(dict(x)) for x in identifiers]
+        identity_events=db.execute(text("SELECT match_status,confidence,reason,evidence,observed_at FROM asset_identity_events WHERE target_id=:id ORDER BY observed_at DESC LIMIT 100"),{"id":r["id"]}).mappings().all()
+        result["identity_history"]=[_serialize(dict(x)) for x in identity_events]
         try:
             from app.repositories.deep_inventory_repository import get_snapshot,list_hardware_changes,list_process_findings
             result["deep_inventory"]=get_snapshot(int(r["id"]))

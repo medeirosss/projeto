@@ -28,13 +28,19 @@ def load_knowledge() -> dict:
 
 def _upsert(db, *, target_id:int, rule_id:str, source_type:str, source_key:str, title:str, category:str, severity:str, evidence:dict):
     now=_now()
-    row=db.execute(text("SELECT status FROM exposure_findings WHERE target_id=:t AND source_type=:st AND source_key=:sk"),{"t":target_id,"st":source_type,"sk":source_key}).mappings().first()
+    row=db.execute(text("SELECT id,status FROM exposure_findings WHERE target_id=:t AND source_type=:st AND source_key=:sk"),{"t":target_id,"st":source_type,"sk":source_key}).mappings().first()
+    was_resolved=bool(row and row.get('status')=='resolved')
     status='ignored' if row and row.get('status')=='ignored' else 'open'
     db.execute(text("""INSERT INTO exposure_findings(finding_uuid,target_id,rule_id,source_type,source_key,title,category,severity,status,evidence,first_seen_at,last_seen_at,resolved_at,updated_at)
         VALUES(:u,:t,:r,:st,:sk,:title,:cat,:sev,:status,CAST(:ev AS JSONB),:now,:now,NULL,:now)
         ON CONFLICT(target_id,source_type,source_key) DO UPDATE SET rule_id=EXCLUDED.rule_id,title=EXCLUDED.title,category=EXCLUDED.category,severity=EXCLUDED.severity,
         status=CASE WHEN exposure_findings.status='ignored' THEN 'ignored' ELSE 'open' END,evidence=EXCLUDED.evidence,last_seen_at=EXCLUDED.last_seen_at,resolved_at=NULL,updated_at=EXCLUDED.updated_at"""),
         {"u":_uuid(),"t":target_id,"r":rule_id,"st":source_type,"sk":source_key,"title":title,"cat":category,"sev":severity,"status":status,"ev":json.dumps(evidence,ensure_ascii=False,default=str),"now":now})
+    finding_id=db.execute(text("SELECT id FROM exposure_findings WHERE target_id=:t AND source_type=:st AND source_key=:sk"),{"t":target_id,"st":source_type,"sk":source_key}).scalar_one()
+    if not row or was_resolved:
+        db.execute(text("""INSERT INTO exposure_finding_occurrences(finding_id,opened_at,last_seen_at,status) VALUES(:id,:now,:now,'open')"""),{"id":finding_id,"now":now})
+    else:
+        db.execute(text("""UPDATE exposure_finding_occurrences SET last_seen_at=:now WHERE id=(SELECT id FROM exposure_finding_occurrences WHERE finding_id=:id AND status='open' ORDER BY opened_at DESC LIMIT 1)"""),{"id":finding_id,"now":now})
 
 def evaluate_target(target_id:int) -> dict:
     kb=load_knowledge(); observed:set[tuple[str,str]]=set(); now=_now()
@@ -60,6 +66,7 @@ def evaluate_target(target_id:int) -> dict:
         for f in existing:
             if (f['source_type'],f['source_key']) not in observed:
                 db.execute(text("UPDATE exposure_findings SET status='resolved',resolved_at=:now,updated_at=:now WHERE id=:id"),{"id":f['id'],"now":now})
+                db.execute(text("UPDATE exposure_finding_occurrences SET status='resolved',resolved_at=:now,last_seen_at=:now WHERE finding_id=:id AND status='open'"),{"id":f['id'],"now":now})
         db.commit()
     return summary(target_id=target_id)
 

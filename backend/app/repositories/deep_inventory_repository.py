@@ -118,6 +118,11 @@ def ingest_deep_result(runner_job_id:int,runner_id:str,status:str,result:dict,er
                 ON CONFLICT(target_id,rule_id) DO UPDATE SET process_name=EXCLUDED.process_name,process_path=EXCLUDED.process_path,pid=EXCLUDED.pid,sha256=EXCLUDED.sha256,publisher=EXCLUDED.publisher,signed=EXCLUDED.signed,category=EXCLUDED.category,severity=EXCLUDED.severity,last_seen_at=EXCLUDED.last_seen_at,currently_detected=TRUE"""),{'t':target_id,'rid':rid,'name':m.get('process_name'),'path':m.get('process_path'),'pid':m.get('pid'),'sha':m.get('sha256'),'pub':m.get('publisher'),'signed':m.get('signed'),'cat':m.get('category'),'sev':m.get('severity'),'now':_now()})
             if inv.get('hostname'):
                 db.execute(text("UPDATE targets SET hostname=COALESCE(NULLIF(hostname,''),:h),display_name=CASE WHEN display_name IS NULL OR display_name=host(ip_address) THEN :h ELSE display_name END,updated_at=:now WHERE id=:id"),{'h':inv['hostname'],'now':_now(),'id':target_id})
+            from app.repositories.asset_identity_repository import record_identifier
+            record_identifier(db,target_id,'hostname',inv.get('hostname'),source='deep_inventory',confidence=90)
+            record_identifier(db,target_id,'serial_number',inv.get('serial_number'),source='deep_inventory',confidence=95)
+            if inv.get('hostname') and inv.get('domain_name'):
+                record_identifier(db,target_id,'fqdn',f"{inv.get('hostname')}.{inv.get('domain_name')}",source='deep_inventory',confidence=95)
         final='success' if status=='success' else ('timeout' if status=='timeout' else 'failed')
         db.execute(text("UPDATE deep_inventory_jobs SET status=:s,hardware_changes=:hc,process_findings=:pf,error=:e,finished_at=:now WHERE runner_job_id=:job"),{'s':final,'hc':len(changes),'pf':len(matches),'e':str(error or result.get('stderr') or '')[:2000] or None,'now':_now(),'job':runner_job_id})
         if job.get('discovery_run_id'):

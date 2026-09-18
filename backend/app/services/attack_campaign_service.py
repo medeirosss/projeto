@@ -343,17 +343,20 @@ def _window_remaining_minutes(now:datetime,c:dict[str,Any])->float:
 
 
 def _upsert_asset(db,eid:int,address:str,*,confirmed=False,hostname=None,inventory=None,increment_seed=False,state=None):
+    from app.repositories.asset_identity_repository import resolve_target_id
+    target_id=resolve_target_id(db,address) or resolve_target_id(db,hostname)
     db.execute(text("""
-      INSERT INTO attack_campaign_assets(execution_id,address,hostname,state,access_confirmed,seed_count,inventory,last_seen_at)
-      VALUES(:e,:a,:h,:state,:confirmed,:seed,CAST(:inv AS JSONB),:now)
+      INSERT INTO attack_campaign_assets(execution_id,target_id,address,hostname,state,access_confirmed,seed_count,inventory,last_seen_at)
+      VALUES(:e,:target_id,:a,:h,:state,:confirmed,:seed,CAST(:inv AS JSONB),:now)
       ON CONFLICT(execution_id,address) DO UPDATE SET
         hostname=COALESCE(EXCLUDED.hostname,attack_campaign_assets.hostname),
         state=CASE WHEN EXCLUDED.access_confirmed THEN 'access_confirmed' ELSE COALESCE(EXCLUDED.state,attack_campaign_assets.state) END,
         access_confirmed=attack_campaign_assets.access_confirmed OR EXCLUDED.access_confirmed,
         seed_count=attack_campaign_assets.seed_count + EXCLUDED.seed_count,
+        target_id=COALESCE(EXCLUDED.target_id,attack_campaign_assets.target_id),
         inventory=COALESCE(attack_campaign_assets.inventory,'{}'::jsonb) || EXCLUDED.inventory,
         last_seen_at=EXCLUDED.last_seen_at
-    """),{'e':eid,'a':address,'h':hostname,'state':state or ('access_confirmed' if confirmed else 'discovered'),'confirmed':confirmed,'seed':1 if increment_seed else 0,'inv':__import__('json').dumps(inventory or {},ensure_ascii=False),'now':datetime.utcnow()})
+    """),{'e':eid,'target_id':target_id,'a':address,'h':hostname,'state':state or ('access_confirmed' if confirmed else 'discovered'),'confirmed':confirmed,'seed':1 if increment_seed else 0,'inv':__import__('json').dumps(inventory or {},ensure_ascii=False),'now':datetime.utcnow()})
 
 
 def _select_cycle_seeds(db,c:dict[str,Any],e:dict[str,Any])->list[str]:
