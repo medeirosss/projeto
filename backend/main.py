@@ -21,6 +21,7 @@ from app.routers.exposures import router as exposures_router
 from app.routers.repositories import router as repositories_router
 from app.routers.attack_simulator import router as attack_simulator_router
 from app.routers.attack_campaigns import router as attack_campaigns_router
+from app.routers.attack_knowledge import router as attack_knowledge_router
 from app.license.license_middleware import LicenseMiddleware
 from app.security.auth_middleware import AuthMiddleware
 from app.auth.auth_router import router as auth_router
@@ -35,6 +36,7 @@ from app.repositories.target_repository import ensure_target_schema
 from app.repositories.validation_repository import ensure_validation_schema
 from app.repositories.attack_campaign_repository import ensure_attack_campaign_schema
 from app.services.validation_engine_service import sync_repositories
+from app.services.attack_knowledge_service import ensure_bundled_knowledge
 
 app = FastAPI(title="Centric - UEM Backend")
 app.add_middleware(AuthMiddleware)
@@ -52,6 +54,7 @@ async def startup_event():
     ensure_validation_schema()
     ensure_attack_campaign_schema()
     sync_repositories()
+    ensure_bundled_knowledge()
     license_service.validate()
     asyncio.create_task(run_license_scheduler())
     asyncio.create_task(run_discovery_scheduler())
@@ -78,6 +81,7 @@ app.include_router(exposures_router)
 app.include_router(repositories_router)
 app.include_router(attack_simulator_router)
 app.include_router(attack_campaigns_router)
+app.include_router(attack_knowledge_router)
 
 if __name__ == "__main__":
     import uvicorn

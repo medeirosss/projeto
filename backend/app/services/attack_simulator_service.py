@@ -241,7 +241,7 @@ def sync_attack_simulator() -> dict[str, Any]:
         "available": True,
         "metadata": {
             "execution": "runner",
-            "version": "5.6.0",
+            "version": "5.6.1",
             "semantics": "attack_simulation",
             "safe_mode": True,
             "destructive": False,

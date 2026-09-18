@@ -18,7 +18,7 @@ def summary():
         categories[key] = categories.get(key, 0) + 1
     return {
         "success": True,
-        "version": "5.5.0",
+        "version": "5.6.1",
         "safe_mode": True,
         "destructive": False,
         "credential_execution": True,
