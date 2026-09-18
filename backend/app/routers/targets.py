@@ -139,10 +139,30 @@ async def api_execute_target_simulation(target_uuid:str, technique_key:str, requ
     task=tasks[0]; meta=task.get("metadata") or {}
     options=dict(payload or {})
     if meta.get("credential_required") and not options.get("credential_id"):
-        scans=repo.origin_scans_for_target(int(target["id"]))
-        cid=next((x.get("last_successful_credential_id") for x in scans if x.get("last_successful_credential_id")),None)
+        # Prefer a credential already CONFIRMED on this exact asset and compatible
+        # with the simulation protocol. Secrets remain in Credential Store; only
+        # credential_id is persisted/scheduled and Runner receives the current
+        # secret transiently when it pulls the job.
+        detection=task.get("detection") or {}
+        sim_type=str(detection.get("type") or "").lower()
+        required=(
+            "snmp" if "snmp" in sim_type else
+            "ssh" if "ssh" in sim_type else
+            "windows" if any(x in sim_type for x in ("smb","winrm","kerberos","windows")) else None
+        )
+        def compatible(c):
+            ct=str(c.get("credential_type") or "").lower()
+            if required=="windows": return ct in {"windows","windows_domain","windows_local","wmi","winrm"}
+            if required=="snmp": return ct in {"snmp","snmp_v2c","snmpv2c"}
+            if required=="ssh": return ct in {"ssh","linux"}
+            return True
+        creds=[c for c in (target.get("credentials") or []) if compatible(c)]
+        cid=creds[0].get("credential_id") if creds else None
+        # Compatibility fallback for upgraded databases where asset_credentials has
+        # not yet been backfilled but discovery_scan_targets remembers the success.
         if not cid:
-            creds=target.get("credentials") or []; cid=creds[0].get("credential_id") if creds else None
+            scans=repo.origin_scans_for_target(int(target["id"]))
+            cid=next((x.get("last_successful_credential_id") for x in scans if x.get("last_successful_credential_id")),None)
         if cid: options["credential_id"]=cid
     if meta.get("credential_required") and not options.get("credential_id"):
         raise HTTPException(409,"Esta simulação requer credencial e o ativo ainda não possui uma credencial confirmada. Execute pelo Attack Simulator para selecionar uma credencial.")

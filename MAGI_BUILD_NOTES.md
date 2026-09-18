@@ -25,3 +25,10 @@ Baseline: 5.6.1.
 - Asset Simulation panel can execute a mapped technique contextually and display sanitized persistent execution logs/evidence.
 - Scan form replaces multi-select credentials with an explicit checkbox list and separates exclusions into their own managed panel.
 - Asset list exposes Last Scan / rescan status; Scan Now immediately refreshes the row and preserves identity-first semantics.
+
+## 5.6.2.2 — Asset Simulation Credential Reuse
+- Contextual simulations launched from an Asset reuse a credential already confirmed on that exact Asset.
+- Credential selection is protocol-aware: Windows for SMB/WinRM/Kerberos, SNMP for SNMP, SSH/Linux for SSH.
+- Only `credential_id` is persisted in jobs; the current secret is injected transiently from Credential Store when Runner pulls the job.
+- All `magi_attack` repository tasks use the `attack_simulation` job lifecycle even when the concrete Runner executor is `credential_validate`.
+- This fixes contextual SMB/WinRM/SNMP/SSH simulations being incorrectly scheduled as `security_check`, which prevented transient credential injection.

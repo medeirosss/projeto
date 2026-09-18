@@ -69,7 +69,15 @@ def plan_task(task_id:int,target:str,options:dict[str,Any]|None=None)->dict[str,
 def execute_task(task_id:int,target:str,requested_by:str='ui',options:dict[str,Any]|None=None):
     prepared=plan_task(task_id,target,options=options); plan=prepared['plan']; task=prepared['task']
     metadata=task.get('metadata') or {}
-    validation_type="nuclei" if task.get("executor")=="nuclei" else "attack_simulation" if task.get("executor") in {"attack_simulation","metasploit"} else "security_check"
+    # Every task from the MAGI Attack repository is an Attack Simulator execution,
+    # even when its concrete Runner executor is credential_validate (SMB/WinRM/SSH/SNMP).
+    # This keeps credential injection, execution history and result ingestion on the
+    # attack_simulation path instead of incorrectly creating a security_check job.
+    validation_type=(
+        "nuclei" if task.get("executor")=="nuclei"
+        else "attack_simulation" if task.get("repository_key")=="magi_attack" or task.get("executor") in {"attack_simulation","metasploit"}
+        else "security_check"
+    )
     payload={"executor":task['executor'],"validation_type":validation_type,"task_id":task_id,"task_key":task['task_key'],"repository_key":task['repository_key'],"target":target,"detection":task.get('detection') or {},"impact":task.get('impact'),"remediation":task.get('remediation')}
     if validation_type=="attack_simulation":
         payload.update({"simulation":task.get("detection") or {},"scenario_name":task.get("name"),"attack_category":task.get("category"),"attack_metadata":metadata,"safe_mode":True,"destructive":False,"scope":plan.get("scope") or {}})
