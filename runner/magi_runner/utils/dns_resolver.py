@@ -5,6 +5,7 @@ import os
 import random
 import socket
 import struct
+import threading
 from typing import Any
 
 
@@ -105,8 +106,27 @@ def resolve_ptr(ip_address: str, config: dict[str, Any] | None) -> dict[str, Any
             errors.append(f"{server}: {exc}")
 
     if config.get("fallback_system", True):
-        try:
-            name = socket.gethostbyaddr(ip_address)[0].rstrip(".")
+        # socket.gethostbyaddr() may block for a long time on Windows and has no
+        # per-call timeout. Run it in a daemon thread and enforce our own budget
+        # so DNS enrichment can never hold the discovery job indefinitely.
+        result: dict[str, Any] = {}
+
+        def _system_lookup() -> None:
+            try:
+                result["name"] = socket.gethostbyaddr(ip_address)[0].rstrip(".")
+            except Exception as exc:  # pragma: no cover - platform resolver detail
+                result["error"] = str(exc)
+
+        system_timeout = max(0.5, min(3.0, float(config.get("system_timeout_seconds") or timeout)))
+        thread = threading.Thread(target=_system_lookup, name=f"magi-ptr-{ip_address}", daemon=True)
+        thread.start()
+        thread.join(system_timeout)
+        if thread.is_alive():
+            errors.append(f"system: timeout after {system_timeout:g}s")
+        elif result.get("error"):
+            errors.append(f"system: {result['error']}")
+        else:
+            name = str(result.get("name") or "").strip()
             if name:
                 suffix = str(config.get("suffix") or "").strip().strip(".")
                 dns_name = f"{name}.{suffix}" if suffix and "." not in name else name
@@ -117,8 +137,6 @@ def resolve_ptr(ip_address: str, config: dict[str, Any] | None) -> dict[str, Any
                     "dns_server": "system",
                     "dns_error": None,
                 }
-        except Exception as exc:
-            errors.append(f"system: {exc}")
 
     return {
         "dns_name": None,
