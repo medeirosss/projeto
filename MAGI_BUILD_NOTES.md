@@ -19,3 +19,9 @@ Baseline: 5.6.1.
 - No HIGH technique is executed by Attack Exposure.
 - Asset identity conflict never overwrites an existing asset.
 - Knowledge and execution remain separate layers.
+
+## 5.6.2.1 — Scan Engine V2 integration/UX
+- Asset list counters now read persisted Attack Exposure and executable Simulation mappings.
+- Asset Simulation panel can execute a mapped technique contextually and display sanitized persistent execution logs/evidence.
+- Scan form replaces multi-select credentials with an explicit checkbox list and separates exclusions into their own managed panel.
+- Asset list exposes Last Scan / rescan status; Scan Now immediately refreshes the row and preserves identity-first semantics.

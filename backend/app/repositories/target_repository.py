@@ -483,7 +483,11 @@ def list_targets(search=None,limit=200,offset=0):
         rows=db.execute(text(f"""SELECT t.*, COALESCE(NULLIF(r.name,''),NULLIF(r.hostname,''),t.runner_id) AS runner_name,
             'detected' AS lifecycle_status,
             (SELECT COUNT(*) FROM asset_services svc WHERE svc.target_id=t.id AND svc.active=TRUE) AS service_count,
-            (SELECT COUNT(*) FROM exposure_findings ef WHERE ef.target_id=t.id AND ef.status='open') AS exposure_count
+            (SELECT COUNT(*) FROM exposure_findings ef WHERE ef.target_id=t.id AND ef.status='open') AS exposure_count,
+            (SELECT COUNT(*) FROM asset_attack_exposure ae WHERE ae.target_id=t.id) AS attack_count,
+            (SELECT COUNT(DISTINCT ae.attack_id) FROM asset_attack_exposure ae JOIN attack_technique_mappings atm ON atm.attack_id=ae.attack_id AND atm.executable=TRUE WHERE ae.target_id=t.id) AS simulation_count,
+            (SELECT MAX(arh.created_at) FROM asset_rescan_history arh WHERE arh.target_id=t.id) AS last_rescan_at,
+            (SELECT arh.status FROM asset_rescan_history arh WHERE arh.target_id=t.id ORDER BY arh.created_at DESC LIMIT 1) AS last_rescan_status
             FROM targets t LEFT JOIN runners r ON r.runner_id=t.runner_id
             {where} ORDER BY t.last_seen_at DESC LIMIT :l OFFSET :o"""),{"s":s,"l":limit,"o":offset}).mappings().all()
         total=db.execute(text(f"SELECT COUNT(*) FROM targets t LEFT JOIN runners r ON r.runner_id=t.runner_id {where}"),{"s":s}).scalar_one()

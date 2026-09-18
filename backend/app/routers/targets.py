@@ -1,6 +1,6 @@
 from __future__ import annotations
 import asyncio
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 from app.repositories import target_repository as repo
 from app.services.enrichment_engine import scoring_policy
 from app.services.nmap_provider import DiscoveryExecutionError, DiscoveryInputError
@@ -126,6 +126,28 @@ async def api_target_attacks(target_uuid:str):
     if not target: raise HTTPException(404,"Ativo não encontrado.")
     from app.services.attack_exposure_service import correlate_target
     return correlate_target(int(target["id"]))
+
+
+@router.post("/{target_uuid}/simulations/{technique_key}/execute")
+async def api_execute_target_simulation(target_uuid:str, technique_key:str, request: Request, payload:dict=Body(default={})):
+    target=repo.get_target(target_uuid)
+    if not target: raise HTTPException(404,"Ativo não encontrado.")
+    from app.repositories.validation_repository import list_tasks
+    from app.services.validation_engine_service import execute_task
+    tasks=[x for x in list_tasks("magi_attack",limit=1000) if x.get("task_key")==technique_key]
+    if not tasks: raise HTTPException(404,"Simulação executável não encontrada no catálogo instalado.")
+    task=tasks[0]; meta=task.get("metadata") or {}
+    options=dict(payload or {})
+    if meta.get("credential_required") and not options.get("credential_id"):
+        scans=repo.origin_scans_for_target(int(target["id"]))
+        cid=next((x.get("last_successful_credential_id") for x in scans if x.get("last_successful_credential_id")),None)
+        if not cid:
+            creds=target.get("credentials") or []; cid=creds[0].get("credential_id") if creds else None
+        if cid: options["credential_id"]=cid
+    if meta.get("credential_required") and not options.get("credential_id"):
+        raise HTTPException(409,"Esta simulação requer credencial e o ativo ainda não possui uma credencial confirmada. Execute pelo Attack Simulator para selecionar uma credencial.")
+    requested="asset-ui"
+    return await asyncio.to_thread(execute_task,int(task["id"]),str(target.get("ip_address") or target.get("hostname")),requested,options)
 
 @router.get("/{target_uuid}/services")
 async def api_target_services(target_uuid:str):

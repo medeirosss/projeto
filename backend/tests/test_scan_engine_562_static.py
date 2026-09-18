@@ -1,7 +1,7 @@
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 def read(p): return (ROOT/p).read_text(encoding='utf-8')
-def test_562_version(): assert read('VERSION').strip()=='5.6.2'
+def test_562_version(): assert read('VERSION').strip()=='5.6.2.1'
 def test_multi_credential_schema():
  s=read('alembic/versions/20260918_0030_scan_engine_v2_attack_exposure.py'); assert 'discovery_scan_credentials' in s and 'discovery_scan_exclusions' in s
 def test_asset_rescan_identity_guard():
