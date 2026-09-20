@@ -12,6 +12,7 @@ function switchAttackView(view){
   if(view==='history') loadHistory();
   if(view==='campaign') loadCampaigns();
   if(view==='correlation') loadCorrelationTargets();
+  if(view==='attackpath') loadAttackPaths();
 }
 async function loadProviderStatus(){
   const el=document.getElementById('metasploitProviderStatus'); if(!el)return;
@@ -268,3 +269,18 @@ async function executeCorrelation(){
   out.textContent='Criando execuções individuais...'; try{const d=await api(`/api/attack-simulator/correlation/${id}/execute`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({techniques,create_benign_evidence:!!document.getElementById('correlationEvidence')?.checked})});out.textContent=pretty(d);setTimeout(loadHistory,1200);}catch(e){out.textContent=e.message;}
 }
 document.addEventListener('DOMContentLoaded',()=>{loadCorrelationTargets();const t=document.getElementById('correlationTarget');if(t)t.onchange=loadCorrelationPlan;const r=document.getElementById('refreshCorrelation');if(r)r.onclick=async()=>{await loadCorrelationTargets();if(t.value)await loadCorrelationPlan()};const a=document.getElementById('correlationAll');if(a)a.onchange=()=>document.querySelectorAll('.corr-check').forEach(x=>x.checked=a.checked);const e=document.getElementById('executeCorrelation');if(e)e.onclick=executeCorrelation;});
+
+async function loadAttackPaths(){
+  const body=document.getElementById('attackPathRuns'); if(!body)return;
+  try{const d=await api('/api/attack-simulator/attack-paths'); const rows=d.items||[];
+    body.innerHTML=rows.map(x=>`<tr><td><strong>${esc(x.path_uuid)}</strong></td><td>${esc((x.metadata||{}).campaign_name||(x.metadata||{}).source||'manual')}</td><td>${badge(x.status)}</td><td>${esc(x.created_at||'--')}</td><td><button class="btn secondary btn-sm" onclick="viewAttackPath('${esc(x.path_uuid)}')">Ver telemetria</button></td></tr>`).join('')||'<tr><td colspan="5">Nenhum Attack Path registrado.</td></tr>';
+  }catch(e){body.innerHTML=`<tr><td colspan="5">${esc(e.message)}</td></tr>`;}
+}
+async function viewAttackPath(id){
+  const out=document.getElementById('attackPathTelemetry');
+  try{const d=await api(`/api/attack-simulator/attack-paths/${id}`),edges=d.edges||[],events=d.telemetry||[];
+    out.innerHTML=`<strong>${esc(id)}</strong><br><br><strong>Edges</strong><br>${edges.map(e=>`${esc(e.origin_address)} → ${esc(e.target_address)} · ${esc(e.protocol||'--')} · ${esc(e.state)}`).join('<br>')||'Nenhum edge.'}<br><br><strong>Path Telemetry</strong><br>${events.map(e=>`#${esc(e.sequence_no)} · hop ${esc(e.hop)} · ${esc(e.node_address)} · ${esc(e.event_type)} · ${esc(e.transport)}${e.relay_depth?`(${esc(e.relay_depth)})`:''}`).join('<br>')||'Nenhum sinal recebido.'}`;
+  }catch(e){out.textContent=e.message;}
+}
+window.viewAttackPath=viewAttackPath;
+document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('refreshAttackPaths');if(b)b.onclick=loadAttackPaths;});

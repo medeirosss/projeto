@@ -23,6 +23,7 @@ from app.routers.attack_simulator import router as attack_simulator_router
 from app.routers.attack_campaigns import router as attack_campaigns_router
 from app.routers.attack_knowledge import router as attack_knowledge_router
 from app.routers.web_assets import router as web_assets_router
+from app.routers.attack_paths import router as attack_paths_router
 from app.license.license_middleware import LicenseMiddleware
 from app.security.auth_middleware import AuthMiddleware
 from app.auth.auth_router import router as auth_router
@@ -84,6 +85,7 @@ app.include_router(attack_simulator_router)
 app.include_router(attack_campaigns_router)
 app.include_router(attack_knowledge_router)
 app.include_router(web_assets_router)
+app.include_router(attack_paths_router)
 
 if __name__ == "__main__":
     import uvicorn

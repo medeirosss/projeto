@@ -89,3 +89,15 @@ Baseline: 5.6.1.
 - Knowledge 2026.09.004 forces transactional refresh of mappings, including MAGI-KB-000015 -> MAGI-ATK-END-005.
 - Correlation therefore consumes the same Attack Exposure -> Technique Mapping -> Simulation Catalog chain used by asset simulations.
 - No hardcoded END-005 entry was added to the Correlation planner.
+
+## 5.7.0 — Intelligent Attack Path Foundation / MAGI Path Telemetry
+- Baseline: frozen 5.6.4.3.
+- Adds first-class Attack Path runs, edges and ordered telemetry events. This is data foundation for the Build 6 visual path experience; 5.7.0 does not attempt the final visualization.
+- Path states are explicit: POSSIBLE, VALIDATABLE, EXECUTING, REACHED, CONFIRMED, RETURN_CONFIRMED, BLOCKED, STALE.
+- Campaign import is conservative: an old Runner→target `access_confirmed` becomes VALIDATABLE, never a confirmed A→B lateral edge unless evidence explicitly proves remote-origin execution.
+- Path Telemetry events: ENTERED, ACTION_STARTED, ACTION_COMPLETED, EVIDENCE_CREATED, RELAY_STARTED, RELAY_RETURNED, EXITED, FAILED, RETURN_CONFIRMED.
+- Telemetry is ephemeral execution metadata, not an agent/beacon. No listener/service is installed on targets and no persistent callback is required.
+- Relay transport supports returning a compact telemetry bundle C→B→A→Runner→MAGI over the established execution/result chain. A target therefore does not need direct connectivity to the MAGI backend.
+- Telemetry payloads are allowlisted metadata only; passwords, hashes, tickets and arbitrary command output are not accepted into the telemetry envelope.
+- Attack Simulator adds a dedicated Attack Path workspace for path/telemetry inspection.
+- Runner 2.19.0 includes the telemetry envelope/relay helper. Integration into concrete lateral executors is intentionally incremental after this foundation is validated.

@@ -42,6 +42,7 @@
         <h3>Attack Simulator</h3>
         <button class="attack-nav-item active" data-view="attack">Attack</button>
         <button class="attack-nav-item" data-view="correlation">Correlation</button>
+        <button class="attack-nav-item" data-view="attackpath">Attack Path</button>
         <button class="attack-nav-item" data-view="campaign">Campaign</button>
         <button class="attack-nav-item" data-view="history">Histórico</button>
       </aside>
@@ -96,6 +97,12 @@
       <div class="table-wrap"><table><thead><tr><th><input id="correlationAll" type="checkbox"></th><th>Simulação</th><th>Impacto</th><th>Credencial</th><th>Evidência</th><th>Estado</th><th>Confiança</th><th>Motivo</th></tr></thead><tbody id="correlationTable"><tr><td colspan="6">Nenhum plano carregado.</td></tr></tbody></table></div>
       <div style="margin:12px 0"><label style="display:inline-flex;gap:8px;align-items:center;margin-right:18px"><input id="correlationEvidence" type="checkbox"> Criar Evidência MAGI no alvo quando suportado</label><button id="executeCorrelation" class="btn primary">Executar selecionadas</button></div>
       <pre id="correlationResult" class="result-box">Cada técnica gera sua própria execução, log e evidência no Histórico.</pre>
+    </section>
+
+    <section class="panel" data-attack-view="attackpath">
+      <div class="panel-header"><div><h2>Intelligent Attack Path 5.7</h2><p>Grafo operacional e telemetria de caminho. POSSIBLE/VALIDATABLE não são apresentados como salto lateral confirmado.</p></div><button id="refreshAttackPaths" class="btn secondary">Atualizar</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Path</th><th>Origem</th><th>Status</th><th>Criado</th><th>Ação</th></tr></thead><tbody id="attackPathRuns"><tr><td colspan="5">Nenhum Attack Path carregado.</td></tr></tbody></table></div>
+      <div id="attackPathTelemetry" class="result-box">Selecione um Path para ver edges e telemetria ENTERED / ACTION / RELAY / RETURN.</div>
     </section>
 
     <section class="panel" id="campaignPanel" data-attack-view="campaign">
