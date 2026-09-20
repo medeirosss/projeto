@@ -5,8 +5,8 @@ from sqlalchemy import text
 from app.database.connection import get_db_session
 
 SCHEMA_VERSION=1
-MAGI_VERSION='5.6.4.1'
-BUNDLED=Path(__file__).resolve().parents[1]/'data'/'attack_knowledge_2026.09.003.json'
+MAGI_VERSION='5.6.4.3'
+BUNDLED=Path(__file__).resolve().parents[1]/'data'/'attack_knowledge_2026.09.004.json'
 
 
 def _validate(snapshot:dict)->dict:
@@ -39,7 +39,7 @@ def import_snapshot(snapshot:dict, source:str|None=None)->dict:
             for cve in a.get('cves') or []: db.execute(text('INSERT INTO attack_cve_mappings(attack_id,cve_id) VALUES(:id,:c)'),{'id':aid,'c':cve})
             for ref in a.get('references') or []: db.execute(text('INSERT INTO attack_references(attack_id,reference_type,reference_id,url) VALUES(:id,:t,:r,:u)'),{'id':aid,'t':ref.get('type','other'),'r':ref.get('id',''),'u':ref.get('url')})
             for tech in a.get('techniques') or []:
-                db.execute(text('INSERT INTO attack_technique_mappings(attack_id,technique_key,provider,executable,simulation_impact) VALUES(:id,:k,:p,:e,:i)'),{'id':aid,'k':tech['technique_key'],'p':tech.get('provider','magi_native'),'e':bool(tech.get('executable')),'i':tech.get('simulation_impact')})
+                db.execute(text('INSERT INTO attack_technique_mappings(attack_id,technique_key,provider,executable,simulation_impact) VALUES(:id,:k,:p,:e,:i)'),{'id':aid,'k':tech['technique_key'],'p':tech.get('provider','magi_native'),'e':bool(tech.get('executable', True)),'i':tech.get('simulation_impact') or tech.get('impact')})
         if present:
             result=db.execute(text("UPDATE attack_knowledge SET status='deprecated',deprecated_at=COALESCE(deprecated_at,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE status<>'deprecated' AND NOT (attack_uuid = ANY(:ids))"),{'ids':present}); deprecated=result.rowcount or 0
         db.execute(text('DELETE FROM knowledge_state'))

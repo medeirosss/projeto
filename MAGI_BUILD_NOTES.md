@@ -81,3 +81,11 @@ Baseline: 5.6.1.
 - Planner orders `credential_requirement=NONE` before authenticated validations and preserves the Zero-Credential Guarantee.
 - `MAGI-ATK-END-005` therefore enters Correlation automatically when SMB/TCP 445 evidence satisfies `SMB Anonymous Session` Knowledge conditions.
 - Attack Exposure remains POSSIBLE/AVAILABLE until a validation result exists; service presence alone is not treated as a confirmed vulnerability.
+
+
+## 5.6.4.3 - Correlation Mapping Hotfix
+- Attack Exposure is the source of truth for host Correlation.
+- Fixed Knowledge mapping import: declared techniques default to executable unless explicitly disabled; impact aliases simulation_impact.
+- Knowledge 2026.09.004 forces transactional refresh of mappings, including MAGI-KB-000015 -> MAGI-ATK-END-005.
+- Correlation therefore consumes the same Attack Exposure -> Technique Mapping -> Simulation Catalog chain used by asset simulations.
+- No hardcoded END-005 entry was added to the Correlation planner.
