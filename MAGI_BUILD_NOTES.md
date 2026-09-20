@@ -32,3 +32,12 @@ Baseline: 5.6.1.
 - Only `credential_id` is persisted in jobs; the current secret is injected transiently from Credential Store when Runner pulls the job.
 - All `magi_attack` repository tasks use the `attack_simulation` job lifecycle even when the concrete Runner executor is `credential_validate`.
 - This fixes contextual SMB/WinRM/SNMP/SSH simulations being incorrectly scheduled as `security_check`, which prevented transient credential injection.
+
+## 5.6.3 — Asset Intelligence, Attack Knowledge and Correlation
+- 5.6.2.2 remains the Scan Engine V2 stable baseline.
+- Attack Knowledge and executable Simulation are separate concepts. Knowledge may include SAFE/LOW/MEDIUM/HIGH; executable simulations remain controlled SAFE/LOW.
+- Knowledge snapshot `2026.09.002` is cumulative and expands the contextual attack catalog. Knowledge updates never install executable Runner code.
+- Attack Simulator adds **Correlation**: select a known Asset, review only executable techniques justified by observed services/exposures, select by checkbox and queue independent executions with individual logs/evidence.
+- **Attack** remains the free/manual single-target mode. **Campaign** remains controlled path/lateral exploration.
+- Web is a first-class manually registered Asset type (`WEB-*`). Web identity is URL-oriented (scheme + hostname + port + base path); resolved IPs are observations and never define identity. Web Scan Now keeps historical observations and performs DNS, HTTP status/redirect/header/fingerprint collection.
+- Network Node enrichment continues to use SNMP as read-only discovery/inventory; SNMP SET is outside this build.

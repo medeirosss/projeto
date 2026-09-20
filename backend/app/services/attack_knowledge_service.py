@@ -5,8 +5,8 @@ from sqlalchemy import text
 from app.database.connection import get_db_session
 
 SCHEMA_VERSION=1
-MAGI_VERSION='5.6.1'
-BUNDLED=Path(__file__).resolve().parents[1]/'data'/'attack_knowledge_2026.09.001.json'
+MAGI_VERSION='5.6.3'
+BUNDLED=Path(__file__).resolve().parents[1]/'data'/'attack_knowledge_2026.09.002.json'
 
 
 def _validate(snapshot:dict)->dict:
@@ -54,7 +54,9 @@ def ensure_bundled_knowledge()->dict:
         with get_db_session() as db: current=db.execute(text('SELECT knowledge_version FROM knowledge_state ORDER BY id DESC LIMIT 1')).scalar()
     except Exception:
         return {'success':False,'message':'Knowledge schema ainda não disponível; execute Alembic upgrade.'}
-    if current: return {'success':True,'knowledge_version':current,'changed':False}
+    if current == target: return {'success':True,'knowledge_version':current,'changed':False}
+    # Bundled snapshots are cumulative; jump directly to the newest bundled version.
+    if current and str(current) > str(target): return {'success':True,'knowledge_version':current,'changed':False}
     r=import_snapshot(snapshot,'bundled'); r['changed']=True; return r
 
 

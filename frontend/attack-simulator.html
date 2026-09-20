@@ -41,6 +41,7 @@
       <aside class="attack-subnav">
         <h3>Attack Simulator</h3>
         <button class="attack-nav-item active" data-view="attack">Attack</button>
+        <button class="attack-nav-item" data-view="correlation">Correlation</button>
         <button class="attack-nav-item" data-view="campaign">Campaign</button>
         <button class="attack-nav-item" data-view="history">Histórico</button>
       </aside>
@@ -87,6 +88,15 @@
       <pre id="attackResult" class="result-box">Selecione uma simulação para planejar ou executar.</pre>
     </section>
 
+
+    <section class="panel" data-attack-view="correlation">
+      <div class="panel-header"><div><h2>Correlation</h2><p>Plano de validação orientado pelo conhecimento real do ativo. O MAGI propõe somente simulações executáveis coerentes com serviços e exposições observados.</p></div><button id="refreshCorrelation" class="btn secondary">Atualizar</button></div>
+      <div class="form-grid"><label>Ativo conhecido<select id="correlationTarget"><option value="">Selecione um ativo</option></select></label></div>
+      <div id="correlationAssetSummary" class="result-box">Selecione um ativo para gerar o plano.</div>
+      <div class="table-wrap"><table><thead><tr><th><input id="correlationAll" type="checkbox"></th><th>Simulação</th><th>Impacto</th><th>Estado</th><th>Confiança</th><th>Motivo</th></tr></thead><tbody id="correlationTable"><tr><td colspan="6">Nenhum plano carregado.</td></tr></tbody></table></div>
+      <div style="margin:12px 0"><button id="executeCorrelation" class="btn primary">Executar selecionadas</button></div>
+      <pre id="correlationResult" class="result-box">Cada técnica gera sua própria execução, log e evidência no Histórico.</pre>
+    </section>
 
     <section class="panel" id="campaignPanel" data-attack-view="campaign">
       <div class="panel-header">

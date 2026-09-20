@@ -4,6 +4,7 @@
 <aside class="report-sidebar"><div class="sidebar-group"><div class="report-group-title">Ativos</div><nav class="report-nav">
 <a id="navNewAssets" class="active" href="#new">Novos ativos</a>
 <a id="navKnownAssets" href="#known">Ativos analisados</a>
+<a id="navWebAssets" href="#web">Web</a>
 <a id="navScans" href="#scans">Scan</a>
 <a id="navCompliance" href="#compliance">Compliance</a>
 <a id="navScoring" href="#scoring">Pontuação</a>
@@ -23,6 +24,11 @@
 <div class="card alerts-card"><div class="card-header">Inventário de ativos</div><div class="card-body"><input id="targetsSearch" placeholder="Pesquisar por nome, hostname, IP, MAC, fabricante ou Runner"><div class="table-wrap"><table><thead><tr><th data-sort="status">Status</th><th data-sort="asset_type">Tipo</th><th data-sort="display_name">Nome</th><th data-sort="ip_address">IP</th><th>MAC</th><th data-sort="vendor">Fabricante</th><th>Confiança</th><th>Serviços</th><th>Exposições</th><th>Ataques</th><th>Simulações</th><th>Deep Inventory</th><th>Origem</th><th>Runner</th><th data-sort="first_seen_at">Primeira descoberta</th><th data-sort="last_seen_at">Última descoberta</th><th>Último Scan</th><th>Ações</th></tr></thead><tbody id="targetsTable"></tbody></table></div><div id="assetScoreDetail" class="pipeline-panel" hidden></div><div id="assetServicesPanel" class="pipeline-panel" hidden></div><div id="assetExposurePanel" class="pipeline-panel" hidden></div><div id="assetAttackPanel" class="pipeline-panel" hidden></div><div id="assetDeepPanel" class="pipeline-panel" hidden></div></div></div>
 </section>
 
+<section class="report-section" id="webAssetsSection" hidden>
+<div class="toolbar"><div><div class="title">Web Assets</div><p class="section-subtitle">Aplicações e sites adicionados manualmente com identidade WEB-* e histórico independente de IP/DNS.</p></div><button class="btn primary btn-sm" id="addWebAssetBtn">Adicionar Web</button></div>
+<div class="card alerts-card" id="webAssetForm" hidden><div class="card-header">Novo Web Asset</div><div class="card-body"><div class="form-grid"><label>Nome<input id="webAssetName" placeholder="Portal corporativo"></label><label>URL<input id="webAssetUrl" placeholder="https://portal.exemplo.com/"></label></div><button class="btn primary btn-sm" id="saveWebAsset">Adicionar e validar</button> <button class="btn secondary btn-sm" id="cancelWebAsset">Cancelar</button><pre id="webAssetResult" class="result-box">O MAGI fará DNS, HTTP(S), redirects, headers e fingerprint básico.</pre></div></div>
+<div class="card alerts-card"><div class="card-header">Inventário Web</div><div class="card-body"><div class="table-wrap"><table><thead><tr><th>Status</th><th>ID</th><th>Nome</th><th>URL</th><th>HTTP</th><th>DNS/IP observado</th><th>Último Scan</th><th>Ações</th></tr></thead><tbody id="webAssetsTable"><tr><td colspan="8">Carregando...</td></tr></tbody></table></div></div></div>
+</section>
 <section class="report-section" id="scansSection" hidden>
 <div class="toolbar"><div><div class="title">Scan</div><p class="section-subtitle">Descoberta, enriquecimento e ciclo de vida do inventário.</p></div><button class="btn primary btn-sm" id="newScanBtn">Novo scan</button></div>
 <div id="scanPipelinePanel" class="pipeline-panel" hidden></div>
