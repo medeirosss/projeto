@@ -72,3 +72,12 @@ Baseline: 5.6.1.
 - SMB Anonymous Session ganhou simulação nativa SAFE `MAGI-ATK-END-005`, com `credential_requirement=NONE` e sem evidência remota.
 - Attack Knowledge cumulativo 2026.09.003 mapeia SMB Anonymous Session para a nova simulação.
 - Runner 2.18.7.
+
+## 5.6.4.2 — Automatic Correlation Engine v2
+- Correlation is now generated from current Asset Intelligence -> Attack Knowledge -> executable technique mappings; no per-technique Correlation allowlist.
+- Active services/ports collected into `asset_services` (including Deep Inventory/Scan enrichment) are evaluated by generic Knowledge conditions.
+- Added condition aliases `service`, `service_name`, and `deep_inventory_service` for data-driven Knowledge packs.
+- Executable mapped simulations are discovered dynamically from the installed Simulation Catalog.
+- Planner orders `credential_requirement=NONE` before authenticated validations and preserves the Zero-Credential Guarantee.
+- `MAGI-ATK-END-005` therefore enters Correlation automatically when SMB/TCP 445 evidence satisfies `SMB Anonymous Session` Knowledge conditions.
+- Attack Exposure remains POSSIBLE/AVAILABLE until a validation result exists; service presence alone is not treated as a confirmed vulnerability.

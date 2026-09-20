@@ -7,7 +7,9 @@ def _match(cond, ports, services, findings, cred_types):
     if t=='tcp_port': return ('tcp',int(v)) in ports
     if t=='udp_port': return ('udp',int(v)) in ports
     if t=='tcp_port_any': return any(('tcp',int(x)) in ports for x in (v or []))
-    if t=='service': return str(v).lower() in services
+    if t in {'service','service_name','deep_inventory_service'}:
+        wanted=str(v).lower()
+        return wanted in services or any(wanted in x for x in services)
     if t=='finding': return str(v).lower() in findings
     if t=='credential_type': return str(v).lower() in cred_types
     return False
@@ -34,4 +36,4 @@ def correlate_target(target_id:int)->dict:
             db.execute(text("""INSERT INTO asset_attack_exposure(target_id,attack_id,state,match_confidence,match_reason) VALUES(:t,:a,:s,:c,CAST(:r AS jsonb)) ON CONFLICT(target_id,attack_id) DO UPDATE SET state=EXCLUDED.state,match_confidence=EXCLUDED.match_confidence,match_reason=EXCLUDED.match_reason,last_seen_at=CURRENT_TIMESTAMP"""),{'t':target_id,'a':a['id'],'s':state,'c':confidence,'r':__import__('json').dumps(reason)})
             d=dict(a); d.update({'state':state,'match_confidence':confidence,'match_reason':reason,'simulations':sims}); out.append(d)
         db.commit()
-    return {'target_id':target_id,'attacks':out,'attack_count':len(out),'simulation_count':sum(1 for a in out if a['simulations'])}
+    return {'target_id':target_id,'attacks':out,'attack_count':len(out),'simulation_count':sum(len(a['simulations']) for a in out)}

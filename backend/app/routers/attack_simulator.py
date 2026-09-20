@@ -119,15 +119,9 @@ def correlation_plan(target_uuid:str):
     from app.services.attack_exposure_service import correlate_target
     t=tr.get_target(target_uuid)
     if not t: raise HTTPException(404,'Ativo não encontrado.')
-    from app.repositories.validation_repository import list_tasks
-    task_map={x.get('task_key'):x for x in list_tasks('magi_attack',limit=1000)}
-    c=correlate_target(int(t['id'])); sims=[]; seen=set()
-    for a in c.get('attacks',[]):
-        for sim in a.get('simulations',[]):
-            k=sim.get('technique_key')
-            if not k or k in seen: continue
-            seen.add(k); tm=(task_map.get(k) or {}).get('metadata') or {}; req=str(tm.get('credential_requirement') or ('REQUIRED' if tm.get('credential_required') else 'NONE')).upper(); sims.append({**sim,'attack_name':a.get('name'),'impact':sim.get('simulation_impact') or a.get('impact'),'state':a.get('state'),'confidence':a.get('match_confidence'),'reason':a.get('match_reason'),'credential_requirement':req,'remote_evidence':str(tm.get('remote_evidence') or 'NOT_SUPPORTED')})
-    return {'target':{'target_uuid':target_uuid,'name':t.get('display_name') or t.get('hostname') or t.get('ip_address'),'ip_address':t.get('ip_address'),'asset_type':t.get('asset_type'),'asset_source':'target'},'simulations':sims,'total':len(sims)}
+    from app.services.automatic_correlation_service import build_plan
+    p=build_plan(t)
+    return {'target':{'target_uuid':target_uuid,'name':t.get('display_name') or t.get('hostname') or t.get('ip_address'),'ip_address':t.get('ip_address'),'asset_type':t.get('asset_type'),'asset_source':'target'},**p}
 
 @router.post('/correlation/{target_uuid}/execute')
 def correlation_execute(target_uuid:str,request:Request,payload:dict=Body(...)):
