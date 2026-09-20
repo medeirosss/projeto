@@ -93,8 +93,8 @@
       <div class="panel-header"><div><h2>Correlation</h2><p>Plano de validação orientado pelo conhecimento real do ativo. O MAGI propõe somente simulações executáveis coerentes com serviços e exposições observados.</p></div><button id="refreshCorrelation" class="btn secondary">Atualizar</button></div>
       <div class="form-grid"><label>Ativo conhecido<select id="correlationTarget"><option value="">Selecione um ativo</option></select></label></div>
       <div id="correlationAssetSummary" class="result-box">Selecione um ativo para gerar o plano.</div>
-      <div class="table-wrap"><table><thead><tr><th><input id="correlationAll" type="checkbox"></th><th>Simulação</th><th>Impacto</th><th>Estado</th><th>Confiança</th><th>Motivo</th></tr></thead><tbody id="correlationTable"><tr><td colspan="6">Nenhum plano carregado.</td></tr></tbody></table></div>
-      <div style="margin:12px 0"><button id="executeCorrelation" class="btn primary">Executar selecionadas</button></div>
+      <div class="table-wrap"><table><thead><tr><th><input id="correlationAll" type="checkbox"></th><th>Simulação</th><th>Impacto</th><th>Credencial</th><th>Evidência</th><th>Estado</th><th>Confiança</th><th>Motivo</th></tr></thead><tbody id="correlationTable"><tr><td colspan="6">Nenhum plano carregado.</td></tr></tbody></table></div>
+      <div style="margin:12px 0"><label style="display:inline-flex;gap:8px;align-items:center;margin-right:18px"><input id="correlationEvidence" type="checkbox"> Criar Evidência MAGI no alvo quando suportado</label><button id="executeCorrelation" class="btn primary">Executar selecionadas</button></div>
       <pre id="correlationResult" class="result-box">Cada técnica gera sua própria execução, log e evidência no Histórico.</pre>
     </section>
 

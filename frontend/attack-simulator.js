@@ -252,19 +252,19 @@ let correlationPlan=[];
 async function loadCorrelationTargets(){
   const d=await api('/api/attack-simulator/correlation/targets');
   const el=document.getElementById('correlationTarget'); if(!el)return;
-  const cur=el.value; el.innerHTML='<option value="">Selecione um ativo</option>'+(d.items||[]).map(x=>`<option value="${esc(x.target_uuid)}">${esc(x.name)} — ${esc(x.ip_address)} — ${esc(x.asset_type||'Asset')}</option>`).join('');
+  const cur=el.value; el.innerHTML='<option value="">Selecione um ativo</option>'+(d.items||[]).map(x=>`<option value="${esc(x.target_uuid)}">${esc(x.asset_type==='Web'?'WEB':'HOST')} · ${esc(x.name)} — ${esc(x.address||x.ip_address)} — ${esc(x.asset_type||'Asset')}</option>`).join('');
   if(cur)el.value=cur;
 }
 async function loadCorrelationPlan(){
   const id=document.getElementById('correlationTarget')?.value; if(!id)return;
   const d=await api(`/api/attack-simulator/correlation/${id}/plan`); correlationPlan=d.simulations||[];
   document.getElementById('correlationAssetSummary').textContent=`${d.target.name} · ${d.target.ip_address} · ${d.target.asset_type||'Asset'} · ${d.total} simulações correlacionadas`;
-  document.getElementById('correlationTable').innerHTML=correlationPlan.map(x=>`<tr><td><input class="corr-check" type="checkbox" value="${esc(x.technique_key)}" checked></td><td><strong>${esc(x.technique_key)}</strong><br><small>${esc(x.attack_name||'')}</small></td><td>${badge(x.impact)}</td><td>${esc(x.state||'AVAILABLE')}</td><td>${Number(x.confidence||0)}%</td><td><small>${esc((x.reason?.checks||[]).filter(c=>c.matched).map(c=>`${c.type}:${Array.isArray(c.value)?c.value.join(','):c.value}`).join(' · ')||'Correlação do ativo')}</small></td></tr>`).join('')||'<tr><td colspan="6">Nenhuma simulação aplicável.</td></tr>';
+  document.getElementById('correlationTable').innerHTML=correlationPlan.map(x=>`<tr><td><input class="corr-check" type="checkbox" value="${esc(x.technique_key)}" checked></td><td><strong>${esc(x.technique_key)}</strong><br><small>${esc(x.attack_name||'')}</small></td><td>${badge(x.impact)}</td><td>${esc(x.credential_requirement==='REQUIRED'?'Obrigatória':x.credential_requirement==='OPTIONAL'?'Opcional':'Não necessária')}</td><td>${esc(x.remote_evidence==='SUPPORTED'?'Remota suportada':'Log MAGI')}</td><td>${esc(x.state||'AVAILABLE')}</td><td>${Number(x.confidence||0)}%</td><td><small>${esc((x.reason?.checks||[]).filter(c=>c.matched).map(c=>`${c.type}:${Array.isArray(c.value)?c.value.join(','):c.value}`).join(' · ')||'Correlação do ativo')}</small></td></tr>`).join('')||'<tr><td colspan="8">Nenhuma simulação aplicável.</td></tr>';
   document.getElementById('correlationAll').checked=correlationPlan.length>0;
 }
 async function executeCorrelation(){
   const id=document.getElementById('correlationTarget').value; const techniques=[...document.querySelectorAll('.corr-check:checked')].map(x=>x.value); const out=document.getElementById('correlationResult');
   if(!id||!techniques.length){out.textContent='Selecione um ativo e ao menos uma técnica.';return;} if(!confirm(`Executar ${techniques.length} simulações correlacionadas?`))return;
-  out.textContent='Criando execuções individuais...'; try{const d=await api(`/api/attack-simulator/correlation/${id}/execute`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({techniques})});out.textContent=pretty(d);setTimeout(loadHistory,1200);}catch(e){out.textContent=e.message;}
+  out.textContent='Criando execuções individuais...'; try{const d=await api(`/api/attack-simulator/correlation/${id}/execute`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({techniques,create_benign_evidence:!!document.getElementById('correlationEvidence')?.checked})});out.textContent=pretty(d);setTimeout(loadHistory,1200);}catch(e){out.textContent=e.message;}
 }
 document.addEventListener('DOMContentLoaded',()=>{loadCorrelationTargets();const t=document.getElementById('correlationTarget');if(t)t.onchange=loadCorrelationPlan;const r=document.getElementById('refreshCorrelation');if(r)r.onclick=async()=>{await loadCorrelationTargets();if(t.value)await loadCorrelationPlan()};const a=document.getElementById('correlationAll');if(a)a.onchange=()=>document.querySelectorAll('.corr-check').forEach(x=>x.checked=a.checked);const e=document.getElementById('executeCorrelation');if(e)e.onclick=executeCorrelation;});

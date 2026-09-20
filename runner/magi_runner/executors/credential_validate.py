@@ -163,12 +163,15 @@ def _create_benign_evidence(target:str, credential:dict[str,Any], protocol:str, 
         return {'evidence_requested':False,'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':None}
 
     campaign_context=payload.get('campaign_context') or {}
+    evidence_context=payload.get('evidence_context') or {}
     campaign_uuid=str(campaign_context.get('campaign_uuid') or '')
+    asset_ref=str(evidence_context.get('asset_ref') or '')
+    technique_key=str(evidence_context.get('technique_key') or '')
     user=str(credential.get('username') or '').strip()
     domain=str(credential.get('domain') or '').strip()
     secret=str(credential.get('secret') or '')
     identity=f"{domain}\\{user}" if domain and '\\' not in user and '@' not in user else user
-    content=f"MAGI esteve aqui\\nCampaign: {campaign_uuid}\\nTarget: {target}\\nProtocol: {protocol}\\n"
+    content=f"MAGI Security Validation Evidence\\nCampaign: {campaign_uuid or '-'}\\nAsset: {asset_ref or '-'}\\nTechnique: {technique_key or '-'}\\nTarget: {target}\\nProtocol: {protocol}\\n"
 
     if protocol=='winrm':
         evidence_path=str(payload.get('evidence_path') or r'C:\MAGI\MAGI_EVIDENCE.txt')
@@ -208,22 +211,23 @@ finally{
 
     if protocol=='smb':
         env=os.environ.copy()
-        env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret,'MAGI_EVIDENCE_CONTENT':content})
+        evidence_path=str(payload.get('evidence_path') or r'C:\MAGI\MAGI_EVIDENCE.txt')
+        env.update({'MAGI_TARGET':target,'MAGI_USER':identity,'MAGI_SECRET':secret,'MAGI_EVIDENCE_CONTENT':content,'MAGI_EVIDENCE_PATH':evidence_path})
         script=r'''$ErrorActionPreference='Stop'
 $s=ConvertTo-SecureString $env:MAGI_SECRET -AsPlainText -Force
 $c=New-Object System.Management.Automation.PSCredential($env:MAGI_USER,$s)
 $n='MAGI'+([guid]::NewGuid().ToString('N').Substring(0,8))
 try{
   New-PSDrive -Name $n -PSProvider FileSystem -Root ("\\"+$env:MAGI_TARGET+"\C$") -Credential $c -ErrorAction Stop|Out-Null
-  $dir="${n}:\MAGI";New-Item -ItemType Directory -Path $dir -Force|Out-Null
-  $file="${dir}\MAGI_EVIDENCE.txt";Set-Content -Path $file -Value $env:MAGI_EVIDENCE_CONTENT -Encoding UTF8
+  $rel=$env:MAGI_EVIDENCE_PATH -replace '^C:\\','';$file="${n}:\$rel";$dir=Split-Path $file -Parent;New-Item -ItemType Directory -Path $dir -Force|Out-Null
+  Set-Content -Path $file -Value $env:MAGI_EVIDENCE_CONTENT -Encoding UTF8
   if(Test-Path $file){Write-Output 'VERIFIED'}
 }finally{Remove-PSDrive -Name $n -Force -ErrorAction SilentlyContinue}'''
         try:
             proc=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],
                 capture_output=True,text=True,timeout=max(8,timeout),env=env,shell=False)
             ok=proc.returncode==0 and 'VERIFIED' in (proc.stdout or '')
-            return {'evidence_requested':True,'evidence_created':ok,'evidence_verified':ok,'evidence_path':r'C:\MAGI\MAGI_EVIDENCE.txt' if ok else None,
+            return {'evidence_requested':True,'evidence_created':ok,'evidence_verified':ok,'evidence_path':evidence_path if ok else None,
                     'evidence_error':None if ok else (proc.stderr or proc.stdout or f'exit {proc.returncode}')[-1600:]}
         except Exception as exc:
             return {'evidence_requested':True,'evidence_created':False,'evidence_verified':False,'evidence_path':None,'evidence_error':str(exc)[-1600:]}

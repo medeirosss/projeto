@@ -41,3 +41,24 @@ Baseline: 5.6.1.
 - **Attack** remains the free/manual single-target mode. **Campaign** remains controlled path/lateral exploration.
 - Web is a first-class manually registered Asset type (`WEB-*`). Web identity is URL-oriented (scheme + hostname + port + base path); resolved IPs are observations and never define identity. Web Scan Now keeps historical observations and performs DNS, HTTP status/redirect/header/fingerprint collection.
 - Network Node enrichment continues to use SNMP as read-only discovery/inventory; SNMP SET is outside this build.
+
+## 5.6.3.1 — Web Asset Correlation integration
+- Correlation target selector now merges discovered network assets (`TGT-*`) and persistent Web Assets (`WEB-*`).
+- Web Assets keep URL identity; resolved IP is not used as the correlation identity.
+- Web correlation proposes only installed Application simulations compatible with the observed HTTP/HTTPS scheme and a reachable Web Asset.
+- Correlation execution sends the original/normalized URL to the existing Application execution pipeline, preserving Runner DNS resolution and VHOST behavior.
+- Each selected Web simulation remains an independent execution with its own History/log/evidence.
+- Host correlation behavior from 5.6.3 is unchanged.
+
+## Build 5.6.4 — Validation Intelligence / Correlation credential policy
+
+- Baseline: 5.6.3.1 frozen.
+- Correlation now exposes credential requirement per simulation: NONE / OPTIONAL / REQUIRED.
+- Zero-Credential Guarantee: a technique marked NONE never receives `credential_id`, even if the asset has a previously confirmed credential.
+- Credential lookup is performed only for REQUIRED techniques. OPTIONAL is reserved for explicit technique semantics; it is not auto-filled by Correlation.
+- Correlation UI shows Credential and Evidence capability columns.
+- Added `Criar Evidência MAGI no alvo quando suportado` to Correlation.
+- Remote evidence is capability-gated (`SUPPORTED` / `NOT_SUPPORTED`); requesting evidence cannot turn a read-only technique into a write operation.
+- Initial remote evidence support is limited to authenticated native SMB and WinRM access validation. Other simulations retain durable MAGI logs/evidence only.
+- Correlation evidence paths are technique-specific under `C:\MAGI\Evidence\<Asset ID>\<Technique>.txt`.
+- Runner 2.18.6.

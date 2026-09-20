@@ -241,7 +241,7 @@ def sync_attack_simulator() -> dict[str, Any]:
         "available": True,
         "metadata": {
             "execution": "runner",
-            "version": "5.6.3",
+            "version": "5.6.3.1",
             "semantics": "attack_simulation",
             "safe_mode": True,
             "destructive": False,
@@ -249,6 +249,14 @@ def sync_attack_simulator() -> dict[str, Any]:
         },
     })
     for task in ATTACK_SIMULATIONS:
+        meta=dict(task.get('metadata') or {})
+        meta['credential_requirement']=str(meta.get('credential_requirement') or ('REQUIRED' if meta.get('credential_required') else 'NONE')).upper()
+        meta['credential_required']=(meta['credential_requirement']=='REQUIRED')
+        # Remote evidence is opt-in and only allowed for explicitly capable authenticated native transports.
+        if 'remote_evidence' not in meta:
+            key=str(task.get('task_key') or '')
+            meta['remote_evidence']='SUPPORTED' if key in {'MAGI-ATK-END-102','MAGI-ATK-END-104'} else 'NOT_SUPPORTED'
+        task={**task,'metadata':meta}
         upsert_task({"repository_key": "magi_attack", **task, "approved": True, "enabled": True, "requires_admin": bool(task.get("requires_admin", False))})
     return {"success": True, "simulations": len(ATTACK_SIMULATIONS)}
 

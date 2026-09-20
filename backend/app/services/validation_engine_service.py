@@ -57,13 +57,19 @@ def plan_task(task_id:int,target:str,options:dict[str,Any]|None=None)->dict[str,
     runner=get_single_online_runner()
     if not runner: raise ValueError('Nenhum Runner online disponível.')
     detection=task.get('detection') or {}
-    metadata=task.get('metadata') or {}
+    metadata=dict(task.get('metadata') or {})
+    # 5.6.4: credential behavior is a task capability, never a generic execution property.
+    credential_requirement=str(metadata.get('credential_requirement') or ('REQUIRED' if metadata.get('credential_required') else 'NONE')).upper()
+    if credential_requirement not in {'NONE','OPTIONAL','REQUIRED'}: credential_requirement='REQUIRED' if metadata.get('credential_required') else 'NONE'
+    metadata['credential_requirement']=credential_requirement
+    metadata['credential_required']=(credential_requirement=='REQUIRED')
     plan={"task_id":task_id,"task_key":task['task_key'],"repository":task['repository_key'],"target":target,"runner_id":runner['runner_id'],"executor":task['executor'],"impact":task.get('impact'),"requires_admin":bool(task.get('requires_admin')),"detection":detection,"metadata":metadata,"remediation":task.get('remediation'),"ready":True}
     if task.get("repository_key")=="magi_attack":
         scope=_attack_scope(options,target); plan["scope"]=scope
         if metadata.get("secondary_target_required") and not scope.get("secondary_target"): raise ValueError("Host B / Destination é obrigatório para esta simulação.")
-        if metadata.get("credential_required") and not (options or {}).get("credential_id"): raise ValueError("Credential Profile é obrigatório para esta simulação.")
-        if (options or {}).get("credential_id"): plan["credential_id"]=(options or {}).get("credential_id")
+        if credential_requirement=='REQUIRED' and not (options or {}).get("credential_id"): raise ValueError("Credential Profile é obrigatório para esta simulação.")
+        # Zero-Credential Guarantee: NONE means the credential reference is discarded here.
+        if credential_requirement!='NONE' and (options or {}).get("credential_id"): plan["credential_id"]=(options or {}).get("credential_id")
     return {"success":True,"plan":plan,"task":task}
 
 def execute_task(task_id:int,target:str,requested_by:str='ui',options:dict[str,Any]|None=None):
@@ -81,7 +87,11 @@ def execute_task(task_id:int,target:str,requested_by:str='ui',options:dict[str,A
     payload={"executor":task['executor'],"validation_type":validation_type,"task_id":task_id,"task_key":task['task_key'],"repository_key":task['repository_key'],"target":target,"detection":task.get('detection') or {},"impact":task.get('impact'),"remediation":task.get('remediation')}
     if validation_type=="attack_simulation":
         payload.update({"simulation":task.get("detection") or {},"scenario_name":task.get("name"),"attack_category":task.get("category"),"attack_metadata":metadata,"safe_mode":True,"destructive":False,"scope":plan.get("scope") or {}})
-        if (options or {}).get("credential_id"): payload["credential_id"]=(options or {}).get("credential_id")
+        if str(metadata.get('credential_requirement') or ('REQUIRED' if metadata.get('credential_required') else 'NONE')).upper()!='NONE' and (options or {}).get("credential_id"): payload["credential_id"]=(options or {}).get("credential_id")
+        if (options or {}).get('create_benign_evidence') and metadata.get('remote_evidence')=='SUPPORTED':
+            payload['create_benign_evidence']=True
+            if (options or {}).get('evidence_path'): payload['evidence_path']=(options or {}).get('evidence_path')
+            payload['evidence_context']=(options or {}).get('evidence_context') or {}
         if (plan.get("scope") or {}).get("secondary_target"): payload["host_b"]=plan["scope"]["secondary_target"]
         payload["provider"]=metadata.get("provider") or ("metasploit" if task.get("executor")=="metasploit" else "magi_native")
         if (options or {}).get("technique_parameter") is not None:
