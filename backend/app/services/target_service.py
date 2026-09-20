@@ -64,12 +64,23 @@ def ingest_runner_discovery_result(job_id:int, runner_id:str, status:str, result
             fm,nm=normalize_mac(host.get("mac_address"))
             target=repo.upsert_discovered_target(hostname=host.get("hostname"),hostname_normalized=normalize_hostname(host.get("hostname")),dns_name=host.get("dns_name") or host.get("hostname"),hostname_source=host.get("hostname_source"),ip_address=ip,mac_address=fm,mac_normalized=nm,vendor=host.get("vendor"),status="online",source="nmap-runner",scan_id=run.get("scan_id"),runner_id=runner_id)
             seen.append(int(target["id"])); items.append(repo.enrich_target(target,int(run["id"]),host))
-        if run.get("scan_id"):
+        if run.get("scan_id") and run.get("trigger_type") != "asset_rescan":
             repo.apply_scan_cleanup(int(run["scan_id"]),seen)
         final_status="success"
     elif status=="timeout": final_status="timeout"
     else: final_status="failed"
     updated=repo.update_discovery_run_from_runner(job_id,final_status,len(items),error or result.get("error") or result.get("stderr"),metadata.get("raw_xml"),runner_id)
+    if run.get('trigger_type') == 'asset_rescan':
+        try:
+            from sqlalchemy import text as _sql_text
+            from app.database.connection import SessionLocal as _SessionLocal
+            with _SessionLocal() as _db:
+                _db.execute(_sql_text("""UPDATE asset_rescan_history SET status=:status, identity_status=:identity, details=details || CAST(:extra AS jsonb)
+                  WHERE id=(SELECT id FROM asset_rescan_history WHERE scan_id=:scan AND status='QUEUED' AND details->>'runner_job_id'=:job ORDER BY created_at DESC LIMIT 1)"""),
+                  {'status':final_status.upper(),'identity':'MATCHED' if items else 'NOT_FOUND','extra':__import__('json').dumps({'runner_id':runner_id,'discovered_count':len(items)}),'scan':run.get('scan_id'),'job':str(job_id)})
+                _db.commit()
+        except Exception:
+            pass
     service_stage={"enabled":False,"queued":0}; credential_stage={"enabled":False,"queued":0}
     if final_status=="success":
         repo.update_run_pipeline_summary(int(run["id"]), finalize=False)

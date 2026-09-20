@@ -144,4 +144,9 @@ def due_targets(limit:int=20):
         FROM discovery_scan_targets dst JOIN discovery_scans s ON s.id=dst.scan_id AND s.deep_inventory_enabled=TRUE JOIN targets t ON t.id=dst.target_id AND t.active_in_inventory=TRUE JOIN asset_credentials ac ON ac.target_id=t.id LEFT JOIN asset_inventory_snapshot i ON i.target_id=t.id
         WHERE COALESCE(i.collected_at, TIMESTAMP '1970-01-01') <= (now() AT TIME ZONE 'UTC') - (s.deep_inventory_interval_minutes || ' minutes')::interval
           AND NOT EXISTS (SELECT 1 FROM deep_inventory_jobs dj WHERE dj.target_id=t.id AND dj.status IN ('queued','running'))
+          -- 5.6.4.1: at most two failed automatic attempts inside the current scan/schedule window.
+          -- A new discovery scan changes last_run_at and opens a fresh two-attempt window.
+          AND (SELECT COUNT(*) FROM deep_inventory_jobs djf
+               WHERE djf.target_id=t.id AND djf.scan_id=dst.scan_id AND djf.status IN ('failed','timeout')
+                 AND djf.finished_at >= COALESCE(s.last_run_at, TIMESTAMP '1970-01-01')) < 2
         ORDER BY dst.target_id,ac.last_success_at DESC LIMIT :lim"""),{'lim':limit}).mappings().all(); return [dict(r) for r in rows]

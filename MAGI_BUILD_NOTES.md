@@ -62,3 +62,13 @@ Baseline: 5.6.1.
 - Initial remote evidence support is limited to authenticated native SMB and WinRM access validation. Other simulations retain durable MAGI logs/evidence only.
 - Correlation evidence paths are technique-specific under `C:\MAGI\Evidence\<Asset ID>\<Technique>.txt`.
 - Runner 2.18.6.
+
+
+## 5.6.4.1 — Deep Inventory / Scan Now / Simulation Catalog hotfix
+- Deep Inventory automático: máximo de 2 falhas por ativo dentro da janela do schedule atual; após a segunda falha aguarda novo schedule/manual.
+- Mantém deduplicação de queued/running e elimina retry infinito por minuto.
+- Scan Now agora cria um job Nmap real host-only no Runner e vincula runner_job_id/run_uuid ao histórico de rescan.
+- Rescan host-only não executa cleanup do escopo inteiro do scan de origem.
+- SMB Anonymous Session ganhou simulação nativa SAFE `MAGI-ATK-END-005`, com `credential_requirement=NONE` e sem evidência remota.
+- Attack Knowledge cumulativo 2026.09.003 mapeia SMB Anonymous Session para a nova simulação.
+- Runner 2.18.7.

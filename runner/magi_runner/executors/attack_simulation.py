@@ -414,6 +414,22 @@ finally { if($runnerTrustedChanged -and $null -ne $runnerTrustedState){ try { Re
     return evidence
 
 
+
+def _smb_anonymous_session(host: str, timeout: float) -> dict[str, Any]:
+    unc = rf"\\{host}\IPC$"
+    started=time.monotonic()
+    # Explicit empty user and empty password. No MAGI credential is read or injected.
+    cmd=["net","use",unc,"",'/user:']
+    try:
+        proc=subprocess.run(cmd,capture_output=True,text=True,timeout=max(2.0,timeout),creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        success=proc.returncode==0
+        output=((proc.stdout or '')+' '+(proc.stderr or '')).strip()[-1500:]
+        if success:
+            subprocess.run(["net","use",unc,"/delete","/y"],capture_output=True,text=True,timeout=5,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        return {"connected":success,"anonymous_session":success,"share":"IPC$","returncode":proc.returncode,"message":output,"latency_ms":round((time.monotonic()-started)*1000,2),"credential_used":False}
+    except subprocess.TimeoutExpired:
+        return {"connected":False,"anonymous_session":False,"share":"IPC$","timeout":True,"credential_used":False}
+
 class AttackSimulationExecutor:
     """MAGI Attack Simulator 5.3.
 
@@ -492,6 +508,8 @@ class AttackSimulationExecutor:
             evidence = _rdp_negotiate(target, port, probe_timeout)
         elif sim_type == "winrm_identify":
             evidence = _winrm_identify(target, port, probe_timeout, tls=bool(simulation.get("tls")))
+        elif sim_type == "smb_anonymous_session":
+            evidence = _smb_anonymous_session(target, min(probe_timeout, 8.0))
         elif sim_type in {"http_canary", "http_options", "http_canary_post"}:
             method = "OPTIONS" if sim_type == "http_options" else "POST" if sim_type == "http_canary_post" else "GET"
             body = json.dumps({"magi_simulation": True, "version": "5.1", "destructive": False}) if sim_type == "http_canary_post" else None
@@ -512,6 +530,8 @@ class AttackSimulationExecutor:
             observed = bool(evidence.get("rdp_response"))
         elif sim_type == "winrm_identify":
             observed = bool(evidence.get("winrm_surface"))
+        elif sim_type == "smb_anonymous_session":
+            observed = bool(evidence.get("anonymous_session"))
 
         attack_result = "precondition_confirmed" if observed else "precondition_not_confirmed"
         message = (

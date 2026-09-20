@@ -8,6 +8,15 @@ from app.repositories.runner_repository import get_single_online_runner, get_run
 
 ATTACK_SIMULATIONS: list[dict[str, Any]] = [
     {
+        "task_key": "MAGI-ATK-END-005",
+        "name": "SMB Anonymous Session Validation",
+        "description": "Valida uma sessão SMB nula/anônima contra IPC$ sem fornecer usuário, senha ou Credential Profile. Não grava arquivos no alvo.",
+        "category": "Endpoint", "platform": "Windows", "executor": "attack_simulation", "impact": "safe",
+        "detection": {"type": "smb_anonymous_session", "port": 445},
+        "remediation": "Desabilite acesso anônimo/null session desnecessário e restrinja SMB às origens autorizadas.",
+        "metadata": {"attack_phase":"access_validation","safe_mode":True,"credential_requirement":"NONE","credential_required":False,"provider":"magi_native","changes_target":False,"remote_evidence":"NOT_SUPPORTED"},
+    },
+    {
         "task_key": "MAGI-ATK-END-001",
         "name": "RDP Protocol Reachability",
         "description": "Simula a primeira etapa de movimento lateral via RDP realizando somente negociação de protocolo, sem autenticação e sem abertura de sessão.",
@@ -241,7 +250,7 @@ def sync_attack_simulator() -> dict[str, Any]:
         "available": True,
         "metadata": {
             "execution": "runner",
-            "version": "5.6.3.1",
+            "version": "5.6.4.1",
             "semantics": "attack_simulation",
             "safe_mode": True,
             "destructive": False,

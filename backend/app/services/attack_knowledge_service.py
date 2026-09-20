@@ -5,8 +5,8 @@ from sqlalchemy import text
 from app.database.connection import get_db_session
 
 SCHEMA_VERSION=1
-MAGI_VERSION='5.6.3.1'
-BUNDLED=Path(__file__).resolve().parents[1]/'data'/'attack_knowledge_2026.09.002.json'
+MAGI_VERSION='5.6.4.1'
+BUNDLED=Path(__file__).resolve().parents[1]/'data'/'attack_knowledge_2026.09.003.json'
 
 
 def _validate(snapshot:dict)->dict:
