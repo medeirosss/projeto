@@ -101,3 +101,13 @@ Baseline: 5.6.1.
 - Telemetry payloads are allowlisted metadata only; passwords, hashes, tickets and arbitrary command output are not accepted into the telemetry envelope.
 - Attack Simulator adds a dedicated Attack Path workspace for path/telemetry inspection.
 - Runner 2.19.0 includes the telemetry envelope/relay helper. Integration into concrete lateral executors is intentionally incremental after this foundation is validated.
+
+## 5.7.1 — Campaign Path Integration + WinRM Path Telemetry
+- Campaign credential results now automatically create/synchronize one `PATH-*` for the active Campaign execution; the operator no longer needs to manually import a Campaign into Attack Path.
+- Existing Runner→target Campaign validation is recorded as `runner_direct` telemetry and remains VALIDATABLE; it is never mislabeled as proof of A→B lateral movement.
+- Confirmed WinRM Campaign relations with a real origin A and target B automatically queue the existing controlled `MAGI-ATK-END-101` validation to prove A→B.
+- END-101 results are converted into ordered Path Telemetry: ENTERED(A), ACTION_STARTED, ENTERED(B), ACTION_COMPLETED, RELAY_STARTED, RELAY_RETURNED and RETURN_CONFIRMED when the controlled lateral hop succeeds.
+- A failed lateral proof marks the edge BLOCKED and records FAILED telemetry; a direct Campaign authentication success alone cannot produce CONFIRMED/RETURN_CONFIRMED.
+- Telemetry remains metadata-only and stores no password, hash, Kerberos material or arbitrary command output.
+- SSH is intentionally excluded from automatic path validation in 5.7.1. SMB remains available in Campaign but does not yet receive a remote-origin proof executor; SNMP remains discovery-only.
+- Runner 2.19.1.

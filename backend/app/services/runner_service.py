@@ -184,6 +184,12 @@ def job_result_v2_service(job_id: int, data: dict, headers):
         try:
             from app.services.attack_campaign_service import ingest_campaign_runner_result
             campaign_ingestion = ingest_campaign_runner_result(int(job_id), status, data)
+            if campaign_ingestion and campaign_ingestion.get("campaign_uuid"):
+                try:
+                    from app.services.attack_path_service import sync_from_campaign
+                    sync_from_campaign(campaign_ingestion["campaign_uuid"], campaign_ingestion.get("path_id"), queue_winrm=True)
+                except Exception:
+                    pass
         except Exception:
             # Generic credential ingestion must not be broken by Campaign reconciliation.
             # _sync_paths remains the fallback and will retry on the scheduler.
@@ -193,6 +199,12 @@ def job_result_v2_service(job_id: int, data: dict, headers):
     if result and result.get("job_type") in {"security_check", "nuclei", "attack_simulation"}:
         from app.repositories.validation_repository import ingest_execution_result
         security_check = ingest_execution_result(int(job_id), status, data, data.get("error"))
+        if result.get("job_type") == "attack_simulation":
+            try:
+                from app.services.attack_path_service import ingest_path_validation_result
+                ingest_path_validation_result(int(job_id), status, data)
+            except Exception:
+                pass
     return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery, "credential_engine": credential_engine, "campaign_ingestion": campaign_ingestion, "deep_inventory": deep_inventory, "security_check": security_check}
 
 
