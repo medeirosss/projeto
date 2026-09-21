@@ -53,9 +53,17 @@ def _validate_campaign(data: dict[str, Any]) -> dict[str, Any]:
     recurrence=data.get('recurrence_days')
     if recurrence in ('',None): recurrence=None
     elif int(recurrence)<1: raise ValueError('Recorrência deve ser de pelo menos 1 dia.')
-    vectors=[v for v in (data.get('enabled_vectors') or ['winrm','smb','ssh','snmp_v2c']) if v in {'winrm','smb','ssh','snmp_v2c'}]
+    vectors=[v for v in (data.get('enabled_vectors') or ['winrm','smb','snmp_v2c']) if v in {'winrm','smb','snmp_v2c'}]
     if not vectors: raise ValueError('Selecione ao menos um vetor da Campaign.')
-    return {**data,'name':name,'initial_seeds':seeds,'scope_cidrs':scopes,'start_at':start,'end_at':end,'enabled_vectors':vectors,
+    win_ids=[]
+    for raw in (data.get('windows_credential_ids') or ([data.get('credential_id')] if data.get('credential_id') else [])):
+        if raw not in (None,'') and int(raw) not in win_ids: win_ids.append(int(raw))
+    if len(win_ids)>10: raise ValueError('A Campaign aceita no máximo 10 credenciais Windows.')
+    dhcp_enabled=bool(data.get('dhcp_enabled'))
+    dhcp_server=str(data.get('dhcp_server') or '').strip() or None
+    dhcp_credential_id=int(data.get('dhcp_credential_id')) if data.get('dhcp_credential_id') not in (None,'') else None
+    if dhcp_enabled and (not dhcp_server or not dhcp_credential_id): raise ValueError('Windows DHCP requer servidor e credencial Windows.')
+    return {**data,'name':name,'initial_seeds':seeds,'scope_cidrs':scopes,'start_at':start,'end_at':end,'enabled_vectors':vectors,'windows_credential_ids':win_ids,'credential_id':win_ids[0] if win_ids else None,'dhcp_enabled':dhcp_enabled,'dhcp_server':dhcp_server,'dhcp_credential_id':dhcp_credential_id,
             'cycle_interval_minutes':interval,'cycle_timeout_minutes':timeout,'recurrence_days':int(recurrence) if recurrence else None,
             'max_seeds_per_cycle':3,'branch_policy':BRANCH_POLICY,'max_paths_per_cycle':max(10,min(100,int(data.get('max_paths_per_cycle') or 60))),
             'max_outstanding_jobs':max(1,min(10,int(data.get('max_outstanding_jobs') or 5))),'snapshot_retention':10}
@@ -158,6 +166,12 @@ def campaign_attack_path(uuid: str) -> dict[str, Any]:
 def campaign_detail(uuid: str) -> dict[str, Any]:
     row=get_campaign(uuid)
     if not row: raise ValueError('Campaign não encontrada.')
+    executions=row.get('executions') or []
+    if executions:
+        with db_session() as db:
+            _refresh_campaign_coverage(db,int(executions[0]['id']))
+            db.commit()
+        row=get_campaign(uuid) or row
     return {'success':True,'campaign':row}
 def _cancel_campaign_jobs(db, campaign_id: int, reason: str) -> dict[str, int]:
     """Cancel every outstanding Runner job owned by a Campaign execution.
@@ -249,16 +263,16 @@ def campaign_update(uuid: str, data: dict[str, Any]):
         payload=_validate_campaign(merged); now=_campaign_now()
         db.execute(text("""UPDATE attack_campaigns SET name=:name,description=:description,
           scope_cidrs=CAST(:scope AS JSONB),initial_seeds=CAST(:seeds AS JSONB),
-          credential_id=:win,ssh_credential_id=:ssh,snmp_credential_id=:snmp,
-          enabled_vectors=CAST(:vectors AS JSONB),create_benign_evidence=:evidence,
+          credential_id=:win,windows_credential_ids=CAST(:wins AS JSONB),ssh_credential_id=NULL,snmp_credential_id=:snmp,
+          enabled_vectors=CAST(:vectors AS JSONB),create_benign_evidence=:evidence,snmp_topology_enabled=:topology,dhcp_enabled=:dhcp_enabled,dhcp_server=:dhcp_server,dhcp_credential_id=:dhcp_credential_id,
           start_at=:start,end_at=:end,daily_start=CAST(:ds AS TIME),daily_end=CAST(:de AS TIME),
           cycle_interval_minutes=:interval,cycle_timeout_minutes=:timeout,recurrence_days=:rec,
           max_seeds_per_cycle=3,branch_policy=CAST(:policy AS JSONB),max_paths_per_cycle=:paths,
           max_outstanding_jobs=:jobs,snapshot_retention=:retention,updated_at=:now WHERE id=:id"""),
           {'name':payload['name'],'description':payload.get('description'),'scope':__import__('json').dumps(payload['scope_cidrs']),
-           'seeds':__import__('json').dumps(payload['initial_seeds']),'win':payload.get('credential_id'),'ssh':payload.get('ssh_credential_id'),
+           'seeds':__import__('json').dumps(payload['initial_seeds']),'win':payload.get('credential_id'),'wins':__import__('json').dumps(payload.get('windows_credential_ids') or []),
            'snmp':payload.get('snmp_credential_id'),'vectors':__import__('json').dumps(payload['enabled_vectors']),
-           'evidence':bool(payload.get('create_benign_evidence')),'start':payload['start_at'],'end':payload['end_at'],
+           'evidence':bool(payload.get('create_benign_evidence')),'topology':bool(payload.get('snmp_topology_enabled',True)),'dhcp_enabled':bool(payload.get('dhcp_enabled')),'dhcp_server':payload.get('dhcp_server'),'dhcp_credential_id':payload.get('dhcp_credential_id'),'start':payload['start_at'],'end':payload['end_at'],
            'ds':str(payload.get('daily_start') or current['daily_start']),'de':str(payload.get('daily_end') or current['daily_end']),
            'interval':payload['cycle_interval_minutes'],'timeout':payload['cycle_timeout_minutes'],'rec':payload.get('recurrence_days'),
            'policy':__import__('json').dumps(BRANCH_POLICY),'paths':payload['max_paths_per_cycle'],'jobs':payload['max_outstanding_jobs'],
@@ -433,12 +447,21 @@ def _candidate_for_origin(db,c:dict[str,Any],e:dict[str,Any],origin:str)->str|No
     return None
 
 
+def _windows_credentials(c:dict[str,Any])->list[int]:
+    ids=[]
+    for raw in (c.get('windows_credential_ids') or ([c.get('credential_id')] if c.get('credential_id') else [])):
+        try:
+            cid=int(raw)
+            if cid not in ids: ids.append(cid)
+        except Exception: pass
+    return ids[:10]
+
 def _vector_credentials(c:dict[str,Any])->list[tuple[str,int,str]]:
-    out=[]; enabled=set(c.get('enabled_vectors') or ['winrm','smb','ssh','snmp_v2c'])
-    win=c.get('credential_id'); ssh=c.get('ssh_credential_id'); snmp=c.get('snmp_credential_id')
-    if win and 'winrm' in enabled: out.append(('winrm',int(win),'access'))
-    if win and 'smb' in enabled: out.append(('smb',int(win),'access'))
-    if ssh and 'ssh' in enabled: out.append(('ssh',int(ssh),'access'))
+    out=[]; enabled=set(c.get('enabled_vectors') or ['winrm','smb','snmp_v2c'])
+    for win in _windows_credentials(c):
+        if 'winrm' in enabled: out.append(('winrm',win,'access'))
+        if 'smb' in enabled: out.append(('smb',win,'access'))
+    snmp=c.get('snmp_credential_id')
     if snmp and 'snmp_v2c' in enabled: out.append(('snmp_v2c',int(snmp),'discovery'))
     return out
 
@@ -488,43 +511,50 @@ def _queue_probe(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,
     enabled=list(c.get('enabled_vectors') or ['winrm','smb','ssh','snmp_v2c'])
     snmp_cred=int(c['snmp_credential_id']) if c.get('snmp_credential_id') and 'snmp_v2c' in enabled else None
     payload={'executor':'campaign_probe','target':target,'enabled_vectors':enabled,'timeout_seconds':6,
+             'snmp_topology_enabled':bool(c.get('snmp_topology_enabled',True)),
              'campaign_context':{'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],'cycle_id':cy['id'],'origin':origin,'target':target,'depth':depth,'protocol':'preflight'}}
     # Optional SNMP community is injected only in the transient Runner response.
     if snmp_cred:payload['credential_id']=snmp_cred
     job=create_runner_job(runner_id,'campaign_probe',target,payload)
     print(f"[attack-campaign-scheduler] campaign={c['campaign_uuid']} cycle={cy['id']} queued runner_job={job['id']} executor=campaign_probe target={target} runner={runner_id}")
     db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id)
-      VALUES(:e,:cy,:o,:t,'preflight','discovery',:d,'queued',:j) ON CONFLICT(execution_id,origin,target,protocol) DO NOTHING"""),
+      VALUES(:e,:cy,:o,:t,'preflight','discovery',:d,'queued',:j) ON CONFLICT(execution_id,origin,target,protocol,credential_id) DO NOTHING"""),
       {'e':e['id'],'cy':cy['id'],'o':origin,'t':target,'d':depth,'j':job['id']})
     return True
 
 
 def _queue_access_vectors(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any],origin:str,target:str,depth:int,applicable:list[str])->int:
-    """Queue only protocols that passed the Runner-side service precondition."""
+    """Queue one credential at a time per protocol from the Campaign Credential Set.
+
+    5.7.2 deliberately avoids spraying all selected credentials concurrently.
+    The next credential is queued only after the previous one terminates without
+    authentication; a confirmed protocol stops the sequence for that host.
+    """
     runner_id=_runner_id(c)
-    if not runner_id:
-        raise RuntimeError(f"Campaign {c.get('campaign_uuid')} sem Runner vinculado ao tentar enfileirar vetor de acesso")
-    applicable=set(applicable or [])
-    existing={r[0] for r in db.execute(text('SELECT protocol FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o AND target=:t'),{'e':e['id'],'o':origin,'t':target}).all()}
-    queued=0
-    for protocol,credential_id,relation in _vector_credentials(c):
-        # SNMP success is already a real authenticated discovery performed by preflight.
-        if protocol=='snmp_v2c':continue
-        if protocol not in applicable or protocol in existing:continue
+    if not runner_id: raise RuntimeError(f"Campaign {c.get('campaign_uuid')} sem Runner vinculado ao tentar enfileirar vetor de acesso")
+    applicable=set(applicable or []); queued=0
+    for protocol in ('winrm','smb'):
+        if protocol not in applicable or protocol not in set(c.get('enabled_vectors') or []): continue
+        confirmed=db.execute(text("SELECT 1 FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o AND target=:t AND protocol=:p AND (status='confirmed' OR result='access_confirmed') LIMIT 1"),{'e':e['id'],'o':origin,'t':target,'p':protocol}).first()
+        if confirmed: continue
+        attempted={int(r[0]) for r in db.execute(text("SELECT credential_id FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o AND target=:t AND protocol=:p AND credential_id>0"),{'e':e['id'],'o':origin,'t':target,'p':protocol}).all()}
+        active=db.execute(text("SELECT 1 FROM attack_campaign_paths WHERE execution_id=:e AND origin=:o AND target=:t AND protocol=:p AND status IN ('queued','running') LIMIT 1"),{'e':e['id'],'o':origin,'t':target,'p':protocol}).first()
+        if active: continue
+        credential_id=next((cid for cid in _windows_credentials(c) if cid not in attempted),None)
+        if not credential_id: continue
         payload={'executor':'credential_validate','target':target,'credential_id':credential_id,'protocol':protocol,
-                 'credential_type':'windows' if protocol in {'winrm','smb'} else 'ssh',
-                 'max_attempts':2,'timeout_seconds':30,
-                 'create_benign_evidence':bool(c.get('create_benign_evidence')),
-                 'evidence_path':r'C:\\MAGI\\MAGI_EVIDENCE.txt',
-                 'campaign_context':{'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],'cycle_id':cy['id'],'origin':origin,'target':target,'depth':depth,'protocol':protocol}}
+                 'credential_type':'windows','max_attempts':1,'timeout_seconds':30,
+                 'create_benign_evidence':bool(c.get('create_benign_evidence')),'evidence_path':r'C:\\MAGI\\MAGI_EVIDENCE.txt',
+                 'campaign_context':{'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],'cycle_id':cy['id'],'origin':origin,'target':target,'depth':depth,'protocol':protocol,'credential_set_index':len(attempted)}}
         job=create_runner_job(runner_id,'credential_validate',target,payload)
         task=_task_for_protocol(db,protocol); vex_id=None
         if task:
             plan={'ready':True,'runner_id':runner_id,'executor':'credential_validate','target':target,'task_id':task['id'],'task_key':task['task_key'],'repository':'magi_attack','credential_id':credential_id,'protocol':protocol,'campaign_uuid':c['campaign_uuid']}
             vex=create_execution(task,runner_id,job['id'],target,f"campaign:{c['campaign_uuid']}",plan); vex_id=vex['id']
-        db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id,validation_execution_id)
-          VALUES(:e,:cy,:o,:t,:p,:rel,:d,'queued',:j,:v) ON CONFLICT(execution_id,origin,target,protocol) DO NOTHING"""),
-          {'e':e['id'],'cy':cy['id'],'o':origin,'t':target,'p':protocol,'rel':relation,'d':depth,'j':job['id'],'v':vex_id})
+        db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id,validation_execution_id,evidence,credential_id)
+          VALUES(:e,:cy,:o,:t,:p,'access',:d,'queued',:j,:v,CAST(:ev AS JSONB),:credential_id)
+          ON CONFLICT(execution_id,origin,target,protocol,credential_id) DO NOTHING"""),
+          {'e':e['id'],'cy':cy['id'],'o':origin,'t':target,'p':protocol,'d':depth,'j':job['id'],'v':vex_id,'ev':__import__('json').dumps({'credential_id':credential_id,'credential_set_index':len(attempted)}),'credential_id':credential_id})
         queued+=1
     return queued
 
@@ -604,6 +634,11 @@ def ingest_campaign_runner_result(job_id:int, status:str, data:dict[str,Any]) ->
             except Exception:
                 pass
 
+        # Credential Set: after a rejected Windows credential, schedule only the next one.
+        if not authenticated and relation=='access' and protocol in {'winrm','smb'}:
+            camp=dict(db.execute(text('SELECT * FROM attack_campaigns WHERE id=:id'),{'id':r['campaign_pk']}).mappings().first() or {})
+            cyc={'id':r['cycle_id']}; exe={'id':r['execution_id']}
+            _queue_access_vectors(db,camp,exe,cyc,r['origin'],r['target'],int(r.get('depth') or 0),[protocol])
         db.commit()
         return {
             'campaign_uuid':r.get('campaign_uuid'),
@@ -651,7 +686,7 @@ def _sync_paths(db,c:dict[str,Any],e:dict[str,Any],cy:dict[str,Any]):
                 snmp_ev=dict(meta);snmp_ev['protocol']='snmp_v2c';snmp_ev['relation_type']='discovery';snmp_ev['confirmation_status']='discovery_confirmed';snmp_ev['attack_result']='discovery_confirmed'
                 db.execute(text("""INSERT INTO attack_campaign_paths(execution_id,cycle_id,origin,target,protocol,relation_type,depth,status,runner_job_id,result,evidence,finished_at)
                   VALUES(:e,:cy,:o,:t,'snmp_v2c','discovery',:d,'confirmed',:j,'discovery_confirmed',CAST(:ev AS JSONB),:now)
-                  ON CONFLICT(execution_id,origin,target,protocol) DO NOTHING"""),
+                  ON CONFLICT(execution_id,origin,target,protocol,credential_id) DO NOTHING"""),
                   {'e':e['id'],'cy':cy['id'],'o':r['origin'],'t':r['target'],'d':r['depth'],'j':r['runner_job_id'],'ev':__import__('json').dumps(snmp_ev,ensure_ascii=False,default=str),'now':datetime.utcnow()})
             _queue_access_vectors(db,c,e,cy,r['origin'],r['target'],int(r['depth']),applicable)
             continue
@@ -735,6 +770,7 @@ def _snapshot(db,eid:int)->dict[str,Any]:
 
 
 def _finish_execution(db,c,e,reason):
+    _refresh_campaign_coverage(db,int(e['id']))
     snap=_snapshot(db,e['id'])
     db.execute(text("UPDATE attack_campaign_executions SET status='completed',finished_at=:now,stop_reason=:r,stats=CAST(:st AS JSONB),final_snapshot=CAST(:snap AS JSONB) WHERE id=:e"),
                {'now':datetime.utcnow(),'r':reason,'st':__import__('json').dumps(snap['stats']),'snap':__import__('json').dumps(snap,ensure_ascii=False,default=str),'e':e['id']})
@@ -750,6 +786,51 @@ def _finish_execution(db,c,e,reason):
         db.execute(text("UPDATE attack_campaigns SET status='scheduled',updated_at=:now WHERE id=:id"),{'now':datetime.utcnow(),'id':c['id']})
     else: db.execute(text("UPDATE attack_campaigns SET status='completed',updated_at=:now WHERE id=:id"),{'now':datetime.utcnow(),'id':c['id']})
 
+
+def _queue_windows_dhcp_inventory(db,c:dict[str,Any],e:dict[str,Any])->bool:
+    if not c.get('dhcp_enabled') or not c.get('dhcp_server') or not c.get('dhcp_credential_id'): return False
+    exists=db.execute(text("SELECT 1 FROM attack_campaign_dhcp_runs WHERE execution_id=:e LIMIT 1"),{'e':e['id']}).first()
+    if exists:return False
+    runner_id=_runner_id(c)
+    if not runner_id:return False
+    payload={'executor':'windows_dhcp_inventory','dhcp_server':c['dhcp_server'],'credential_id':int(c['dhcp_credential_id']),'timeout_seconds':90,'campaign_context':{'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],'provider':'windows_dhcp'}}
+    job=create_runner_job(runner_id,'windows_dhcp_inventory',c['dhcp_server'],payload)
+    db.execute(text("INSERT INTO attack_campaign_dhcp_runs(execution_id,runner_job_id,dhcp_server,status) VALUES(:e,:j,:s,'queued') ON CONFLICT(execution_id) DO NOTHING"),{'e':e['id'],'j':job['id'],'s':c['dhcp_server']})
+    return True
+
+def _refresh_campaign_coverage(db,execution_id:int)->dict[str,int]:
+    rows={}
+    for r in db.execute(text("SELECT address,hostname,target_id,state,access_confirmed FROM attack_campaign_assets WHERE execution_id=:e"),{'e':execution_id}).mappings().all():
+        ip=str(r['address']); rows[ip]={'ip_address':ip,'hostname':r.get('hostname'),'target_id':r.get('target_id'),'sources':['campaign'],'reached':True,'evaluated':True}
+    for r in db.execute(text("SELECT ip_address,hostname FROM attack_campaign_dhcp_leases WHERE execution_id=:e"),{'e':execution_id}).mappings().all():
+        ip=str(r['ip_address']); x=rows.setdefault(ip,{'ip_address':ip,'hostname':r.get('hostname'),'target_id':None,'sources':[],'reached':False,'evaluated':False}); x['hostname']=x.get('hostname') or r.get('hostname'); x['sources']=list(dict.fromkeys(x['sources']+['windows_dhcp']))
+    db.execute(text("DELETE FROM attack_campaign_coverage WHERE execution_id=:e"),{'e':execution_id})
+    for x in rows.values():
+        state='EVALUATED' if x['evaluated'] else ('REACHED' if x['reached'] else 'KNOWN_NOT_REACHED')
+        db.execute(text("INSERT INTO attack_campaign_coverage(execution_id,ip_address,hostname,target_id,sources,state,reached,evaluated,updated_at) VALUES(:e,:ip,:h,:t,CAST(:src AS JSONB),:st,:r,:v,:now)"),{'e':execution_id,'ip':x['ip_address'],'h':x.get('hostname'),'t':x.get('target_id'),'src':__import__('json').dumps(x['sources']),'st':state,'r':x['reached'],'v':x['evaluated'],'now':datetime.utcnow()})
+    known=len(rows); evaluated=sum(1 for x in rows.values() if x['evaluated']); reached=sum(1 for x in rows.values() if x['reached'])
+    return {'known_assets':known,'reached':reached,'evaluated':evaluated,'not_reached':known-reached,'pending':known-evaluated,'known_asset_coverage_pct':round((evaluated/known*100),1) if known else 0.0}
+
+def ingest_windows_dhcp_result(job_id:int,status:str,data:dict[str,Any])->dict[str,Any]|None:
+    with db_session() as db:
+        run=db.execute(text("SELECT r.*,e.campaign_id FROM attack_campaign_dhcp_runs r JOIN attack_campaign_executions e ON e.id=r.execution_id WHERE r.runner_job_id=:j"),{'j':job_id}).mappings().first()
+        if not run:return None
+        md=data.get('metadata') or {}; leases=md.get('leases') or []
+        if status=='success':
+            for l in leases:
+                ip=str(l.get('ip_address') or '').strip()
+                if not ip:continue
+                expiry=None
+                try: expiry=_parse_dt(l.get('lease_expiry')) if l.get('lease_expiry') else None
+                except Exception: expiry=None
+                db.execute(text("""INSERT INTO attack_campaign_dhcp_leases(execution_id,ip_address,hostname,client_id,address_state,scope_id,lease_expiry,observed_at)
+                  VALUES(:e,:ip,:h,:cid,:st,:scope,:exp,:now) ON CONFLICT(execution_id,ip_address) DO UPDATE SET hostname=EXCLUDED.hostname,client_id=EXCLUDED.client_id,address_state=EXCLUDED.address_state,scope_id=EXCLUDED.scope_id,lease_expiry=EXCLUDED.lease_expiry,observed_at=EXCLUDED.observed_at"""),{'e':run['execution_id'],'ip':ip,'h':l.get('hostname'),'cid':l.get('client_id'),'st':l.get('address_state'),'scope':l.get('scope_id'),'exp':expiry,'now':datetime.utcnow()})
+            cov=_refresh_campaign_coverage(db,int(run['execution_id']))
+            db.execute(text("UPDATE attack_campaign_dhcp_runs SET status='success',lease_count=:n,finished_at=:now,error=NULL WHERE id=:id"),{'n':len(leases),'now':datetime.utcnow(),'id':run['id']})
+        else:
+            cov=_refresh_campaign_coverage(db,int(run['execution_id']))
+            db.execute(text("UPDATE attack_campaign_dhcp_runs SET status=:s,finished_at=:now,error=:err WHERE id=:id"),{'s':status,'now':datetime.utcnow(),'err':data.get('error') or data.get('stderr'),'id':run['id']})
+        db.commit();return {'execution_id':run['execution_id'],'leases':len(leases),'coverage':cov,'status':status}
 
 def process_campaigns_once(now:datetime|None=None):
     now=now or _campaign_now()
@@ -770,6 +851,7 @@ def process_campaigns_once(now:datetime|None=None):
             rid,wait_reason=_bind_campaign_runner(db,c,e,now)
             if not rid:
                 continue
+            _queue_windows_dhcp_inventory(db,c,e)
             if e['status'] in ('scheduled','waiting_runner'):
                 db.execute(text("UPDATE attack_campaign_executions SET status='active',started_at=COALESCE(started_at,:now),next_cycle_at=CASE WHEN next_cycle_at IS NULL OR next_cycle_at>:now THEN :now ELSE next_cycle_at END,stats=COALESCE(stats,'{}'::jsonb) || CAST(:st AS JSONB) WHERE id=:id"),
                            {'now':now,'id':e['id'],'st':__import__('json').dumps({'scheduler_state':'runner_bound','runner_id':rid,'scheduler_checked_at':now.isoformat()},ensure_ascii=False)}); e['status']='active'; e['next_cycle_at']=now

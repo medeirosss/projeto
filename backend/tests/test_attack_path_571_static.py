@@ -22,4 +22,4 @@ def test_runner_service_hooks_campaign_and_attack_results():
 
 def test_runner_version():
     s=(ROOT/'runner/magi_runner/core/version.py').read_text(encoding='utf-8')
-    assert '2.19.1' in s
+    assert '2.21.0' in s

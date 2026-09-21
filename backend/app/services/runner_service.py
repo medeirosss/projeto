@@ -91,7 +91,7 @@ def heartbeat_v2_service(data: dict, headers, remote_addr: str | None = None):
 def get_next_job_v2_service(headers):
     runner_id = _auth_runner_from_headers(headers)
     job = get_next_job(runner_id)
-    if job and job.get("job_type") in {"credential_validate","deep_inventory","atomic_validation","attack_simulation","campaign_probe"} and (job.get("payload") or {}).get("credential_id"):
+    if job and job.get("job_type") in {"credential_validate","deep_inventory","atomic_validation","attack_simulation","campaign_probe","windows_dhcp_inventory"} and (job.get("payload") or {}).get("credential_id"):
         # Inject plaintext only into the transient HTTP response. runner_jobs stores only credential_id.
         from app.services.credentials_service import get_credential_by_id
         payload = dict(job.get("payload") or {})
@@ -196,6 +196,10 @@ def job_result_v2_service(job_id: int, data: dict, headers):
             campaign_ingestion = None
     if result and result.get("job_type") == "deep_inventory":
         deep_inventory = ingest_runner_deep_result(int(job_id), runner_id, status, data, data.get("error"))
+    dhcp_inventory = None
+    if result and result.get("job_type") == "windows_dhcp_inventory":
+        from app.services.attack_campaign_service import ingest_windows_dhcp_result
+        dhcp_inventory = ingest_windows_dhcp_result(int(job_id), status, data)
     if result and result.get("job_type") in {"security_check", "nuclei", "attack_simulation"}:
         from app.repositories.validation_repository import ingest_execution_result
         security_check = ingest_execution_result(int(job_id), status, data, data.get("error"))
@@ -205,7 +209,7 @@ def job_result_v2_service(job_id: int, data: dict, headers):
                 ingest_path_validation_result(int(job_id), status, data)
             except Exception:
                 pass
-    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery, "credential_engine": credential_engine, "campaign_ingestion": campaign_ingestion, "deep_inventory": deep_inventory, "security_check": security_check}
+    return {"success": True, "job": result, "validation": validation, "atomic_execution": atomic_execution, "discovery": discovery, "service_discovery": service_discovery, "credential_engine": credential_engine, "campaign_ingestion": campaign_ingestion, "deep_inventory": deep_inventory, "dhcp_inventory": dhcp_inventory, "security_check": security_check}
 
 
 # Legacy /api/runner compatibility used by previous Magi builds.

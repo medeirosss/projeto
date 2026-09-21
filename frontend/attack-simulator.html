@@ -30,7 +30,7 @@
   <main class="page-content">
     <section class="page-heading">
       <div>
-        <p class="eyebrow">BUILD 5.7.1</p>
+        <p class="eyebrow">BUILD 5.7.3</p>
         <h1>MAGI Attack Simulator</h1>
         <p>Execuções pontuais MAGI Native e Metasploit, Campaign controlada e histórico rastreável em áreas separadas.</p>
       </div>
@@ -100,14 +100,14 @@
     </section>
 
     <section class="panel" data-attack-view="attackpath">
-      <div class="panel-header"><div><h2>Intelligent Attack Path 5.7.1</h2><p>Grafo operacional e telemetria de caminho. POSSIBLE/VALIDATABLE não são apresentados como salto lateral confirmado.</p></div><button id="refreshAttackPaths" class="btn secondary">Atualizar</button></div>
+      <div class="panel-header"><div><h2>Intelligent Attack Path 5.7.3</h2><p>Grafo operacional e telemetria de caminho. POSSIBLE/VALIDATABLE não são apresentados como salto lateral confirmado.</p></div><button id="refreshAttackPaths" class="btn secondary">Atualizar</button></div>
       <div class="table-wrap"><table><thead><tr><th>Path</th><th>Origem</th><th>Status</th><th>Criado</th><th>Ação</th></tr></thead><tbody id="attackPathRuns"><tr><td colspan="5">Nenhum Attack Path carregado.</td></tr></tbody></table></div>
       <div id="attackPathTelemetry" class="result-box">Selecione um Path para ver edges e telemetria ENTERED / ACTION / RELAY / RETURN.</div>
     </section>
 
     <section class="panel" id="campaignPanel" data-attack-view="campaign">
       <div class="panel-header">
-        <div><h2>Attack Campaign 5.3</h2><p>Campaign multi-protocolo: WinRM/SMB para Windows, SSH para Linux e SNMP v2c para descoberta de dispositivos. Mantém ciclos, scope e expansão controlada.</p></div>
+        <div><h2>Attack Campaign 5.7.3</h2><p>Campaign Windows com WinRM/SMB, Credential Set e Network Intelligence SNMP separado do lateral movement.</p></div>
         <button id="refreshCampaigns" class="btn secondary">Atualizar</button>
       </div>
       <div class="form-grid">
@@ -116,9 +116,8 @@
         <label>Host A1<input id="campaignSeed1" placeholder="192.168.0.100" /></label>
         <label>Host A2<input id="campaignSeed2" placeholder="Opcional" /></label>
         <label>Host A3<input id="campaignSeed3" placeholder="Opcional" /></label>
-        <label>Windows Credential<select id="campaignCredential"><option value="">Selecione</option></select></label>
-        <label>SSH Credential<select id="campaignSshCredential"><option value="">Selecione</option></select></label>
-        <label>SNMP v2c Community<select id="campaignSnmpCredential"><option value="">Selecione</option></select></label>
+        <label>Windows Credential Set<select id="campaignCredential" multiple size="4"></select><small>Ctrl/Cmd + clique para selecionar mais de uma. Máximo: 10.</small></label>
+        <label>SNMP v2c Community<select id="campaignSnmpCredential"><option value="">Selecione</option></select></label><label>Windows DHCP Server<input id="campaignDhcpServer" placeholder="dhcp01.contoso.local ou 192.168.0.10" /></label><label>DHCP Credential<select id="campaignDhcpCredential"><option value="">Selecione</option></select></label>
         <label>Data/hora de início<input id="campaignStart" type="datetime-local" /></label>
         <label>Data/hora de término<input id="campaignEnd" type="datetime-local" /></label>
         <label>Janela diária - início<input id="campaignDailyStart" type="time" value="08:00" /></label>
@@ -126,7 +125,7 @@
         <label>Ciclo / timeout<input value="15 minutos" disabled /></label>
         <label>Reiniciar após (dias)<input id="campaignRecurrence" type="number" min="1" placeholder="Opcional: 5" /></label>
       </div>
-      <div class="campaign-policy-strip"><span><strong>Vetores:</strong></span><label><input id="vec_winrm" type="checkbox" checked /> WinRM</label><label><input id="vec_smb" type="checkbox" checked /> SMB</label><label><input id="vec_ssh" type="checkbox" checked /> SSH</label><label><input id="vec_snmp_v2c" type="checkbox" checked /> SNMP v2c</label><label><input id="campaignEvidence" type="checkbox" /> Criar evidência benigna no host</label></div>
+      <div class="campaign-policy-strip"><span><strong>Coverage Intelligence:</strong></span><label><input id="campaignDhcpEnabled" type="checkbox" /> Windows DHCP</label><span><small>Leases são fonte de ativos conhecidos; não provam reachability.</small></span></div><div class="campaign-policy-strip"><span><strong>Lateral Movement:</strong></span><label><input id="vec_winrm" type="checkbox" checked /> WinRM</label><label><input id="vec_smb" type="checkbox" checked /> SMB</label><label><input id="campaignEvidence" type="checkbox" /> Criar evidência benigna no host</label></div><div class="campaign-policy-strip"><span><strong>Network Intelligence:</strong></span><label><input id="vec_snmp_v2c" type="checkbox" checked /> SNMP v2c</label><label><input id="campaignSnmpTopology" type="checkbox" checked /> Descobrir neighbors LLDP/CDP quando suportado</label></div>
       <div class="campaign-policy-strip">
         <span><strong>Seeds/ciclo:</strong> 3</span><span><strong>Expansão:</strong> 10 → 5 → 1 → 0</span><span><strong>Jobs simultâneos:</strong> 5</span><span><strong>Snapshots:</strong> 10</span>
       </div>

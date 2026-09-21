@@ -129,6 +129,65 @@ def _snmp_sysname(target: str, community: str, timeout: float = 1.5) -> tuple[bo
     finally:
         s.close()
 
+def _read_tlv(buf: bytes, pos: int):
+    if pos + 2 > len(buf): raise ValueError('truncated tlv')
+    tag=buf[pos]; pos+=1; ln=buf[pos]; pos+=1
+    if ln & 0x80:
+        n=ln & 0x7f
+        if n<1 or n>4 or pos+n>len(buf): raise ValueError('invalid length')
+        ln=int.from_bytes(buf[pos:pos+n],'big'); pos+=n
+    if pos+ln>len(buf): raise ValueError('truncated value')
+    return tag,buf[pos:pos+ln],pos+ln
+
+def _decode_oid(raw: bytes)->list[int]:
+    if not raw:return []
+    first=raw[0]; out=[first//40,first%40]; val=0
+    for b in raw[1:]:
+        val=(val<<7)|(b&0x7f)
+        if not (b&0x80): out.append(val); val=0
+    return out
+
+def _snmp_getnext(target:str,community:str,oid:list[int],timeout:float=1.0):
+    req_id=0x4D470001
+    vb=_ber(0x30,_ber_oid(oid)+_ber(0x05,b'')); vbl=_ber(0x30,vb)
+    pdu=_ber(0xA1,_ber_int(req_id)+_ber_int(0)+_ber_int(0)+vbl)
+    msg=_ber(0x30,_ber_int(1)+_ber(0x04,community.encode())+pdu)
+    sock=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);sock.settimeout(timeout)
+    try:
+        sock.sendto(msg,(target,161)); data,_=sock.recvfrom(65535)
+        # Parse nested response: sequence -> version/community/PDU -> request/error/error-index/varbindlist -> varbind.
+        _,root,_=_read_tlv(data,0); pos=0
+        _,_,pos=_read_tlv(root,pos); _,_,pos=_read_tlv(root,pos); _,pduv,pos=_read_tlv(root,pos)
+        q=0; _,_,q=_read_tlv(pduv,q); _,err,q=_read_tlv(pduv,q); _,_,q=_read_tlv(pduv,q)
+        if int.from_bytes(err,'big'): return None,None,None
+        _,vblv,q=_read_tlv(pduv,q); _,vbv,_=_read_tlv(vblv,0)
+        r=0; _,oidraw,r=_read_tlv(vbv,r); vtag,vraw,r=_read_tlv(vbv,r)
+        return _decode_oid(oidraw),vtag,vraw
+    except Exception:return None,None,None
+    finally:sock.close()
+
+def _snmp_walk_strings(target:str,community:str,base:list[int],limit:int=32)->list[str]:
+    cur=list(base); out=[]
+    for _ in range(limit):
+        oid,tag,val=_snmp_getnext(target,community,cur)
+        if not oid or oid[:len(base)]!=base or oid==cur: break
+        cur=oid
+        if tag==0x04:
+            try:
+                txt=val.decode('utf-8',errors='replace').strip().strip('\\x00')
+                if txt and txt not in out and all(ch.isprintable() for ch in txt): out.append(txt[:255])
+            except Exception: pass
+    return out
+
+def _snmp_neighbors(target:str,community:str)->list[dict[str,str]]:
+    # LLDP-MIB lldpRemSysName and Cisco-CDP-MIB cdpCacheDeviceId.
+    sources=[('lldp',[1,0,8802,1,1,2,1,4,1,1,9]),('cdp',[1,3,6,1,4,1,9,9,23,1,2,1,1,6])]
+    found=[]
+    for proto,base in sources:
+        for name in _snmp_walk_strings(target,community,base):
+            found.append({'protocol':proto,'neighbor_name':name})
+    return found
+
 
 class CampaignProbeExecutor:
     """Cheap existence/service precondition for Attack Campaign.
@@ -211,10 +270,13 @@ class CampaignProbeExecutor:
         snmp_confirmed = False
         snmp_hostname = None
         snmp_error = None
+        snmp_neighbors = []
         if "snmp_v2c" in enabled and str(cred.get("secret") or ""):
             snmp_confirmed, snmp_hostname, snmp_error = _snmp_sysname(
                 target, str(cred.get("secret") or ""), timeout=min(1.5, max(0.5, timeout_seconds / 8))
             )
+            if snmp_confirmed and bool(payload.get("snmp_topology_enabled")):
+                snmp_neighbors = _snmp_neighbors(target, str(cred.get("secret") or ""))
 
         # ICMP is authoritative for Campaign membership. Protocol checks only
         # decide which access vectors are applicable after admission.
@@ -240,6 +302,8 @@ class CampaignProbeExecutor:
             "applicable_protocols": applicable,
             "snmp_confirmed": snmp_confirmed,
             "snmp_error": snmp_error,
+            "snmp_neighbors": snmp_neighbors,
+            "network_intelligence": {"lldp_cdp_enabled": bool(payload.get("snmp_topology_enabled")), "neighbor_count": len(snmp_neighbors)},
             "protocol": "icmp",
             "relation_type": "discovery",
             "authenticated": False,

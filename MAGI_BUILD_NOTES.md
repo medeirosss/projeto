@@ -111,3 +111,26 @@ Baseline: 5.6.1.
 - Telemetry remains metadata-only and stores no password, hash, Kerberos material or arbitrary command output.
 - SSH is intentionally excluded from automatic path validation in 5.7.1. SMB remains available in Campaign but does not yet receive a remote-origin proof executor; SNMP remains discovery-only.
 - Runner 2.19.1.
+
+## 5.7.2 — Campaign Credential Sets + Network Intelligence
+- Baseline: frozen 5.7.1.
+- Campaign Windows authentication now accepts an ordered Credential Set (up to 10 credential profiles) shared by WinRM and SMB.
+- Credential attempts are deliberately sequential per host/protocol: one credential is queued at a time, `max_attempts=1`; the next credential is scheduled only after a non-confirmed result. A confirmed protocol stops further credentials for that host/protocol.
+- Credential IDs are persisted for traceability; secrets remain transient and are not stored in Campaign paths or telemetry.
+- SSH is removed from the Campaign UI/default vectors for this phase. Existing historical SSH data remains readable.
+- SNMP is explicitly separated as Network Intelligence rather than lateral movement.
+- Optional SNMP topology discovery performs bounded read-only SNMP v2c walks for LLDP remote system names and Cisco CDP device IDs when supported by the device.
+- Campaign detail adds a Network Intelligence view listing SNMP devices and LLDP/CDP neighbors. Lack of LLDP/CDP data is not treated as a Campaign failure.
+- Migration 0033 adds Windows Credential Set persistence and per-credential Campaign path identity, preserving the first legacy credential as the first member during upgrade.
+- Runner 2.20.0.
+
+## Build 5.7.3 — Windows DHCP Provider + Campaign Coverage Intelligence
+- Baseline: 5.7.2 frozen.
+- Added optional Windows DHCP provider to Campaign. The Runner performs a fixed read-only PowerShell inventory using `Get-DhcpServerv4Scope` and `Get-DhcpServerv4Lease` through an explicitly selected Windows credential.
+- Credential secrets remain transient: the queued job stores only `credential_id`; plaintext is injected only into the Runner response using the existing credential flow.
+- Added campaign DHCP run/lease persistence and Coverage Intelligence. DHCP is treated as a source of known assets, never as proof of current reachability.
+- Coverage states distinguish known, reached and evaluated assets and expose known-asset coverage rather than claiming complete network coverage.
+- Campaign UI adds Windows DHCP Server, DHCP Credential, enable switch, and Coverage tab.
+- Initial provider scope is Microsoft Windows DHCP only. Provider expansion is deferred.
+- Runner version: 2.21.0.
+- Database migration: 20260921_0034.

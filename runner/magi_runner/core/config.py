@@ -24,7 +24,7 @@ class RunnerConfig:
     default_timeout_seconds: int = 120
     data_dir: str = "./runner_data"
     log_level: str = "INFO"
-    allowed_executors: list[str] = field(default_factory=lambda: ["cmd", "powershell", "python", "atomic", "nmap_discovery", "service_discovery", "credential_validate", "deep_inventory", "security_check", "nuclei", "attack_simulation", "campaign_probe", "metasploit"])
+    allowed_executors: list[str] = field(default_factory=lambda: ["cmd", "powershell", "python", "atomic", "nmap_discovery", "service_discovery", "credential_validate", "deep_inventory", "security_check", "nuclei", "attack_simulation", "campaign_probe", "metasploit", "windows_dhcp_inventory"])
     nmap_path: str | None = None
     metasploit_path: str | None = None
     offline_jobs_file: str = "./offline_jobs.json"
@@ -72,6 +72,8 @@ def load_config(path: str | os.PathLike[str]) -> RunnerConfig:
         allowed.append("campaign_probe")
     if "campaign_probe" in allowed and "metasploit" not in allowed:
         allowed.append("metasploit")
+    if "campaign_probe" in allowed and "windows_dhcp_inventory" not in allowed:
+        allowed.append("windows_dhcp_inventory")
     raw["allowed_executors"] = allowed
 
     return RunnerConfig(**raw)

@@ -158,7 +158,7 @@ def get_next_job(runner_id: str):
         # Unknown job types are never delivered silently. They remain visible for investigation.
         db.execute(text("""UPDATE runner_jobs SET status='blocked', error=COALESCE(error,'uncontrolled_job: tipo de job sem controle registrado'), finished_at=:now
             WHERE status='pending' AND (runner_id=:runner_id OR runner_id IS NULL)
-              AND job_type NOT IN ('cmd','powershell','python','atomic','atomic_validation','nmap_discovery','service_discovery','credential_validate','deep_inventory','security_check','nuclei','attack_simulation','campaign_probe','validation','connectivity_check')"""), {'runner_id':runner_id,'now':datetime.utcnow()})
+              AND job_type NOT IN ('cmd','powershell','python','atomic','atomic_validation','nmap_discovery','service_discovery','credential_validate','deep_inventory','security_check','nuclei','attack_simulation','campaign_probe','windows_dhcp_inventory','validation','connectivity_check')"""), {'runner_id':runner_id,'now':datetime.utcnow()})
         db.commit()
         row = db.execute(text("""
             UPDATE runner_jobs
@@ -168,7 +168,7 @@ def get_next_job(runner_id: str):
                 FROM runner_jobs
                 WHERE status = 'pending'
                   AND (runner_id = :runner_id OR runner_id IS NULL)
-                  AND job_type IN ('cmd','powershell','python','atomic','atomic_validation','nmap_discovery','service_discovery','credential_validate','deep_inventory','security_check','nuclei','attack_simulation','campaign_probe','validation','connectivity_check')
+                  AND job_type IN ('cmd','powershell','python','atomic','atomic_validation','nmap_discovery','service_discovery','credential_validate','deep_inventory','security_check','nuclei','attack_simulation','campaign_probe','windows_dhcp_inventory','validation','connectivity_check')
                   AND NOT EXISTS (SELECT 1 FROM runners rr WHERE rr.runner_id=:runner_id AND COALESCE((rr.metadata->>'queue_paused')::boolean,FALSE)=TRUE)
                   AND NOT (
                     job_type IN ('campaign_probe','credential_validate')
@@ -529,7 +529,7 @@ def get_online_runner_with_capability(capability: str) -> dict[str, Any] | None:
 CONTROLLED_JOB_TYPES = {
     'cmd','powershell','python','atomic','atomic_validation','nmap_discovery',
     'service_discovery','credential_validate','deep_inventory','security_check',
-    'nuclei','attack_simulation','campaign_probe','validation','connectivity_check'
+    'nuclei','attack_simulation','campaign_probe','windows_dhcp_inventory','validation','connectivity_check'
 }
 
 def is_runner_queue_paused(runner_id: str) -> bool:
