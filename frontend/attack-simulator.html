@@ -107,7 +107,7 @@
 
     <section class="panel" id="campaignPanel" data-attack-view="campaign">
       <div class="panel-header">
-        <div><h2>Attack Campaign 5.7.3</h2><p>Campaign Windows com WinRM/SMB, Credential Set e Network Intelligence SNMP separado do lateral movement.</p></div>
+        <div><h2>Attack Campaign 5.7.3.1</h2><p>Campaign Windows com WinRM/SMB, Credential Set e Network Intelligence SNMP separado do lateral movement.</p></div>
         <button id="refreshCampaigns" class="btn secondary">Atualizar</button>
       </div>
       <div class="form-grid">
@@ -117,7 +117,7 @@
         <label>Host A2<input id="campaignSeed2" placeholder="Opcional" /></label>
         <label>Host A3<input id="campaignSeed3" placeholder="Opcional" /></label>
         <label>Windows Credential Set<select id="campaignCredential" multiple size="4"></select><small>Ctrl/Cmd + clique para selecionar mais de uma. Máximo: 10.</small></label>
-        <label>SNMP v2c Community<select id="campaignSnmpCredential"><option value="">Selecione</option></select></label><label>Windows DHCP Server<input id="campaignDhcpServer" placeholder="dhcp01.contoso.local ou 192.168.0.10" /></label><label>DHCP Credential<select id="campaignDhcpCredential"><option value="">Selecione</option></select></label>
+        <label>SNMP v2c Community<select id="campaignSnmpCredential"><option value="">Selecione</option></select></label><label>DHCP Integration<select id="campaignDhcpIntegration"><option value="">Selecione um DHCP configurado</option></select><small>Configure em Configurações → Integrações → DHCP.</small></label>
         <label>Data/hora de início<input id="campaignStart" type="datetime-local" /></label>
         <label>Data/hora de término<input id="campaignEnd" type="datetime-local" /></label>
         <label>Janela diária - início<input id="campaignDailyStart" type="time" value="08:00" /></label>

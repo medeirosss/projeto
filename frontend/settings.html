@@ -114,6 +114,21 @@
     </section>
 
 
+    <section id="settingsDhcpSection" class="hidden-section report-section">
+      <div class="toolbar"><div><div class="title">Integrações · DHCP</div><p class="section-subtitle">Provedores persistentes usados pelo Campaign Coverage. Nesta versão: Microsoft Windows DHCP.</p></div></div>
+      <div class="card"><div class="card-header">Windows DHCP</div><div class="form-body">
+        <div class="form-grid">
+          <div class="field"><label>Nome</label><input id="dhcp_int_name" placeholder="DHCP Matriz"></div>
+          <div class="field"><label>Servidor / FQDN</label><input id="dhcp_int_server" placeholder="dhcp01.contoso.local ou 192.168.0.10"></div>
+          <div class="field"><label>Provider</label><input value="Microsoft Windows DHCP" disabled></div>
+          <div class="field"><label>Credencial Windows</label><select id="dhcp_int_credential"><option value="">Selecione</option></select></div>
+        </div>
+        <div class="actions"><button class="btn primary" id="saveDhcpIntegrationBtn" type="button">Adicionar integração</button></div>
+        <div class="notice" id="dhcpIntegrationStatus">A integração é persistente. A Campaign apenas seleciona qual DHCP usar e salva um snapshot das leases por execução.</div>
+      </div></div>
+      <div class="card" style="margin-top:16px"><div class="card-header">DHCPs configurados</div><div class="form-body"><div class="table-wrap"><table><thead><tr><th>Nome</th><th>Provider</th><th>Servidor</th><th>Credential ID</th><th>Ações</th></tr></thead><tbody id="dhcpIntegrationsTable"><tr><td colspan="5">Carregando...</td></tr></tbody></table></div></div></div>
+    </section>
+
     <section id="settingsCredentialsSection" class="hidden-section report-section">
       <div class="toolbar"><div><div class="title">Discovery · Credenciais</div><p class="section-subtitle">Credenciais opcionais usadas pelo Credential Engine. O segredo é criptografado no PostgreSQL e nunca é exibido novamente.</p></div></div>
       <div class="card"><div class="card-header">Nova credencial</div><div class="form-body">

@@ -46,6 +46,7 @@ function buildPayload(){
         fallback_system: document.getElementById('discovery_dns_fallback')?.checked ?? true
       }
     },
+    integrations: { dhcp: Array.isArray(currentSettings?.integrations?.dhcp) ? currentSettings.integrations.dhcp : [] },
     webhook: {
       enabled: document.getElementById('webhook_enabled')?.checked ?? true,
       token: document.getElementById('webhook_token')?.value || '',
@@ -472,7 +473,39 @@ bootSettings=async function(){
   showSettingsSection('settingsMailSection');bindFixedActions();await loadSettings();
 };
 
+
+// Build 5.7.3.1 — persistent DHCP integrations
+async function loadDhcpIntegrations(){
+  const table=document.getElementById('dhcpIntegrationsTable'); if(!table)return;
+  const data=await fetch('/api/settings').then(r=>r.json()).catch(()=>({})); currentSettings=data;
+  const rows=data?.integrations?.dhcp||[];
+  table.innerHTML=rows.length?rows.map(x=>`<tr><td>${credEsc(x.name)}</td><td>Windows DHCP</td><td>${credEsc(x.server)}</td><td>${credEsc(x.credential_id)}</td><td><button class="btn danger btn-sm dhcp-int-delete" data-id="${credEsc(x.id)}">Excluir</button></td></tr>`).join(''):'<tr><td colspan="5">Nenhum DHCP configurado.</td></tr>';
+  document.querySelectorAll('.dhcp-int-delete').forEach(b=>b.onclick=async()=>{currentSettings.integrations=currentSettings.integrations||{};currentSettings.integrations.dhcp=(currentSettings.integrations.dhcp||[]).filter(x=>String(x.id)!==String(b.dataset.id));await saveSettings('dhcpIntegrationStatus');await loadDhcpIntegrations();});
+  const creds=await fetch('/api/actions/credentials').then(r=>r.json()).catch(()=>({credentials:[]})); const win=(creds.credentials||[]).filter(c=>['windows','wmi','winrm'].includes(String(c.type||c.credential_type||'').toLowerCase()));
+  const sel=document.getElementById('dhcp_int_credential'); if(sel)sel.innerHTML='<option value="">Selecione</option>'+win.map(c=>`<option value="${c.id}">${credEsc(c.name)} — ${credEsc(c.domain?c.domain+'\\':'')}${credEsc(c.username||'')}</option>`).join('');
+}
+async function saveDhcpIntegration(){
+  const name=document.getElementById('dhcp_int_name').value.trim(),server=document.getElementById('dhcp_int_server').value.trim(),credential_id=Number(document.getElementById('dhcp_int_credential').value||0);
+  if(!name||!server||!credential_id){setMessage('dhcpIntegrationStatus','Nome, servidor e credencial Windows são obrigatórios.');return;}
+  currentSettings.integrations=currentSettings.integrations||{}; currentSettings.integrations.dhcp=currentSettings.integrations.dhcp||[];
+  currentSettings.integrations.dhcp.push({id:'DHCP-'+Date.now().toString(36).toUpperCase(),name,provider:'windows_dhcp',server,credential_id,enabled:true});
+  await saveSettings('dhcpIntegrationStatus'); document.getElementById('dhcp_int_name').value='';document.getElementById('dhcp_int_server').value='';await loadDhcpIntegrations();
+}
+const _bindDhcpPrev=bindFixedActions; bindFixedActions=function(){_bindDhcpPrev();document.getElementById('saveDhcpIntegrationBtn')?.addEventListener('click',saveDhcpIntegration)};
+const _bootDhcpPrev=bootSettings; bootSettings=async function(){
+  buildHeader('settings');settingsModules=await fetchModuleStatus();
+  const groups=[
+    {title:'Fixos',items:[{key:'settingsMailSection',label:'Mail Server'},{key:'settingsBrandingSection',label:'Branding'},{key:'settingsWebhookSection',label:'Webhook'},{key:'settingsUsersSection',label:'Usuários'},{key:'settingsStatusSection',label:'Status'},{key:'settingsRunnersSection',label:'Runners'}]},
+    {title:'Integrações',items:[{key:'settingsDhcpSection',label:'DHCP'}]},
+    {title:'Discovery',items:[{key:'settingsDiscoveryDnsSection',label:'DNS'},{key:'settingsCredentialsSection',label:'Credenciais'}]},
+    {title:'UEM',items:[{key:'settingsUemApiSection',label:'APIs'},{key:'settingsAdSection',label:'Active Directory'},{key:'settingsParametersSection',label:'Parâmetros'},{key:'settingsIpScopeSection',label:'IP Scope'}]}
+  ];
+  renderModuleSidebar('settingsSidebar',groups,async key=>{showSettingsSection(key);if(key==='settingsUsersSection')await loadAuthAccess();if(key==='settingsRunnersSection')await loadRunners();if(key==='settingsCredentialsSection')await loadCredentials();if(key==='settingsDhcpSection')await loadDhcpIntegrations()});
+  showSettingsSection('settingsMailSection');bindFixedActions();await loadSettings();
+};
+
 bootSettings();
+
 
 
 async function loadRunnerJobs(runnerId){

@@ -24,6 +24,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
         "whatsapp_enabled": False,
         "n8n_webhook_url": "",
     },
+    "integrations": {"dhcp": []},
     "discovery": {
         "dns": {
             "enabled": False,

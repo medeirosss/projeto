@@ -134,3 +134,11 @@ Baseline: 5.6.1.
 - Initial provider scope is Microsoft Windows DHCP only. Provider expansion is deferred.
 - Runner version: 2.21.0.
 - Database migration: 20260921_0034.
+
+
+## 5.7.3.1 — DHCP Integration & DHCP × Campaign Coverage
+- Windows DHCP moved to persistent Settings > Integrations > DHCP configuration.
+- Campaign selects a configured DHCP integration instead of re-entering server/credential.
+- Campaign execution retains server/credential snapshot for historical reproducibility.
+- Coverage explicitly compares DHCP leases vs Campaign discovery: DHCP IPs, found-of-DHCP, DHCP coverage %, and Campaign assets outside DHCP.
+- DHCP snapshot remains read-only reference; lease does not imply reachability.
