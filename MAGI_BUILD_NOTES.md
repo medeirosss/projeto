@@ -142,3 +142,11 @@ Baseline: 5.6.1.
 - Campaign execution retains server/credential snapshot for historical reproducibility.
 - Coverage explicitly compares DHCP leases vs Campaign discovery: DHCP IPs, found-of-DHCP, DHCP coverage %, and Campaign assets outside DHCP.
 - DHCP snapshot remains read-only reference; lease does not imply reachability.
+
+## 5.7.3.2 — DHCP Validation + DHCP-fed Discovery
+- Windows DHCP integration is validated by a real Runner before it is persisted.
+- Validation returns scope count, total leases, active leases and per-scope utilization when available.
+- Settings UI shows connection status and DHCP inventory summary.
+- Active DHCP leases become prioritized Campaign discovery candidates inside configured Campaign scope.
+- DHCP remains a KNOWN source only; normal Campaign probing is still required for REACHED/EVALUATED.
+- Campaign Coverage continues comparing DHCP snapshot versus Campaign discovery and assets outside DHCP.

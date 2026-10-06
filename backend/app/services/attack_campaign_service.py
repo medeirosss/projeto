@@ -435,7 +435,15 @@ def _candidate_for_origin(db,c:dict[str,Any],e:dict[str,Any],origin:str)->str|No
     except Exception: pass
     addresses=_usable_addresses(list(c.get('scope_cidrs') or []))
     allowed=set(addresses)
-    ordered=[x for x in known if x in allowed]+addresses
+    # Build 5.7.3.2: active DHCP leases are first-class discovery candidates.
+    # A lease is only KNOWN; normal Campaign probes must still prove REACHED/EVALUATED.
+    dhcp_known=[]
+    if c.get('dhcp_enabled'):
+        try:
+            dhcp_known=[str(r[0]) for r in db.execute(text("SELECT ip_address FROM attack_campaign_dhcp_leases WHERE execution_id=:e AND (address_state IS NULL OR lower(address_state) LIKE 'active%') ORDER BY ip_address"),{'e':e['id']}).all() if str(r[0]) in allowed]
+        except Exception:
+            dhcp_known=[]
+    ordered=dhcp_known+[x for x in known if x in allowed]+addresses
     seen=set()
     for x in ordered:
         if x in seen: continue

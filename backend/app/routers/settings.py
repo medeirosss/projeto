@@ -117,3 +117,33 @@ async def api_resume_runner_queue(runner_id: str):
 async def api_cancel_runner_job(runner_id: str, job_id: int):
     try: return cancel_runner_job_service(runner_id,job_id)
     except Exception as exc: return JSONResponse(status_code=400,content={"success":False,"detail":str(exc)})
+
+# Build 5.7.3.2 — validate Windows DHCP through a real Runner before saving integration.
+@router.post("/settings/dhcp/validate")
+async def api_validate_dhcp(payload: Dict[str, Any] = Body(...)):
+    from app.repositories.runner_repository import create_runner_job, list_runners
+    server = str(payload.get("server") or "").strip()
+    try: credential_id = int(payload.get("credential_id") or 0)
+    except Exception: credential_id = 0
+    if not server or not credential_id:
+        return JSONResponse(status_code=400, content={"success": False, "detail": "Servidor e credencial Windows são obrigatórios."})
+    runners = [r for r in list_runners() if r.get("status") == "online" and r.get("enabled", True) is not False]
+    if not runners:
+        return JSONResponse(status_code=409, content={"success": False, "detail": "Nenhum Runner online disponível para validar o DHCP."})
+    runner_id = runners[0]["runner_id"]
+    job = create_runner_job(runner_id, "windows_dhcp_inventory", server, {"executor":"windows_dhcp_inventory","dhcp_server":server,"credential_id":credential_id,"timeout_seconds":90,"validation_only":True})
+    return {"success": True, "job_id": job["id"], "runner_id": runner_id, "status": "queued"}
+
+@router.get("/settings/dhcp/validate/{job_id}")
+async def api_validate_dhcp_status(job_id: int):
+    from app.repositories.runner_repository import get_runner_job_result
+    job = get_runner_job_result(job_id)
+    if not job: return JSONResponse(status_code=404, content={"success":False,"detail":"Validação DHCP não encontrada."})
+    status = str(job.get("status") or "pending")
+    if status not in {"success","failed","error","timeout","cancelled"}:
+        return {"success":True,"status":status,"job_id":job_id}
+    result = job.get("result") or {}; md = result.get("metadata") or {}
+    if status != "success":
+        return JSONResponse(status_code=422, content={"success":False,"status":status,"detail":job.get("error") or result.get("error") or "Falha ao consultar Windows DHCP."})
+    scopes = md.get("scopes") or []
+    return {"success":True,"status":"success","server":md.get("dhcp_server") or job.get("target"),"scope_count":int(md.get("scope_count") or len(scopes)),"lease_count":int(md.get("lease_count") or 0),"active_lease_count":int(md.get("active_lease_count") or 0),"scopes":scopes}

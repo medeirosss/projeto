@@ -22,7 +22,7 @@ $user=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__USER__'))
 $pass=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__PASS__'))
 $sec=ConvertTo-SecureString $pass -AsPlainText -Force
 $cred=New-Object System.Management.Automation.PSCredential($user,$sec)
-$sb={ param($srv) Import-Module DhcpServer -ErrorAction Stop; $out=@(); Get-DhcpServerv4Scope -ComputerName $srv | ForEach-Object { $sid=$_.ScopeId.IPAddressToString; Get-DhcpServerv4Lease -ComputerName $srv -ScopeId $_.ScopeId | ForEach-Object { $out += [pscustomobject]@{scope_id=$sid;ip_address=$_.IPAddress.IPAddressToString;hostname=$_.HostName;client_id=$_.ClientId;address_state=[string]$_.AddressState;lease_expiry=if($_.LeaseExpiryTime){$_.LeaseExpiryTime.ToString('o')}else{$null}} } }; $out | ConvertTo-Json -Depth 4 -Compress }
+$sb={ param($srv) Import-Module DhcpServer -ErrorAction Stop; $leases=@(); $scopes=@(); Get-DhcpServerv4Scope -ComputerName $srv | ForEach-Object { $scope=$_; $sid=$scope.ScopeId.IPAddressToString; $scopeLeases=@(Get-DhcpServerv4Lease -ComputerName $srv -ScopeId $scope.ScopeId); $active=@($scopeLeases | Where-Object { [string]$_.AddressState -match '^Active' }); $stats=$null; try{$stats=Get-DhcpServerv4ScopeStatistics -ComputerName $srv -ScopeId $scope.ScopeId -ErrorAction Stop}catch{}; $scopes += [pscustomobject]@{scope_id=$sid;name=$scope.Name;state=[string]$scope.State;active_leases=$active.Count;addresses_in_use=if($stats){[int]$stats.AddressesInUse}else{$active.Count};addresses_free=if($stats){[int]$stats.AddressesFree}else{$null};percentage_in_use=if($stats){[double]$stats.PercentageInUse}else{$null}}; $scopeLeases | ForEach-Object { $leases += [pscustomobject]@{scope_id=$sid;ip_address=$_.IPAddress.IPAddressToString;hostname=$_.HostName;client_id=$_.ClientId;address_state=[string]$_.AddressState;lease_expiry=if($_.LeaseExpiryTime){$_.LeaseExpiryTime.ToString('o')}else{$null}} } }; [pscustomobject]@{scopes=$scopes;leases=$leases} | ConvertTo-Json -Depth 5 -Compress }
 $result=Invoke-Command -ComputerName $server -Credential $cred -ScriptBlock $sb -ArgumentList $server
 $result
 '''.replace('__SERVER__',enc(server)).replace('__USER__',enc(principal)).replace('__PASS__',enc(secret))
@@ -32,7 +32,8 @@ $result
         r=run_subprocess([exe,'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded],workdir,min(timeout_seconds or 90,120))
         leases=[]
         if r.status=='success' and (r.stdout or '').strip():
-            raw=json.loads((r.stdout or '').strip()); leases=raw if isinstance(raw,list) else ([raw] if isinstance(raw,dict) else [])
-        r.metadata={**(r.metadata or {}),'provider':'windows_dhcp','dhcp_server':server,'lease_count':len(leases),'leases':leases}
-        r.stdout=json.dumps({'provider':'windows_dhcp','dhcp_server':server,'lease_count':len(leases)},ensure_ascii=False)
+            raw=json.loads((r.stdout or '').strip()); leases=(raw.get('leases') or []) if isinstance(raw,dict) else (raw if isinstance(raw,list) else []); scopes=(raw.get('scopes') or []) if isinstance(raw,dict) else []
+        active_leases=[x for x in leases if str(x.get('address_state') or '').lower().startswith('active')]
+        r.metadata={**(r.metadata or {}),'provider':'windows_dhcp','dhcp_server':server,'scope_count':len(scopes),'scopes':scopes,'lease_count':len(leases),'active_lease_count':len(active_leases),'leases':leases}
+        r.stdout=json.dumps({'provider':'windows_dhcp','dhcp_server':server,'scope_count':len(scopes),'lease_count':len(leases),'active_lease_count':len(active_leases)},ensure_ascii=False)
         return r

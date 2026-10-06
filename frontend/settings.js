@@ -474,12 +474,12 @@ bootSettings=async function(){
 };
 
 
-// Build 5.7.3.1 — persistent DHCP integrations
+// Build 5.7.3.2 — persistent DHCP integrations
 async function loadDhcpIntegrations(){
   const table=document.getElementById('dhcpIntegrationsTable'); if(!table)return;
   const data=await fetch('/api/settings').then(r=>r.json()).catch(()=>({})); currentSettings=data;
   const rows=data?.integrations?.dhcp||[];
-  table.innerHTML=rows.length?rows.map(x=>`<tr><td>${credEsc(x.name)}</td><td>Windows DHCP</td><td>${credEsc(x.server)}</td><td>${credEsc(x.credential_id)}</td><td><button class="btn danger btn-sm dhcp-int-delete" data-id="${credEsc(x.id)}">Excluir</button></td></tr>`).join(''):'<tr><td colspan="5">Nenhum DHCP configurado.</td></tr>';
+  table.innerHTML=rows.length?rows.map(x=>`<tr><td>${credEsc(x.name)}</td><td>Windows DHCP</td><td>${credEsc(x.server)}</td><td>${credEsc(x.credential_id)}</td><td>${x.validation?.success?'● CONECTADO':'Não validado'}</td><td>${credEsc(x.validation?.scope_count??'-')}</td><td>${credEsc(x.validation?.active_lease_count??'-')}</td><td><button class="btn danger btn-sm dhcp-int-delete" data-id="${credEsc(x.id)}">Excluir</button></td></tr>`).join(''):'<tr><td colspan="8">Nenhum DHCP configurado.</td></tr>';
   document.querySelectorAll('.dhcp-int-delete').forEach(b=>b.onclick=async()=>{currentSettings.integrations=currentSettings.integrations||{};currentSettings.integrations.dhcp=(currentSettings.integrations.dhcp||[]).filter(x=>String(x.id)!==String(b.dataset.id));await saveSettings('dhcpIntegrationStatus');await loadDhcpIntegrations();});
   const creds=await fetch('/api/actions/credentials').then(r=>r.json()).catch(()=>({credentials:[]})); const win=(creds.credentials||[]).filter(c=>['windows','wmi','winrm'].includes(String(c.type||c.credential_type||'').toLowerCase()));
   const sel=document.getElementById('dhcp_int_credential'); if(sel)sel.innerHTML='<option value="">Selecione</option>'+win.map(c=>`<option value="${c.id}">${credEsc(c.name)} — ${credEsc(c.domain?c.domain+'\\':'')}${credEsc(c.username||'')}</option>`).join('');
@@ -487,9 +487,14 @@ async function loadDhcpIntegrations(){
 async function saveDhcpIntegration(){
   const name=document.getElementById('dhcp_int_name').value.trim(),server=document.getElementById('dhcp_int_server').value.trim(),credential_id=Number(document.getElementById('dhcp_int_credential').value||0);
   if(!name||!server||!credential_id){setMessage('dhcpIntegrationStatus','Nome, servidor e credencial Windows são obrigatórios.');return;}
+  setMessage('dhcpIntegrationStatus','Validando DHCP pelo Runner...');
+  const start=await fetch('/api/settings/dhcp/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({server,credential_id})}); const sj=await start.json().catch(()=>({}));
+  if(!start.ok){setMessage('dhcpIntegrationStatus',sj.detail||'Falha ao iniciar validação DHCP.');return;}
+  let validation=null; for(let i=0;i<50;i++){await new Promise(r=>setTimeout(r,1500)); const rr=await fetch('/api/settings/dhcp/validate/'+sj.job_id); const jj=await rr.json().catch(()=>({})); if(jj.status==='success'){validation=jj;break;} if(!rr.ok||['failed','error','timeout','cancelled'].includes(jj.status)){setMessage('dhcpIntegrationStatus',jj.detail||'Falha ao validar DHCP.');return;}}
+  if(!validation){setMessage('dhcpIntegrationStatus','Timeout aguardando validação DHCP pelo Runner.');return;}
   currentSettings.integrations=currentSettings.integrations||{}; currentSettings.integrations.dhcp=currentSettings.integrations.dhcp||[];
-  currentSettings.integrations.dhcp.push({id:'DHCP-'+Date.now().toString(36).toUpperCase(),name,provider:'windows_dhcp',server,credential_id,enabled:true});
-  await saveSettings('dhcpIntegrationStatus'); document.getElementById('dhcp_int_name').value='';document.getElementById('dhcp_int_server').value='';await loadDhcpIntegrations();
+  currentSettings.integrations.dhcp.push({id:'DHCP-'+Date.now().toString(36).toUpperCase(),name,provider:'windows_dhcp',server,credential_id,enabled:true,validation:{success:true,validated_at:new Date().toISOString(),scope_count:validation.scope_count,lease_count:validation.lease_count,active_lease_count:validation.active_lease_count,scopes:validation.scopes||[]}});
+  await saveSettings('dhcpIntegrationStatus'); setMessage('dhcpIntegrationStatus',`DHCP conectado com sucesso: ${validation.scope_count} scope(s), ${validation.active_lease_count} lease(s) ativa(s).`); document.getElementById('dhcp_int_name').value='';document.getElementById('dhcp_int_server').value='';await loadDhcpIntegrations();
 }
 const _bindDhcpPrev=bindFixedActions; bindFixedActions=function(){_bindDhcpPrev();document.getElementById('saveDhcpIntegrationBtn')?.addEventListener('click',saveDhcpIntegration)};
 const _bootDhcpPrev=bootSettings; bootSettings=async function(){
