@@ -30,9 +30,22 @@ $result
         exe=shutil.which('powershell.exe') or shutil.which('powershell') or shutil.which('pwsh')
         if not exe: raise RuntimeError('PowerShell executable not found')
         r=run_subprocess([exe,'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded],workdir,min(timeout_seconds or 90,120))
+        # Always initialize normalized collections. A failed PowerShell/WinRM call must
+        # return the original execution failure, never crash while building metadata.
+        scopes=[]
         leases=[]
         if r.status=='success' and (r.stdout or '').strip():
-            raw=json.loads((r.stdout or '').strip()); leases=(raw.get('leases') or []) if isinstance(raw,dict) else (raw if isinstance(raw,list) else []); scopes=(raw.get('scopes') or []) if isinstance(raw,dict) else []
+            try:
+                raw=json.loads((r.stdout or '').strip())
+            except (json.JSONDecodeError, TypeError) as exc:
+                r.status='error'
+                r.stderr=((r.stderr or '') + ('\n' if r.stderr else '') + f'Windows DHCP returned invalid JSON: {exc}').strip()
+                raw={}
+            if isinstance(raw,dict):
+                scopes=raw.get('scopes') or []
+                leases=raw.get('leases') or []
+            elif isinstance(raw,list):
+                leases=raw
         active_leases=[x for x in leases if str(x.get('address_state') or '').lower().startswith('active')]
         r.metadata={**(r.metadata or {}),'provider':'windows_dhcp','dhcp_server':server,'scope_count':len(scopes),'scopes':scopes,'lease_count':len(leases),'active_lease_count':len(active_leases),'leases':leases}
         r.stdout=json.dumps({'provider':'windows_dhcp','dhcp_server':server,'scope_count':len(scopes),'lease_count':len(leases),'active_lease_count':len(active_leases)},ensure_ascii=False)
