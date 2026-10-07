@@ -152,8 +152,14 @@ Baseline: 5.6.1.
 - Campaign Coverage continues comparing DHCP snapshot versus Campaign discovery and assets outside DHCP.
 
 
-## 5.7.3.2.1 — Windows DHCP executor hotfix
+## 5.7.3.2.2 — Windows DHCP executor hotfix
 - Fixes `UnboundLocalError` when the DHCP PowerShell/WinRM execution fails before returning scope data.
 - Initializes `scopes` and `leases` before result normalization, preserving the real execution failure/status.
 - Invalid DHCP JSON is now normalized as an executor error instead of raising during metadata generation.
 - Runner version: 2.21.1.
+
+
+## 5.7.3.2.2
+- Windows DHCP inventory now aligns with MAGI WinRM transport: controlled per-target TrustedHosts + Negotiate.
+- Previous TrustedHosts value is restored after execution. No wildcard is introduced.
+- Runner 2.21.2.

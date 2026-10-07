@@ -22,9 +22,21 @@ $user=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__USER__'))
 $pass=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__PASS__'))
 $sec=ConvertTo-SecureString $pass -AsPlainText -Force
 $cred=New-Object System.Management.Automation.PSCredential($user,$sec)
+$oldTrusted=$null;$trustedChanged=$false
 $sb={ param($srv) Import-Module DhcpServer -ErrorAction Stop; $leases=@(); $scopes=@(); Get-DhcpServerv4Scope -ComputerName $srv | ForEach-Object { $scope=$_; $sid=$scope.ScopeId.IPAddressToString; $scopeLeases=@(Get-DhcpServerv4Lease -ComputerName $srv -ScopeId $scope.ScopeId); $active=@($scopeLeases | Where-Object { [string]$_.AddressState -match '^Active' }); $stats=$null; try{$stats=Get-DhcpServerv4ScopeStatistics -ComputerName $srv -ScopeId $scope.ScopeId -ErrorAction Stop}catch{}; $scopes += [pscustomobject]@{scope_id=$sid;name=$scope.Name;state=[string]$scope.State;active_leases=$active.Count;addresses_in_use=if($stats){[int]$stats.AddressesInUse}else{$active.Count};addresses_free=if($stats){[int]$stats.AddressesFree}else{$null};percentage_in_use=if($stats){[double]$stats.PercentageInUse}else{$null}}; $scopeLeases | ForEach-Object { $leases += [pscustomobject]@{scope_id=$sid;ip_address=$_.IPAddress.IPAddressToString;hostname=$_.HostName;client_id=$_.ClientId;address_state=[string]$_.AddressState;lease_expiry=if($_.LeaseExpiryTime){$_.LeaseExpiryTime.ToString('o')}else{$null}} } }; [pscustomobject]@{scopes=$scopes;leases=$leases} | ConvertTo-Json -Depth 5 -Compress }
-$result=Invoke-Command -ComputerName $server -Credential $cred -ScriptBlock $sb -ArgumentList $server
-$result
+try {
+  $oldTrusted=(Get-Item WSMan:\localhost\Client\TrustedHosts -ErrorAction SilentlyContinue).Value
+  $items=@(); if($oldTrusted){$items=@($oldTrusted -split ',' | ForEach-Object {$_.Trim()} | Where-Object {$_})}
+  if(-not (($items -contains '*') -or ($items -contains $server))){
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Value ((@($items+$server | Select-Object -Unique)) -join ',') -Force -ErrorAction Stop
+    $trustedChanged=$true
+  }
+  $result=Invoke-Command -ComputerName $server -Authentication Negotiate -Credential $cred -ScriptBlock $sb -ArgumentList $server -ErrorAction Stop
+  $result
+}
+finally {
+  if($trustedChanged){try{Set-Item WSMan:\localhost\Client\TrustedHosts -Value ($oldTrusted -as [string]) -Force -ErrorAction SilentlyContinue}catch{}}
+}
 '''.replace('__SERVER__',enc(server)).replace('__USER__',enc(principal)).replace('__PASS__',enc(secret))
         encoded=base64.b64encode(script.encode('utf-16le')).decode('ascii')
         exe=shutil.which('powershell.exe') or shutil.which('powershell') or shutil.which('pwsh')
