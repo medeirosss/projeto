@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from fastapi import APIRouter, Body
@@ -118,6 +118,55 @@ async def api_cancel_runner_job(runner_id: str, job_id: int):
     try: return cancel_runner_job_service(runner_id,job_id)
     except Exception as exc: return JSONResponse(status_code=400,content={"success":False,"detail":str(exc)})
 
+# 5.7.4.1 — persistent, per-integration last-known-good DHCP snapshot.
+def _dhcp_cache_save(integration_id, server, metadata, job_id):
+    from app.services.settings_service import get_settings_data
+    settings = get_settings_data()
+    integration = next((x for x in (settings.get("integrations") or {}).get("dhcp", [])
+                        if str(x.get("id")) == str(integration_id) and x.get("enabled", True)), None)
+    if not integration or str(integration.get("server")) != str(server):
+        raise ValueError("Integração DHCP não corresponde ao servidor consultado.")
+    if not isinstance(metadata.get("leases"), list) or not isinstance(metadata.get("scopes"), list):
+        raise ValueError("Resposta DHCP incompleta; snapshot anterior preservado.")
+    record = {"integration_id":str(integration_id),"server":str(server),"job_id":int(job_id),
+              "updated_at":datetime.now(timezone.utc).isoformat(),"leases":metadata["leases"],
+              "scopes":metadata["scopes"],"scope_count":len(metadata["scopes"]),
+              "active_lease_count":sum(1 for x in metadata["leases"] if str(x.get("address_state") or "").lower().startswith("active"))}
+    # Single settings-row upsert; no in-memory-only cache. Avoid changing unrelated settings.
+    from app.database.connection import get_db_session
+    from sqlalchemy import text
+    import json
+    from app.repositories.settings_repository import ensure_settings_schema
+    ensure_settings_schema()
+    with get_db_session() as db:
+        db.execute(text("""INSERT INTO app_settings(module,setting_key,setting_value,encrypted,updated_at)
+          VALUES('dhcp_cache',:key,:value,false,CURRENT_TIMESTAMP)
+          ON CONFLICT(module,setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_at=CURRENT_TIMESTAMP"""),
+          {"key":str(integration_id),"value":json.dumps(record,ensure_ascii=False)})
+    return record
+
+
+def _dhcp_cache_read(integration_id):
+    from app.database.connection import get_db_session
+    from app.repositories.settings_repository import ensure_settings_schema
+    from sqlalchemy import text
+    import json
+    ensure_settings_schema()
+    with get_db_session() as db:
+        row=db.execute(text("SELECT setting_value FROM app_settings WHERE module='dhcp_cache' AND setting_key=:k"),{"k":str(integration_id)}).first()
+    return json.loads(row[0]) if row else None
+
+
+@router.get("/settings/dhcp/cache/{integration_id}")
+async def api_dhcp_cached(integration_id: str):
+    settings=get_settings_data()
+    integration=next((x for x in (settings.get("integrations") or {}).get("dhcp", []) if str(x.get("id"))==integration_id and x.get("enabled",True)),None)
+    if not integration: return JSONResponse(status_code=404,content={"detail":"Integração DHCP não encontrada."})
+    record=_dhcp_cache_read(integration_id)
+    if record and record.get("server") != integration.get("server"): record=None
+    return {"success":True,"cached":bool(record),"snapshot":record}
+
+
 # Build 5.7.3.2 — validate Windows DHCP through a real Runner before saving integration.
 @router.post("/settings/dhcp/validate")
 async def api_validate_dhcp(payload: Dict[str, Any] = Body(...)):
@@ -149,6 +198,18 @@ async def api_validate_dhcp_status(job_id: int):
     return {"success":True,"status":"success","server":md.get("dhcp_server") or job.get("target"),"scope_count":int(md.get("scope_count") or len(scopes)),"lease_count":int(md.get("lease_count") or 0),"active_lease_count":int(md.get("active_lease_count") or 0),"scopes":scopes,"leases":md.get("leases") or []}
 
 
+@router.post("/settings/dhcp/cache/{integration_id}/commit/{job_id}")
+async def api_dhcp_cache_commit(integration_id: str, job_id: int):
+    from app.repositories.runner_repository import get_runner_job_result
+    job=get_runner_job_result(job_id)
+    if not job or job.get("status")!="success" or str(job.get("job_type") or job.get("executor"))!="windows_dhcp_inventory" or (job.get("payload") or {}).get("validation_only") is not True:
+        return JSONResponse(status_code=409,content={"detail":"Inventário DHCP não concluído com sucesso."})
+    md=((job.get("result") or {}).get("metadata") or {})
+    try: record=_dhcp_cache_save(integration_id,job.get("target"),md,job_id)
+    except ValueError as exc: return JSONResponse(status_code=422,content={"detail":str(exc)})
+    return {"success":True,"snapshot":record}
+
+
 # Build 5.7.4: operator-triggered DHCP lease refresh and scoped discovery.
 @router.post("/settings/dhcp/scan-now")
 async def api_dhcp_scan_now(payload: Dict[str, Any] = Body(...)):
@@ -171,19 +232,27 @@ async def api_dhcp_scan_now(payload: Dict[str, Any] = Body(...)):
     # The lease list is returned by a real Runner inventory job; the UI must pass the
     # validation job id. Never trust an arbitrary IP supplied by the browser.
     from app.repositories.runner_repository import get_runner_job_result
-    job = get_runner_job_result(int(payload.get("validation_job_id") or 0))
-    if not job or job.get("status") != "success" or str(job.get("target")) != str(integration.get("server")):
-        raise HTTPException(409, "Atualize os leases deste DHCP antes de iniciar o scan.")
-    metadata = ((job.get("result") or {}).get("metadata") or {})
-    leases = metadata.get("leases") or []
+    snapshot=_dhcp_cache_read(str(payload.get("integration_id")))
+    if not snapshot or str(snapshot.get("server")) != str(integration.get("server")):
+        raise HTTPException(409,"Nenhum snapshot DHCP válido disponível.")
+    leases=snapshot.get("leases") or []
     if ip not in {str(x.get("ip_address")) for x in leases if str(x.get("address_state") or "").lower().startswith("active")}:
         raise HTTPException(422, "IP não consta entre os leases ativos validados.")
     # A DHCP lease is not scan authorization; require an explicit operator approval.
     if payload.get("authorized") is not True:
         raise HTTPException(422, "Confirmação de autorização de scan obrigatória.")
-    scan = create_scan({"name": "DHCP Scan Now - " + ip, "target_spec": ip, "schedule_type": "manual"})
+    # Use the existing Discovery -> Service Discovery -> Credential -> Deep Inventory pipeline.
+    # DHCP integration credentials are for the DHCP server, not automatically for its clients.
+    credential_id=payload.get("scan_credential_id")
+    scan_payload={"name":"DHCP Scan Now - "+ip,"target_spec":ip,"schedule_type":"manual",
+                  "service_discovery_enabled":True}
+    if credential_id:
+        scan_payload.update({"credential_id":credential_id,"deep_inventory_enabled":True})
+    scan = create_scan(scan_payload)
+    if credential_id:
+        repo.set_scan_credentials(int(scan["id"]),[int(credential_id)])
     if not repo.mark_scan_running(scan["scan_uuid"]):
         raise HTTPException(409, "Scan já está em execução.")
     import asyncio
     result = await asyncio.to_thread(execute_scan, {**scan, "is_running": True}, "manual")
-    return {"success": True, "scan": scan, "run": result}
+    return {"success": True, "scan": scan, "run": result, "deep_inventory_enabled":bool(credential_id), "message":"Deep Inventory depende de autenticação válida no endpoint."}

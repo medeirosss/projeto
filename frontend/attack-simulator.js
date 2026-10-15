@@ -216,7 +216,14 @@ async function viewCampaign(id){
       <div class="ap-tabs"><button class="btn secondary btn-sm ap-tab" data-tab="summary">Resumo</button><button class="btn primary btn-sm ap-tab" data-tab="path">Attack Path</button><button class="btn secondary btn-sm ap-tab" data-tab="network">Network Intelligence</button><button class="btn secondary btn-sm ap-tab" data-tab="coverage">Coverage</button><button class="btn secondary btn-sm ap-tab" data-tab="evidence">Evidências</button><button class="btn secondary btn-sm ap-tab" data-tab="cycles">Ciclos</button></div>
       <div id="attackPathPanel" class="ap-panel">Carregando Attack Path...</div>`;
     document.querySelectorAll('.ap-tab').forEach(b=>b.onclick=()=>renderCampaignTab(id,b.dataset.tab,c));
-    await renderCampaignTab(id,'path',c);
+    // DHCP coverage is visible immediately; no need to discover the Coverage tab.
+    const leases=c.dhcp_leases||[], leaseIps=new Set(leases.map(x=>x.ip_address));
+    const reached=(c.coverage||[]).filter(x=>leaseIps.has(x.ip_address)&&x.reached).length;
+    const pct=leaseIps.size?(100*reached/leaseIps.size).toFixed(1):'0.0';
+    const summary=document.createElement('div');summary.className='ap-panel';
+    summary.innerHTML=`<strong>Cobertura DHCP:</strong> ${reached} / ${leaseIps.size} IPs alcançados (${pct}%) <small>— snapshot da execução; alcance não significa acesso confirmado.</small>`;
+    document.getElementById('attackPathPanel').before(summary);
+    await renderCampaignTab(id,'coverage',c);
   }catch(e){document.getElementById('campaignResult').textContent=e.message;}
 }
 function attackKindLabel(k){return ({ACCESS:'✓ ACCESS CONFIRMED',SNMP:'✓ SNMP DISCOVERY CONFIRMED',AUTHENTICATION_FAILED:'✕ AUTHENTICATION FAILED',TRANSPORT_FAILED:'✕ TRANSPORT FAILED',SERVICE_UNAVAILABLE:'✕ SERVICE UNAVAILABLE',BARRIER:'✕ BARRIER',DISCOVERY:'✓ DISCOVERY CONFIRMED'})[k]||k;}

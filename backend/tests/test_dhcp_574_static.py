@@ -10,4 +10,4 @@ def test_dhcp_scan_requires_authorization_and_verified_lease():
 def test_frontend_lease_listing_and_scan_now():
     s=(root/'frontend/settings.js').read_text()
     assert 'loadDhcpLeases' in s and 'scanDhcpLease' in s
-    assert 'validation_job_id' in s and 'authorized:true' in s
+    assert '/settings/dhcp/cache/' in s and 'authorized:true' in s
