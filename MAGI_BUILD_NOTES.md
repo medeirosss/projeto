@@ -163,3 +163,11 @@ Baseline: 5.6.1.
 - Windows DHCP inventory now aligns with MAGI WinRM transport: controlled per-target TrustedHosts + Negotiate.
 - Previous TrustedHosts value is restored after execution. No wildcard is introduced.
 - Runner 2.21.2.
+
+
+## 5.7.3.2.3 - Windows DHCP non-fatal module localization hotfix
+- DHCP inventory now executes DhcpServer cmdlets locally inside the established WinRM session (no redundant `-ComputerName`).
+- Non-fatal DhcpServer localization/import messages are captured as warnings when the DHCP cmdlets remain available.
+- A valid scopes/leases JSON payload determines successful collection; warnings no longer automatically invalidate a successful inventory.
+- Missing DHCP cmdlets remain a hard `DHCP_MODULE_UNAVAILABLE` failure.
+- Runner version 2.21.3.
