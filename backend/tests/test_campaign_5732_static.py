@@ -1,7 +1,7 @@
 from pathlib import Path
 R=Path(__file__).resolve().parents[2]
 def read(p): return (R/p).read_text(encoding='utf-8')
-def test_version(): assert read('VERSION').strip()=='5.7.3.2'
+def test_version(): assert read('VERSION').strip() in {'5.7.3.2','5.7.4'}
 def test_dhcp_validation_api():
     s=read('backend/app/routers/settings.py'); assert '/settings/dhcp/validate' in s and 'windows_dhcp_inventory' in s
 def test_dhcp_validation_summary():

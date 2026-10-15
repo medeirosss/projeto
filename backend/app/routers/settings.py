@@ -146,4 +146,44 @@ async def api_validate_dhcp_status(job_id: int):
     if status != "success":
         return JSONResponse(status_code=422, content={"success":False,"status":status,"detail":job.get("error") or result.get("error") or "Falha ao consultar Windows DHCP."})
     scopes = md.get("scopes") or []
-    return {"success":True,"status":"success","server":md.get("dhcp_server") or job.get("target"),"scope_count":int(md.get("scope_count") or len(scopes)),"lease_count":int(md.get("lease_count") or 0),"active_lease_count":int(md.get("active_lease_count") or 0),"scopes":scopes}
+    return {"success":True,"status":"success","server":md.get("dhcp_server") or job.get("target"),"scope_count":int(md.get("scope_count") or len(scopes)),"lease_count":int(md.get("lease_count") or 0),"active_lease_count":int(md.get("active_lease_count") or 0),"scopes":scopes,"leases":md.get("leases") or []}
+
+
+# Build 5.7.4: operator-triggered DHCP lease refresh and scoped discovery.
+@router.post("/settings/dhcp/scan-now")
+async def api_dhcp_scan_now(payload: Dict[str, Any] = Body(...)):
+    import ipaddress
+    from fastapi import HTTPException
+    from app.services.target_service import create_scan, execute_scan
+    from app.repositories import target_repository as repo
+    ip = str(payload.get("ip_address") or "").strip()
+    try:
+        address = ipaddress.ip_address(ip)
+        if address.version != 4 or not address.is_private or address.is_loopback or address.is_link_local:
+            raise ValueError()
+    except ValueError:
+        raise HTTPException(422, "Endereço IPv4 privado inválido.")
+    settings = get_settings_data()
+    integrations = (settings.get("integrations") or {}).get("dhcp") or []
+    integration = next((x for x in integrations if str(x.get("id")) == str(payload.get("integration_id")) and x.get("enabled", True)), None)
+    if not integration:
+        raise HTTPException(404, "Integração DHCP não encontrada.")
+    # The lease list is returned by a real Runner inventory job; the UI must pass the
+    # validation job id. Never trust an arbitrary IP supplied by the browser.
+    from app.repositories.runner_repository import get_runner_job_result
+    job = get_runner_job_result(int(payload.get("validation_job_id") or 0))
+    if not job or job.get("status") != "success" or str(job.get("target")) != str(integration.get("server")):
+        raise HTTPException(409, "Atualize os leases deste DHCP antes de iniciar o scan.")
+    metadata = ((job.get("result") or {}).get("metadata") or {})
+    leases = metadata.get("leases") or []
+    if ip not in {str(x.get("ip_address")) for x in leases if str(x.get("address_state") or "").lower().startswith("active")}:
+        raise HTTPException(422, "IP não consta entre os leases ativos validados.")
+    # A DHCP lease is not scan authorization; require an explicit operator approval.
+    if payload.get("authorized") is not True:
+        raise HTTPException(422, "Confirmação de autorização de scan obrigatória.")
+    scan = create_scan({"name": "DHCP Scan Now - " + ip, "target_spec": ip, "schedule_type": "manual"})
+    if not repo.mark_scan_running(scan["scan_uuid"]):
+        raise HTTPException(409, "Scan já está em execução.")
+    import asyncio
+    result = await asyncio.to_thread(execute_scan, {**scan, "is_running": True}, "manual")
+    return {"success": True, "scan": scan, "run": result}

@@ -479,7 +479,8 @@ async function loadDhcpIntegrations(){
   const table=document.getElementById('dhcpIntegrationsTable'); if(!table)return;
   const data=await fetch('/api/settings').then(r=>r.json()).catch(()=>({})); currentSettings=data;
   const rows=data?.integrations?.dhcp||[];
-  table.innerHTML=rows.length?rows.map(x=>`<tr><td>${credEsc(x.name)}</td><td>Windows DHCP</td><td>${credEsc(x.server)}</td><td>${credEsc(x.credential_id)}</td><td>${x.validation?.success?'● CONECTADO':'Não validado'}</td><td>${credEsc(x.validation?.scope_count??'-')}</td><td>${credEsc(x.validation?.active_lease_count??'-')}</td><td><button class="btn danger btn-sm dhcp-int-delete" data-id="${credEsc(x.id)}">Excluir</button></td></tr>`).join(''):'<tr><td colspan="8">Nenhum DHCP configurado.</td></tr>';
+  table.innerHTML=rows.length?rows.map(x=>`<tr><td>${credEsc(x.name)}</td><td>Windows DHCP</td><td>${credEsc(x.server)}</td><td>${credEsc(x.credential_id)}</td><td>${x.validation?.success?'● CONECTADO':'Não validado'}</td><td>${credEsc(x.validation?.scope_count??'-')}</td><td>${credEsc(x.validation?.active_lease_count??'-')}</td><td><button class="btn btn-sm dhcp-int-view" data-id="${credEsc(x.id)}">Ver IPs</button> <button class="btn danger btn-sm dhcp-int-delete" data-id="${credEsc(x.id)}">Excluir</button></td></tr>`).join(''):'<tr><td colspan="8">Nenhum DHCP configurado.</td></tr>';
+  document.querySelectorAll('.dhcp-int-view').forEach(b=>b.onclick=()=>loadDhcpLeases(b.dataset.id));
   document.querySelectorAll('.dhcp-int-delete').forEach(b=>b.onclick=async()=>{currentSettings.integrations=currentSettings.integrations||{};currentSettings.integrations.dhcp=(currentSettings.integrations.dhcp||[]).filter(x=>String(x.id)!==String(b.dataset.id));await saveSettings('dhcpIntegrationStatus');await loadDhcpIntegrations();});
   const creds=await fetch('/api/actions/credentials').then(r=>r.json()).catch(()=>({credentials:[]})); const win=(creds.credentials||[]).filter(c=>['windows','wmi','winrm'].includes(String(c.type||c.credential_type||'').toLowerCase()));
   const sel=document.getElementById('dhcp_int_credential'); if(sel)sel.innerHTML='<option value="">Selecione</option>'+win.map(c=>`<option value="${c.id}">${credEsc(c.name)} — ${credEsc(c.domain?c.domain+'\\':'')}${credEsc(c.username||'')}</option>`).join('');
@@ -523,4 +524,42 @@ async function loadRunnerJobs(runnerId){
     document.querySelectorAll('.runner-job-cancel').forEach(b=>b.addEventListener('click',async()=>{const r=await fetch(`/api/settings/runners/${encodeURIComponent(b.dataset.runner)}/jobs/${b.dataset.id}/cancel`,{method:'POST'});if(r.ok)await loadRunnerJobs(b.dataset.runner);}));
     setMessage('runnerJobsStatusBox',`${jobs.length} job(s) recentes. Jobs sem controle são bloqueados e não são entregues ao Runner.`);
   }catch(e){body.innerHTML=`<tr><td colspan="8">${e.message}</td></tr>`;setMessage('runnerJobsStatusBox',e.message);}
+}
+
+
+// Build 5.7.4 — DHCP leases are read from a fresh Runner inventory, not from a stale UI snapshot.
+let dhcpLeaseContext=null;
+async function loadDhcpLeases(id){
+  const integration=(currentSettings?.integrations?.dhcp||[]).find(x=>String(x.id)===String(id));
+  if(!integration)return;
+  const status=document.getElementById('dhcpLeasesStatus'),table=document.getElementById('dhcpLeasesTable');
+  status.textContent='Consultando leases ativos via Runner...';table.innerHTML='<tr><td colspan="6">Aguarde...</td></tr>';
+  try{
+    const response=await fetch('/api/settings/dhcp/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({server:integration.server,credential_id:integration.credential_id})});
+    const started=await response.json();if(!response.ok)throw Error(started.detail||'Erro iniciando inventário');
+    let data=null;
+    for(let n=0;n<50;n++){
+      await new Promise(resolve=>setTimeout(resolve,1500));
+      const r=await fetch('/api/settings/dhcp/validate/'+started.job_id);const j=await r.json();
+      if(j.status==='success'){data=j;break;}
+      if(!r.ok||['failed','error','timeout','cancelled'].includes(j.status))throw Error(j.detail||'Inventário DHCP falhou');
+    }
+    if(!data)throw Error('Timeout consultando DHCP');
+    dhcpLeaseContext={integration_id:id,validation_job_id:started.job_id};
+    const leases=(data.leases||[]).filter(x=>String(x.address_state||'').toLowerCase().startsWith('active'));
+    const unique=[...new Map(leases.map(x=>[x.ip_address,x])).values()];
+    status.textContent=`${integration.name}: ${unique.length} IP(s) com lease ativo. O DHCP não confirma que o dispositivo está online.`;
+    table.innerHTML=unique.length?unique.map(x=>`<tr><td>${credEsc(x.ip_address)}</td><td>${credEsc(x.hostname||'-')}</td><td>${credEsc(x.client_id||'-')}</td><td>${credEsc(x.scope_id||'-')}</td><td>${credEsc(x.lease_expiry||'-')}</td><td><button class="btn btn-sm dhcp-lease-scan" data-ip="${credEsc(x.ip_address)}">Scan Now</button></td></tr>`).join(''):'<tr><td colspan="6">Nenhum lease ativo.</td></tr>';
+    table.querySelectorAll('.dhcp-lease-scan').forEach(b=>b.onclick=()=>scanDhcpLease(b.dataset.ip));
+  }catch(e){status.textContent='Falha: '+e.message;table.innerHTML='<tr><td colspan="6">Não foi possível consultar os leases.</td></tr>';}
+}
+async function scanDhcpLease(ip){
+  if(!dhcpLeaseContext)return;
+  if(!confirm(`Você confirma que está autorizado a inventariar ${ip}? O MAGI iniciará um scan manual somente deste IP.`))return;
+  const status=document.getElementById('dhcpLeasesStatus');status.textContent=`Enfileirando scan para ${ip}...`;
+  try{
+    const response=await fetch('/api/settings/dhcp/scan-now',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...dhcpLeaseContext,ip_address:ip,authorized:true})});
+    const data=await response.json();if(!response.ok)throw Error(data.detail||'Erro ao iniciar scan');
+    status.textContent=`Scan iniciado para ${ip}. Execução: ${data.run?.run_uuid||'enfileirada'}. Consulte Discovery para acompanhar.`;
+  }catch(e){status.textContent=`Falha ao iniciar scan de ${ip}: ${e.message}`;}
 }
