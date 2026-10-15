@@ -111,14 +111,33 @@ async def api_delete_scan(scan_uuid:str,remove_exclusive_targets:bool=Query(Fals
 
 
 @router.post("/{target_uuid}/rescan")
-async def api_rescan_target(target_uuid:str):
+async def api_rescan_target(target_uuid:str, payload:dict=Body(default={})):
     target=repo.get_target(target_uuid)
     if not target: raise HTTPException(404,"Ativo não encontrado.")
-    scans=repo.origin_scans_for_target(int(target["id"]))
-    if not scans: raise HTTPException(409,"Ativo não possui Scan de origem para reutilizar credenciais e política.")
-    # Safe identity-first rescan contract. Execution reuses the origin scan as a host-only scan.
-    from app.services.asset_rescan_service import rescan_asset
-    return await asyncio.to_thread(rescan_asset,target,scans[0])
+    if payload.get("authorized") is not True:
+        raise HTTPException(422,"Confirmação de autorização obrigatória.")
+    credential_id=payload.get("scan_credential_id")
+    if not credential_id:
+        raise HTTPException(422,"Selecione uma credencial Windows para Deep Inventory.")
+    import ipaddress
+    ip=str(target.get("ip_address") or "").strip()
+    try:
+        address=ipaddress.ip_address(ip)
+        if address.version!=4 or not address.is_private or address.is_loopback or address.is_link_local:
+            raise ValueError()
+    except ValueError:
+        raise HTTPException(422,"Ativo sem IPv4 privado válido.")
+    from app.services.target_service import create_scan,execute_scan
+    scan=create_scan({"name":"Asset Deep Scan Now - "+ip,"target_spec":ip,
+                      "schedule_type":"manual","service_discovery_enabled":True,
+                      "credential_id":credential_id,"deep_inventory_enabled":True})
+    repo.set_scan_credentials(int(scan["id"]),[int(credential_id)])
+    if not repo.mark_scan_running(scan["scan_uuid"]):
+        raise HTTPException(409,"Scan já está em execução.")
+    result=await asyncio.to_thread(execute_scan,{**scan,"is_running":True},"manual")
+    return {"success":True,"scan":scan,"run":result,
+            "message":"Discovery + Service Discovery + Deep Inventory autenticado enfileirados.",
+            "deep_inventory_enabled":True}
 
 @router.get("/{target_uuid}/attacks")
 async def api_target_attacks(target_uuid:str):

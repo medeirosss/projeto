@@ -51,7 +51,23 @@ async function showAssetAttacks(id,simOnly){try{const d=await json(await fetch(`
 async function executeAssetSimulation(id,key){if(!confirm(`Executar ${key} neste ativo?`))return;const out=document.getElementById('assetSimulationResult');out.innerHTML='<pre>Enviando ao Runner...</pre>';try{const d=await json(await fetch(`/api/targets/${id}/simulations/${encodeURIComponent(key)}/execute`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}));const eid=d.execution?.id;out.innerHTML=`<div class="pipeline-title"><strong>Execução ${eid||'enviada'} · ${esc(key)}</strong>${eid?`<button class="btn secondary btn-sm" onclick="loadAssetSimulationLog(${eid})">Atualizar log</button>`:''}</div><pre>${esc(JSON.stringify(d,null,2))}</pre>`;if(eid)setTimeout(()=>loadAssetSimulationLog(eid),1800)}catch(e){out.innerHTML=`<pre>Falha: ${esc(e.message)}</pre>`}}
 async function loadAssetSimulationLog(eid){const out=document.getElementById('assetSimulationResult');if(!out)return;try{const d=await json(await fetch(`/api/attack-simulator/history/${eid}/log`));out.innerHTML=`<div class="pipeline-title"><strong>Execução ${eid}</strong><button class="btn secondary btn-sm" onclick="loadAssetSimulationLog(${eid})">Atualizar log</button></div><div class="table-wrap"><table><tbody><tr><th>Status</th><td>${esc(d.execution?.status||'—')}</td><th>Finding</th><td>${esc(d.execution?.finding_status||'—')}</td></tr></tbody></table></div><h4>Log</h4><pre>${esc(d.stdout||'')}</pre><h4>Erros / Avisos</h4><pre>${esc(d.stderr||'')}</pre><h4>Evidência</h4><pre>${esc(JSON.stringify(d.evidence||{},null,2))}</pre>`}catch(e){out.innerHTML+=`<pre>${esc(e.message)}</pre>`}}
 
-async function scanNow(id){try{const d=await json(await fetch(`/api/targets/${id}/rescan`,{method:'POST'}));await loadTargets();alert(`${d.message}\nOrigem: ${d.origin_scan}`);setTimeout(loadTargets,2000)}catch(e){alert(e.message)}}
+async function scanNow(id){
+  try{
+    const response=await fetch('/api/actions/credentials');
+    const credentials=await json(response);
+    const windows=(credentials.credentials||[]).filter(c=>['windows','winrm','wmi'].includes(String(c.type||c.credential_type||'').toLowerCase()));
+    if(!windows.length)throw Error('Cadastre uma credencial Windows em Configurações → Credenciais.');
+    const options=windows.map((c,i)=>`${i+1} - ${c.name} (${c.domain?c.domain+'\\\\':''}${c.username||''})`).join('\\n');
+    const selection=prompt('Selecione o número da credencial Windows para Deep Inventory:\\n'+options,'1');
+    if(selection===null)return;
+    const index=Number(selection)-1;
+    if(!Number.isInteger(index)||index<0||index>=windows.length)throw Error('Seleção de credencial inválida.');
+    if(!confirm('Confirma autorização para Discovery e Deep Inventory deste endpoint?'))return;
+    const d=await json(await fetch(`/api/targets/${encodeURIComponent(id)}/rescan`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({authorized:true,scan_credential_id:windows[index].id})}));
+    alert(d.message+'\\nAcompanhe os jobs do Runner e o inventário do ativo.');
+    setTimeout(loadTargets,2000);
+  }catch(e){alert(e.message);}
+}
 
 async function loadWebAssets(){const tb=document.getElementById('webAssetsTable');if(!tb)return;tb.innerHTML='<tr><td colspan="8">Carregando...</td></tr>';try{const d=await json(await fetch('/api/web-assets'));const rows=d.items||[];tb.innerHTML=rows.map(x=>`<tr><td><span class="asset-status ${x.status==='reachable'?'detected':''}">${esc(x.status)}</span></td><td><code>${esc(x.web_uuid)}</code></td><td><strong>${esc(x.name)}</strong><br><small>${esc(x.hostname)}</small></td><td><code>${esc(x.normalized_url)}</code></td><td>${esc(x.http_status||'—')}</td><td><small>${esc((x.resolved_addresses||[]).join(', ')||'—')}</small></td><td>${esc(dt(x.last_scan_at))}<br><small>${esc(x.last_scan_status||'')}</small></td><td><button class="btn primary btn-sm" onclick="scanWebNow('${esc(x.web_uuid)}')">Scan Now</button></td></tr>`).join('')||'<tr><td colspan="8">Nenhum Web Asset cadastrado.</td></tr>'}catch(e){tb.innerHTML=`<tr><td colspan="8">${esc(e.message)}</td></tr>`}}
 async function createWebAsset(){const out=document.getElementById('webAssetResult');out.textContent='Validando URL...';try{const d=await json(await fetch('/api/web-assets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:webAssetName.value.trim(),url:webAssetUrl.value.trim()})}));out.textContent=JSON.stringify(d,null,2);await loadWebAssets()}catch(e){out.textContent=e.message}}
