@@ -66,7 +66,25 @@ $oldTrusted=$null;$trustedChanged=$false
 $sb={
   $warnings=@(); $leases=@(); $scopes=@()
   $moduleErrors=@()
-  Import-Module DhcpServer -ErrorAction SilentlyContinue -ErrorVariable +moduleErrors
+  # The DHCP migration localization resource can be installed only in en-US.
+  # Check both supported locations on the remote server and scope the culture
+  # override to module import only; never copy or modify Windows module files.
+  $moduleRoot=Join-Path $env:windir 'System32\WindowsPowerShell\v1.0\Modules\DhcpServer'
+  $ptFile=Join-Path $moduleRoot 'pt-BR\DhcpServerMigration.psd1'
+  $enFile=Join-Path $moduleRoot 'en-US\DhcpServerMigration.psd1'
+  $previousCulture=[System.Threading.Thread]::CurrentThread.CurrentUICulture
+  $fallbackCulture=$false
+  try {
+    if((-not (Test-Path -LiteralPath $ptFile)) -and (Test-Path -LiteralPath $enFile)) {
+      [System.Threading.Thread]::CurrentThread.CurrentUICulture=[System.Globalization.CultureInfo]::GetCultureInfo('en-US')
+      $fallbackCulture=$true
+    }
+    Import-Module DhcpServer -ErrorAction SilentlyContinue -ErrorVariable +moduleErrors
+  }
+  finally {
+    [System.Threading.Thread]::CurrentThread.CurrentUICulture=$previousCulture
+  }
+  if($fallbackCulture){$warnings += 'DHCP localization fallback: en-US resource used because pt-BR resource is missing.'}
   foreach($e in $moduleErrors){$warnings += [string]$e}
   if(-not (Get-Command Get-DhcpServerv4Scope -ErrorAction SilentlyContinue)){ throw 'DHCP_MODULE_UNAVAILABLE: Get-DhcpServerv4Scope is not available on the DHCP server.' }
   Get-DhcpServerv4Scope -ErrorAction Stop | ForEach-Object {
