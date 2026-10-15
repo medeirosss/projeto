@@ -1,8 +1,48 @@
 from __future__ import annotations
-import base64, json, re, shutil
+import base64, json, re, shutil, xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from .base import ExecutionResult
 from .process import run_subprocess
+
+def _decode_powershell_stream(value: str) -> tuple[str, list[str]]:
+    """Remove PowerShell CLIXML envelopes while preserving their diagnostic text."""
+    value = value or ''
+    messages = []
+    pattern = re.compile(r'(?m)^#< CLIXML\s*\r?\n')
+    match = pattern.search(value)
+    if not match:
+        return value.strip(), messages
+    prefix = value[:match.start()].strip()
+    xml_text = value[match.end():].strip()
+    try:
+        root = ET.fromstring(xml_text)
+        for element in root.iter():
+            if element.tag.rsplit('}', 1)[-1] in ('S', 'ToString') and element.text:
+                decoded = re.sub(r'_x([0-9a-fA-F]{4})_', lambda m: chr(int(m.group(1), 16)), element.text)
+                if decoded.strip():
+                    messages.append(decoded.strip())
+    except ET.ParseError:
+        messages.append(xml_text[:2000])
+    return prefix, messages
+
+
+def _extract_json(value: str):
+    """Accept a JSON payload with benign PowerShell stream chatter around it."""
+    decoder = json.JSONDecoder()
+    for line in (value or '').splitlines():
+        candidate = line.strip().lstrip('\ufeff')
+        if not candidate or candidate.startswith('#< CLIXML'):
+            continue
+        if candidate[0] not in '{[':
+            continue
+        try:
+            result, end = decoder.raw_decode(candidate)
+            if not candidate[end:].strip():
+                return result
+        except json.JSONDecodeError:
+            continue
+    raise ValueError('No valid DHCP JSON payload found in PowerShell stdout')
+
 
 _HOST=re.compile(r'^[A-Za-z0-9._-]{1,255}$')
 class WindowsDhcpInventoryExecutor:
@@ -63,10 +103,14 @@ finally {
         scopes=[]
         leases=[]
         warnings=[]
-        if r.status=='success' and (r.stdout or '').strip():
+        clean_stdout, stdout_diagnostics = _decode_powershell_stream(r.stdout or '')
+        clean_stderr, stderr_diagnostics = _decode_powershell_stream(r.stderr or '')
+        diagnostics = stdout_diagnostics + stderr_diagnostics
+        r.stderr = '\n'.join(x for x in [clean_stderr, *diagnostics] if x).strip()
+        if r.status=='success':
             try:
-                raw=json.loads((r.stdout or '').strip())
-            except (json.JSONDecodeError, TypeError) as exc:
+                raw=_extract_json(clean_stdout)
+            except (ValueError, TypeError) as exc:
                 r.status='error'
                 r.stderr=((r.stderr or '') + ('\n' if r.stderr else '') + f'Windows DHCP returned invalid JSON: {exc}').strip()
                 raw={}
@@ -74,9 +118,19 @@ finally {
                 scopes=raw.get('scopes') or []
                 leases=raw.get('leases') or []
                 warnings=raw.get('warnings') or []
+                if not isinstance(scopes,list) or not isinstance(leases,list) or not isinstance(warnings,list):
+                    r.status='error'
+                    r.stderr=(r.stderr+'\nInvalid DHCP payload collection types').strip()
+                    scopes=[]; leases=[]; warnings=[]
             elif isinstance(raw,list):
                 leases=raw
-        active_leases=[x for x in leases if str(x.get('address_state') or '').lower().startswith('active')]
+        # A localized DhcpServerMigration.psd1 import error is non-fatal when
+        # the inventory cmdlets succeeded and valid JSON was returned.
+        nonfatal = [x for x in diagnostics if 'DhcpServerMigration.psd1' in x]
+        if r.status=='success' and nonfatal:
+            warnings.extend(nonfatal)
+            r.stderr='\n'.join(x for x in [clean_stderr, *[d for d in diagnostics if d not in nonfatal]] if x).strip()
+        active_leases=[x for x in leases if isinstance(x,dict) and str(x.get('address_state') or '').lower().startswith('active')]
         r.metadata={**(r.metadata or {}),'provider':'windows_dhcp','dhcp_server':server,'scope_count':len(scopes),'scopes':scopes,'lease_count':len(leases),'active_lease_count':len(active_leases),'leases':leases,'warnings':warnings,'warning_count':len(warnings)}
         r.stdout=json.dumps({'provider':'windows_dhcp','dhcp_server':server,'scope_count':len(scopes),'lease_count':len(leases),'active_lease_count':len(active_leases),'warning_count':len(warnings)},ensure_ascii=False)
         return r
