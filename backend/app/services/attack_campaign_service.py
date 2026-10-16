@@ -872,6 +872,38 @@ def campaign_finish_now(uuid: str):
     finally:db.close()
 
 
+def campaign_start_new_execution(uuid: str):
+    """Start a fresh execution of a completed campaign, preserving prior baselines."""
+    db=db_session()
+    try:
+        c=db.execute(text('SELECT * FROM attack_campaigns WHERE campaign_uuid=:u FOR UPDATE'), {'u':uuid}).mappings().first()
+        if not c: raise ValueError('Campaign não encontrada.')
+        e=db.execute(text('SELECT * FROM attack_campaign_executions WHERE campaign_id=:c ORDER BY execution_number DESC LIMIT 1 FOR UPDATE'), {'c':c['id']}).mappings().first()
+        if not e: raise ValueError('Campaign sem execução anterior.')
+        if e['status'] not in ('completed','cancelled'):
+            raise ValueError('Finalize a execução atual antes de iniciar outra.')
+        if not c['enabled']: raise ValueError('Campaign desabilitada. Habilite-a antes de iniciar.')
+        # A recurring campaign may already have an upcoming scheduled execution.
+        # Never create a second execution while one is scheduled or running.
+        now=_campaign_now()
+        duration=e['scheduled_end']-e['scheduled_start']
+        if duration.total_seconds()<=0: raise ValueError('Janela anterior inválida.')
+        new_end=now+duration
+        num=int(e['execution_number'])+1
+        new_id=db.execute(text("""INSERT INTO attack_campaign_executions
+            (campaign_id,execution_number,status,scheduled_start,scheduled_end,next_cycle_at)
+            VALUES(:c,:n,'scheduled',:start,:end,:start) RETURNING id"""),
+            {'c':c['id'],'n':num,'start':now,'end':new_end}).scalar_one()
+        db.execute(text("UPDATE attack_campaigns SET status='scheduled',updated_at=:now WHERE id=:id"),
+                   {'now':now,'id':c['id']})
+        db.commit()
+        return {'success':True,'execution_id':new_id,'execution_number':num,'campaign':get_campaign(uuid)}
+    except Exception:
+        db.rollback(); raise
+    finally:
+        db.close()
+
+
 def campaign_baselines(uuid: str):
     with db_session() as db:
         c=db.execute(text('SELECT id FROM attack_campaigns WHERE campaign_uuid=:u'),{'u':uuid}).mappings().first()

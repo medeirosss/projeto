@@ -1,6 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter, Body, HTTPException, Request
-from app.services.attack_campaign_service import create_attack_campaign,campaign_list,campaign_detail,campaign_pause,campaign_resume,campaign_delete,campaign_update,campaign_next_cycle_now,campaign_attack_path,campaign_finish_now,campaign_baselines
+from app.services.attack_campaign_service import create_attack_campaign,campaign_list,campaign_detail,campaign_pause,campaign_resume,campaign_delete,campaign_update,campaign_next_cycle_now,campaign_attack_path,campaign_finish_now,campaign_baselines,campaign_start_new_execution
 router=APIRouter(prefix='/api/attack-simulator/campaigns',tags=['attack-campaigns'])
 
 def _user(req:Request):
@@ -43,6 +43,11 @@ def delete(campaign_uuid:str): return campaign_delete(campaign_uuid)
 @router.post('/{campaign_uuid}/finish')
 def finish(campaign_uuid:str):
     try:return campaign_finish_now(campaign_uuid)
+    except Exception as exc:raise HTTPException(400,str(exc))
+
+@router.post('/{campaign_uuid}/new-execution')
+def new_execution(campaign_uuid:str):
+    try:return campaign_start_new_execution(campaign_uuid)
     except Exception as exc:raise HTTPException(400,str(exc))
 
 @router.get('/{campaign_uuid}/baselines')
