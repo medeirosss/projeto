@@ -67,6 +67,22 @@ def ensure_attack_campaign_schema() -> None:
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           UNIQUE(campaign_id, execution_number)
         );
+        CREATE TABLE IF NOT EXISTS attack_campaign_baselines (
+          id BIGSERIAL PRIMARY KEY,
+          campaign_id INTEGER NOT NULL REFERENCES attack_campaigns(id) ON DELETE CASCADE,
+          execution_id INTEGER NOT NULL UNIQUE REFERENCES attack_campaign_executions(id) ON DELETE CASCADE,
+          schema_version INTEGER NOT NULL DEFAULT 1,
+          snapshot JSONB NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS attack_campaign_baseline_diffs (
+          id BIGSERIAL PRIMARY KEY,
+          campaign_id INTEGER NOT NULL REFERENCES attack_campaigns(id) ON DELETE CASCADE,
+          execution_id INTEGER NOT NULL UNIQUE REFERENCES attack_campaign_executions(id) ON DELETE CASCADE,
+          previous_baseline_id BIGINT REFERENCES attack_campaign_baselines(id) ON DELETE SET NULL,
+          changes JSONB NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE TABLE IF NOT EXISTS attack_campaign_cycles (
           id SERIAL PRIMARY KEY,
           execution_id INTEGER NOT NULL REFERENCES attack_campaign_executions(id) ON DELETE CASCADE,

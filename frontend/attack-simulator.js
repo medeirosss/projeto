@@ -149,12 +149,13 @@ function dtLocal(v){if(!v)return '--';try{return new Date(v).toLocaleString();}c
 async function loadCampaigns(){
   try{
     const d=await api('/api/attack-simulator/campaigns');const rows=d.campaigns||[];
-    document.getElementById('campaignTable').innerHTML=rows.map(c=>{const st=c.execution_stats||{};const scope=(c.scope_cidrs||[]).join(', ');return `<tr><td><strong>${esc(c.name)}</strong><br><small>${esc(c.campaign_uuid)}</small></td><td>${esc(scope)}</td><td>${badge(c.execution_status||c.status)}<br><small>#${esc(c.execution_number||1)}</small></td><td>${esc(dtLocal(c.scheduled_start||c.start_at))}<br>→ ${esc(dtLocal(c.scheduled_end||c.end_at))}<br><small>${esc(c.daily_start)}–${esc(c.daily_end)}</small></td><td>${esc(st.discovered||0)} hosts<br>${esc(st.accessed||0)} acessados<br>${esc(st.confirmed||0)} paths</td><td>${esc(dtLocal(c.next_cycle_at))}</td><td><button class="btn secondary btn-sm camp-view" data-id="${esc(c.campaign_uuid)}">Attack Path</button> <button class="btn secondary btn-sm camp-edit" data-id="${esc(c.campaign_uuid)}">Ajustar</button> <button class="btn primary btn-sm camp-next" data-id="${esc(c.campaign_uuid)}">Próximo ciclo agora</button> <button class="btn secondary btn-sm camp-pause" data-id="${esc(c.campaign_uuid)}">Pausar</button> <button class="btn primary btn-sm camp-resume" data-id="${esc(c.campaign_uuid)}">Retomar</button> <button class="btn danger btn-sm camp-delete" data-id="${esc(c.campaign_uuid)}">Excluir</button></td></tr>`}).join('')||'<tr><td colspan="7">Nenhuma Campaign.</td></tr>';
+    document.getElementById('campaignTable').innerHTML=rows.map(c=>{const st=c.execution_stats||{};const scope=(c.scope_cidrs||[]).join(', ');return `<tr><td><strong>${esc(c.name)}</strong><br><small>${esc(c.campaign_uuid)}</small></td><td>${esc(scope)}</td><td>${badge(c.execution_status||c.status)}<br><small>#${esc(c.execution_number||1)}</small></td><td>${esc(dtLocal(c.scheduled_start||c.start_at))}<br>→ ${esc(dtLocal(c.scheduled_end||c.end_at))}<br><small>${esc(c.daily_start)}–${esc(c.daily_end)}</small></td><td>${esc(st.discovered||0)} hosts<br>${esc(st.accessed||0)} acessados<br>${esc(st.confirmed||0)} paths</td><td>${esc(dtLocal(c.next_cycle_at))}</td><td><button class="btn secondary btn-sm camp-view" data-id="${esc(c.campaign_uuid)}">Attack Path</button> <button class="btn secondary btn-sm camp-edit" data-id="${esc(c.campaign_uuid)}">Ajustar</button> <button class="btn primary btn-sm camp-next" data-id="${esc(c.campaign_uuid)}">Próximo ciclo agora</button> <button class="btn secondary btn-sm camp-pause" data-id="${esc(c.campaign_uuid)}">Pausar</button> <button class="btn primary btn-sm camp-resume" data-id="${esc(c.campaign_uuid)}">Retomar</button> <button class="btn danger btn-sm camp-finish" data-id="${esc(c.campaign_uuid)}">Encerrar Campaign</button> <button class="btn danger btn-sm camp-delete" data-id="${esc(c.campaign_uuid)}">Excluir</button></td></tr>`}).join('')||'<tr><td colspan="7">Nenhuma Campaign.</td></tr>';
     document.querySelectorAll('.camp-view').forEach(b=>b.onclick=()=>viewCampaign(b.dataset.id));
     document.querySelectorAll('.camp-edit').forEach(b=>b.onclick=()=>editCampaign(b.dataset.id));
     document.querySelectorAll('.camp-next').forEach(b=>b.onclick=()=>nextCampaignCycle(b.dataset.id));
     document.querySelectorAll('.camp-pause').forEach(b=>b.onclick=()=>campaignAction(b.dataset.id,'pause'));
     document.querySelectorAll('.camp-resume').forEach(b=>b.onclick=()=>campaignAction(b.dataset.id,'resume'));
+    document.querySelectorAll('.camp-finish').forEach(b=>b.onclick=()=>finishCampaign(b.dataset.id));
     document.querySelectorAll('.camp-delete').forEach(b=>b.onclick=()=>deleteCampaign(b.dataset.id));
   }catch(e){document.getElementById('campaignResult').textContent=e.message;}
 }
@@ -303,3 +304,12 @@ async function viewAttackPath(id){
 }
 window.viewAttackPath=viewAttackPath;
 document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('refreshAttackPaths');if(b)b.onclick=loadAttackPaths;});
+
+async function finishCampaign(id){
+  if(!confirm('Encerrar esta Campaign agora? Os resultados coletados serão preservados, mas os IPs não avaliados permanecerão inconclusivos.'))return;
+  try{await api(`/api/attack-simulator/campaigns/${encodeURIComponent(id)}/finish`,{method:'POST'});
+    await loadCampaigns();await viewCampaign(id);
+    const d=await api(`/api/attack-simulator/campaigns/${encodeURIComponent(id)}/baselines`);
+    document.getElementById('campaignResult').textContent=pretty({message:'Campaign encerrada; baseline preservado',baselines:d.baselines});
+  }catch(e){document.getElementById('campaignResult').textContent=e.message;}
+}

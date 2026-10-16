@@ -780,6 +780,7 @@ def _snapshot(db,eid:int)->dict[str,Any]:
 def _finish_execution(db,c,e,reason):
     _refresh_campaign_coverage(db,int(e['id']))
     snap=_snapshot(db,e['id'])
+    _persist_security_baseline(db,c,e,snap,reason)
     db.execute(text("UPDATE attack_campaign_executions SET status='completed',finished_at=:now,stop_reason=:r,stats=CAST(:st AS JSONB),final_snapshot=CAST(:snap AS JSONB) WHERE id=:e"),
                {'now':datetime.utcnow(),'r':reason,'st':__import__('json').dumps(snap['stats']),'snap':__import__('json').dumps(snap,ensure_ascii=False,default=str),'e':e['id']})
     # Compact retention: only final snapshots of the newest N executions survive.
@@ -794,6 +795,91 @@ def _finish_execution(db,c,e,reason):
         db.execute(text("UPDATE attack_campaigns SET status='scheduled',updated_at=:now WHERE id=:id"),{'now':datetime.utcnow(),'id':c['id']})
     else: db.execute(text("UPDATE attack_campaigns SET status='completed',updated_at=:now WHERE id=:id"),{'now':datetime.utcnow(),'id':c['id']})
 
+
+
+def _persist_security_baseline(db, c, e, snap, reason):
+    """Freeze evidence as observed; manual completion never implies full coverage."""
+    import json
+    coverage=[dict(r) for r in db.execute(text("SELECT ip_address,state,reached,evaluated,sources FROM attack_campaign_coverage WHERE execution_id=:e ORDER BY ip_address"),{'e':e['id']}).mappings().all()]
+    payload={'schema_version':1,'campaign_uuid':c['campaign_uuid'],'execution_id':e['id'],
+             'execution_number':e['execution_number'],'scope_cidrs':c['scope_cidrs'],
+             'stop_reason':reason,'complete_scope':reason=='scope_exhausted',
+             'assets':snap['assets'],'paths':snap['paths'],'coverage':coverage,'stats':snap['stats']}
+    db.execute(text("""INSERT INTO attack_campaign_baselines(campaign_id,execution_id,schema_version,snapshot)
+      VALUES(:c,:e,1,CAST(:s AS JSONB)) ON CONFLICT(execution_id) DO NOTHING"""),
+      {'c':c['id'],'e':e['id'],'s':json.dumps(payload,default=str,ensure_ascii=False)})
+    current=db.execute(text('SELECT id,snapshot FROM attack_campaign_baselines WHERE execution_id=:e'),{'e':e['id']}).mappings().first()
+    previous=db.execute(text("""SELECT id,snapshot FROM attack_campaign_baselines WHERE campaign_id=:c AND id<>:id
+      ORDER BY id DESC LIMIT 1"""),{'c':c['id'],'id':current['id']}).mappings().first()
+    if previous:
+        changes=_compare_security_baselines(previous['snapshot'],current['snapshot'])
+        db.execute(text("""INSERT INTO attack_campaign_baseline_diffs(campaign_id,execution_id,previous_baseline_id,changes)
+          VALUES(:c,:e,:p,CAST(:d AS JSONB)) ON CONFLICT(execution_id) DO NOTHING"""),
+          {'c':c['id'],'e':e['id'],'p':previous['id'],'d':json.dumps(changes,ensure_ascii=False)})
+
+
+def _compare_security_baselines(old,new):
+    """Conservative comparison: untested destinations cannot be classified as removed."""
+    old_assets={str(a['address']):a for a in old.get('assets',[]) if a.get('address')}
+    new_assets={str(a['address']):a for a in new.get('assets',[]) if a.get('address')}
+    evaluated={str(a['ip_address']) for a in new.get('coverage',[]) if a.get('evaluated')}
+    changes=[]
+    for ip in sorted(set(old_assets)|set(new_assets)):
+        a,b=old_assets.get(ip),new_assets.get(ip)
+        if not a: changes.append({'type':'asset','key':ip,'status':'NEW'})
+        elif not b: changes.append({'type':'asset','key':ip,'status':'INCONCLUSIVE','reason':'not_observed_in_current_execution'})
+        elif bool(a.get('access_confirmed')) != bool(b.get('access_confirmed')):
+            changes.append({'type':'access','key':ip,'status':'CHANGED' if ip in evaluated else 'INCONCLUSIVE',
+                            'before':bool(a.get('access_confirmed')),'after':bool(b.get('access_confirmed'))})
+    def confirmed_paths(snap):
+        return {(str(p.get('origin')),str(p.get('target')),str(p.get('protocol'))) for p in snap.get('paths',[])
+                if p.get('status')=='confirmed'}
+    old_paths,new_paths=confirmed_paths(old),confirmed_paths(new)
+    for origin,target,protocol in sorted(new_paths-old_paths):
+        changes.append({'type':'confirmed_path','key':f'{origin}->{target}:{protocol}','status':'NEW'})
+    for origin,target,protocol in sorted(old_paths-new_paths):
+        changes.append({'type':'confirmed_path','key':f'{origin}->{target}:{protocol}',
+                        'status':'INCONCLUSIVE','reason':'previous_access_not_reconfirmed'})
+    return {'schema_version':1,'previous_execution_id':old['execution_id'],
+            'current_execution_id':new['execution_id'],'changes':changes,
+            'counts':{k:sum(x['status']==k for x in changes) for k in ('NEW','CHANGED','REMOVED','INCONCLUSIVE')}}
+
+
+def campaign_finish_now(uuid: str):
+    """Operator-initiated finalization, with no claim that the scope was exhausted."""
+    db=db_session()
+    try:
+        c=db.execute(text('SELECT * FROM attack_campaigns WHERE campaign_uuid=:u FOR UPDATE'),{'u':uuid}).mappings().first()
+        if not c: raise ValueError('Campaign não encontrada.')
+        e=db.execute(text('SELECT * FROM attack_campaign_executions WHERE campaign_id=:c ORDER BY execution_number DESC LIMIT 1 FOR UPDATE'),{'c':c['id']}).mappings().first()
+        if not e or e['status'] in ('completed','cancelled'):
+            raise ValueError('Não existe execução aberta para encerrar.')
+        now=datetime.utcnow()
+        ids=[r[0] for r in db.execute(text("""SELECT DISTINCT runner_job_id FROM attack_campaign_paths
+          WHERE execution_id=:e AND runner_job_id IS NOT NULL AND status IN ('queued','running')"""),{'e':e['id']}).all()]
+        if ids:
+            db.execute(text("UPDATE runner_jobs SET status='cancelled',error='manual_completed',finished_at=:now WHERE id=ANY(:ids) AND status IN ('pending','running')"),{'ids':ids,'now':now})
+        db.execute(text("""UPDATE attack_campaign_paths SET status='cancelled',result='manual_completed',finished_at=:now
+          WHERE execution_id=:e AND status IN ('queued','running')"""),{'e':e['id'],'now':now})
+        db.execute(text("""UPDATE attack_campaign_cycles SET status='completed',stop_reason='manual_completed',finished_at=:now
+          WHERE execution_id=:e AND status='running'"""),{'e':e['id'],'now':now})
+        # Complete only the current execution; do not cancel unrelated Runner work.
+        _finish_execution(db,dict(c),dict(e),'manual_completed')
+        db.commit()
+        return {'success':True,'stop_reason':'manual_completed','execution_id':e['id'],'campaign':get_campaign(uuid)}
+    except Exception:
+        db.rollback();raise
+    finally:db.close()
+
+
+def campaign_baselines(uuid: str):
+    with db_session() as db:
+        c=db.execute(text('SELECT id FROM attack_campaigns WHERE campaign_uuid=:u'),{'u':uuid}).mappings().first()
+        if not c: raise ValueError('Campaign não encontrada.')
+        rows=db.execute(text("""SELECT b.id,b.execution_id,b.created_at,b.snapshot->>'stop_reason' AS stop_reason,
+          d.changes FROM attack_campaign_baselines b LEFT JOIN attack_campaign_baseline_diffs d
+          ON d.execution_id=b.execution_id WHERE b.campaign_id=:c ORDER BY b.id DESC"""),{'c':c['id']}).mappings().all()
+        return {'success':True,'baselines':[dict(r) for r in rows]}
 
 def _queue_windows_dhcp_inventory(db,c:dict[str,Any],e:dict[str,Any])->bool:
     if not c.get('dhcp_enabled') or not c.get('dhcp_server') or not c.get('dhcp_credential_id'): return False
