@@ -41,6 +41,12 @@ def ensure_monitoring_schema():
             details JSONB NOT NULL DEFAULT '{}'::jsonb,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(policy_id,run_id,ip_address,event_type))'''))
+        db.execute(text('''CREATE TABLE IF NOT EXISTS security_monitor_service_checks (
+            id BIGSERIAL PRIMARY KEY, run_id BIGINT NOT NULL REFERENCES security_monitor_runs(id) ON DELETE CASCADE,
+            ip_address VARCHAR(45) NOT NULL, port INTEGER NOT NULL, protocol VARCHAR(8) NOT NULL DEFAULT 'tcp',
+            runner_job_id BIGINT REFERENCES runner_jobs(id) ON DELETE SET NULL,
+            status VARCHAR(24) NOT NULL DEFAULT 'queued', observed_state VARCHAR(24),
+            result JSONB, UNIQUE(run_id,ip_address,port,protocol))'''))
         db.commit()
 
 
@@ -61,6 +67,64 @@ def configure(campaign_uuid, enabled):
             next_run_at=CASE WHEN :e THEN CURRENT_TIMESTAMP ELSE NULL END,updated_at=CURRENT_TIMESTAMP'''),{'c':campaign['id'],'e':enabled})
         db.commit()
     return {'success':True,'campaign_uuid':campaign_uuid,'enabled':enabled,'interval_minutes':60,'mode':'light','authenticated':False,'confirmations':2}
+
+
+def verify_now(campaign_uuid):
+    with SessionLocal() as db:
+        campaign=_campaign(db,campaign_uuid)
+        policy=db.execute(text('SELECT id,enabled FROM security_monitor_policies WHERE campaign_id=:c FOR UPDATE'),{'c':campaign['id']}).mappings().first()
+        if not policy or not policy['enabled']: raise ValueError('Habilite o Monitoring antes de verificar agora')
+        active=db.execute(text("SELECT id FROM security_monitor_runs WHERE policy_id=:p AND status='running' LIMIT 1"),{'p':policy['id']}).scalar()
+        if active: raise ValueError('Já existe uma verificação em andamento')
+        db.execute(text('UPDATE security_monitor_policies SET next_run_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=:p'),{'p':policy['id']})
+        db.commit()
+    tick()
+    return {'success':True,'message':'Verificação solicitada','campaign_uuid':campaign_uuid}
+
+
+def _known_ports(snapshot):
+    out={}
+    for asset in snapshot.get('assets',[]):
+        ip=asset.get('address')
+        try:
+            if not ipaddress.ip_address(ip).is_private: continue
+        except (ValueError,TypeError): continue
+        inv=asset.get('inventory') or {}
+        if not isinstance(inv,dict): continue
+        ports=inv.get('open_ports') or inv.get('ports') or []
+        if not isinstance(ports,list): continue
+        for item in ports:
+            try:
+                port=int(item.get('port') or item.get('portid')) if isinstance(item,dict) else int(item)
+                proto=str(item.get('protocol','tcp')).lower() if isinstance(item,dict) else 'tcp'
+                if 1<=port<=65535 and proto=='tcp':out.setdefault(ip,set()).add(port)
+            except (TypeError,ValueError): pass
+    return {ip:sorted(ports)[:64] for ip,ports in out.items()}
+
+
+def _job_payload(result):
+    if isinstance(result,str):
+        try: result=json.loads(result)
+        except (TypeError,ValueError):return {}
+    if not isinstance(result,dict):return {}
+    for key in ('metadata','result'):
+        if isinstance(result.get(key),dict):return _job_payload(result[key])
+    return result
+
+
+def _service_states(result):
+    data=_job_payload(result)
+    states=data.get('port_states')
+    if not isinstance(states,list):return {}
+    out={}
+    for item in states:
+        if not isinstance(item,dict):continue
+        try:
+            port=int(item.get('port'))
+            state=str(item.get('state','')).lower()
+            if state in ('open','closed') and 1<=port<=65535:out[port]=state
+        except (TypeError,ValueError):pass
+    return out
 
 
 def status(campaign_uuid):
@@ -109,6 +173,28 @@ def tick():
                 if prior=='down':
                     db.execute(text('''INSERT INTO security_monitor_events(policy_id,run_id,ip_address,event_type)
                       VALUES(:p,:r,:ip,'HOST_UNREACHABLE') ON CONFLICT DO NOTHING'''),{'p':check['policy_id'],'r':check['run_id'],'ip':check['ip_address']})
+        # Reconcile targeted TCP port checks, preserving inconclusive states.
+        service_jobs=db.execute(text('''SELECT sc.id,sc.run_id,sc.ip_address,sc.port,sc.runner_job_id,
+            j.status AS job_status,j.result,r.policy_id FROM security_monitor_service_checks sc
+            JOIN runner_jobs j ON j.id=sc.runner_job_id JOIN security_monitor_runs r ON r.id=sc.run_id
+            WHERE sc.status='queued' AND j.status IN ('completed','success','failed','error','cancelled') LIMIT 100''')).mappings().all()
+        for item in service_jobs:
+            states=_service_states(item['result']) if item['job_status'] in ('completed','success') else {}
+            observed=states.get(item['port'])
+            outcome=observed or 'inconclusive'
+            db.execute(text('UPDATE security_monitor_service_checks SET status=:s,observed_state=:o,result=CAST(:v AS JSONB) WHERE id=:id'),
+                {'s':outcome,'o':observed,'v':json.dumps({'job_id':item['runner_job_id'],'state':outcome}),'id':item['id']})
+            if not observed:continue
+            prior=db.execute(text('''SELECT sc.observed_state FROM security_monitor_service_checks sc
+                JOIN security_monitor_runs r ON r.id=sc.run_id WHERE r.policy_id=:p AND sc.ip_address=:ip
+                AND sc.port=:port AND sc.id<>:id AND sc.observed_state IS NOT NULL
+                ORDER BY sc.id DESC LIMIT 2'''),{'p':item['policy_id'],'ip':item['ip_address'],'port':item['port'],'id':item['id']}).scalars().all()
+            # Two consecutive observations of a new state; require evidence of previous opposite state.
+            if len(prior)==2 and prior[0]==observed and prior[1]!=observed:
+                details={'port':item['port'],'protocol':'tcp','previous':prior[1],'current':observed,'job_id':item['runner_job_id']}
+                db.execute(text('''INSERT INTO security_monitor_events(policy_id,run_id,ip_address,event_type,details)
+                    VALUES(:p,:r,:ip,'SERVICE_STATE_CHANGED',CAST(:d AS JSONB)) ON CONFLICT DO NOTHING'''),
+                    {'p':item['policy_id'],'r':item['run_id'],'ip':item['ip_address'],'d':json.dumps(details)})
         # Throttle new probes: at most 5 new Runner jobs per scheduler tick.
         pending=db.execute(text('''SELECT ch.id,ch.ip_address,r.id AS run_id FROM security_monitor_checks ch
             JOIN security_monitor_runs r ON r.id=ch.run_id WHERE r.status='running'
@@ -120,11 +206,27 @@ def tick():
                     ip=item['ip_address']
                     job=create_runner_job(runner['runner_id'],'nmap_discovery',ip,{'executor':'nmap_discovery','target':ip,'target_type':'host','provider':'runner','timeout_seconds':30,'exclusions':[],'monitor_run_id':item['run_id']})
                     db.execute(text('UPDATE security_monitor_checks SET runner_job_id=:j WHERE id=:id'),{'j':job['id'],'id':item['id']})
+        # One targeted service scan per host; never a broad top-1000 scan.
+        service_pending=db.execute(text('''SELECT sc.run_id,sc.ip_address,ARRAY_AGG(sc.port ORDER BY sc.port) AS ports
+            FROM security_monitor_service_checks sc JOIN security_monitor_runs r ON r.id=sc.run_id
+            WHERE r.status='running' AND sc.runner_job_id IS NULL
+            GROUP BY sc.run_id,sc.ip_address ORDER BY sc.run_id,sc.ip_address LIMIT 5''')).mappings().all()
+        if service_pending:
+            runner=get_online_runner_with_capability('service_discovery')
+            if runner:
+                for item in service_pending:
+                    job=create_runner_job(runner['runner_id'],'service_discovery',item['ip_address'],
+                        {'executor':'service_discovery','target':item['ip_address'],'target_type':'host',
+                         'monitor_ports':item['ports'],'timeout_seconds':45,'monitor_run_id':item['run_id']})
+                    db.execute(text('''UPDATE security_monitor_service_checks SET runner_job_id=:j
+                        WHERE run_id=:r AND ip_address=:ip AND runner_job_id IS NULL'''),
+                        {'j':job['id'],'r':item['run_id'],'ip':item['ip_address']})
         active=db.execute(text("SELECT id FROM security_monitor_runs WHERE status='running' LIMIT 50")).scalars().all()
         for run_id in active:
             counts=db.execute(text('SELECT status,COUNT(*) AS n FROM security_monitor_checks WHERE run_id=:r GROUP BY status'),{'r':run_id}).all()
             totals=dict(counts)
-            if totals.get('queued',0)==0:
+            services_left=db.execute(text("SELECT COUNT(*) FROM security_monitor_service_checks WHERE run_id=:r AND status='queued'"),{'r':run_id}).scalar()
+            if totals.get('queued',0)==0 and not services_left:
                 db.execute(text('''UPDATE security_monitor_runs SET status='completed',finished_at=CURRENT_TIMESTAMP,
                     summary=CAST(:s AS JSONB) WHERE id=:r'''),{'r':run_id,'s':json.dumps(totals)})
         # Do not overlap runs; only one job per known host per 60-minute interval.
@@ -141,6 +243,11 @@ def tick():
                     run_id=db.execute(text('INSERT INTO security_monitor_runs(policy_id,baseline_id) VALUES(:p,:b) RETURNING id'),{'p':due['id'],'b':baseline['id']}).scalar_one()
                     for ip in ips:
                         db.execute(text('INSERT INTO security_monitor_checks(run_id,ip_address) VALUES(:r,:ip)'),{'r':run_id,'ip':ip})
+                    for ip,ports in _known_ports(baseline['snapshot']).items():
+                        if ip not in ips:continue
+                        for port in ports:
+                            db.execute(text('''INSERT INTO security_monitor_service_checks(run_id,ip_address,port)
+                                VALUES(:r,:ip,:port) ON CONFLICT DO NOTHING'''),{'r':run_id,'ip':ip,'port':port})
                     db.execute(text('UPDATE security_monitor_policies SET next_run_at=CURRENT_TIMESTAMP+(:m * INTERVAL \'1 minute\') WHERE id=:p'),{'m':max(60,due['interval_minutes']),'p':due['id']})
         db.commit()
 
@@ -149,7 +256,7 @@ def _interpret(job_status,result):
     if job_status not in ('completed','success'):return 'inconclusive'
     # A successful Nmap process does not prove host reachability. Only explicit
     # host-level states count; unknown payloads remain inconclusive.
-    if not isinstance(result,dict):return 'inconclusive'
+    result=_job_payload(result)
     hosts=result.get('hosts') or result.get('discovered_hosts')
     if not isinstance(hosts,list):return 'inconclusive'
     if any(isinstance(h,dict) and str(h.get('state') or h.get('status') or '').lower() in ('up','online') for h in hosts):return 'up'

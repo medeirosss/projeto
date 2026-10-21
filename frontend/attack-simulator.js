@@ -333,6 +333,11 @@ async function monitorCampaign(id){
    const d=await api(url);
    const lines=(d.events||[]).slice(0,15).map(e=>`${e.created_at||''} · ${e.ip_address} · ${e.event_type}`);
    out.textContent=`Monitoring: ${d.enabled?'ATIVO':'DESATIVADO'}\nIntervalo: 60 min · Light · Sem autenticação · 2 confirmações\nExecuções: ${(d.runs||[]).length} (últimas 20)\nEventos:\n${lines.join('\n')||'Nenhum evento confirmado'}`;
+   if(d.enabled && confirm('Executar Verificar agora?\nOK = iniciar verificação manual.\nCancelar = continuar para as opções do Monitoring.')){
+     const manual=await api(`${url}/verify-now`,{method:'POST'});
+     out.textContent=`${manual.message}\n`+out.textContent;
+     return;
+   }
    if(confirm(`${d.enabled?'Desativar':'Ativar'} Monitoring para esta Campaign?\nA cada 60 minutos o Runner verificará somente os hosts conhecidos do último baseline, sem credenciais.`)){
      const next=await api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!d.enabled})});
      out.textContent=`Monitoring ${next.enabled?'ativado':'desativado'}.\n`+out.textContent;

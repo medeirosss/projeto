@@ -117,17 +117,28 @@ class ServiceDiscoveryExecutor:
         started=datetime.now(timezone.utc); payload=job.get('payload') or {}; target=_target(str(payload.get('target') or job.get('target') or ''))
         nmap=find_nmap(payload.get('nmap_path'))
         if not nmap: raise RuntimeError('Nmap não encontrado. Instale o Nmap no Windows do Runner e reinicie o Runner.')
-        args=[nmap,'-Pn','-n','-sV','--top-ports','1000','--open','-T4','--max-retries','1','-oX','-',target]
+        monitor_ports=payload.get('monitor_ports')
+        if monitor_ports is not None:
+            if not isinstance(monitor_ports,list) or not monitor_ports or len(monitor_ports)>64:raise ValueError('monitor_ports inválido')
+            ports=sorted({int(x) for x in monitor_ports})
+            if any(x<1 or x>65535 for x in ports):raise ValueError('Porta inválida')
+            args=[nmap,'-Pn','-n','-sT','-p',','.join(map(str,ports)),'--max-retries','1','-T2','-oX','-',target]
+        else:
+            args=[nmap,'-Pn','-n','-sV','--top-ports','1000','--open','-T4','--max-retries','1','-oX','-',target]
         try:
             proc=subprocess.run(args,cwd=workdir,capture_output=True,text=True,timeout=timeout_seconds,shell=False)
             finished=datetime.now(timezone.utc); xml_text=proc.stdout or ''; services=_parse(xml_text) if proc.returncode==0 and xml_text.strip() else []
-            name_enrichment=_resolve_windows_name(target,nmap,workdir,services) if proc.returncode==0 else {'hostname':None,'fqdn':None,'domain':None,'hostname_source':None,'attempts':[]}
+            port_states=[]
+            if monitor_ports is not None and proc.returncode==0:
+                root=ET.fromstring(xml_text)
+                port_states=[{'port':int(x.get('portid')),'state':x.find('state').get('state')} for x in root.findall('.//port') if x.find('state') is not None]
+            name_enrichment=_resolve_windows_name(target,nmap,workdir,services) if proc.returncode==0 and monitor_ports is None else {'hostname':None,'fqdn':None,'domain':None,'hostname_source':None,'attempts':[]}
             Path(workdir,'name_enrichment.json').write_text(json.dumps(name_enrichment,indent=2,ensure_ascii=False),encoding='utf-8')
             Path(workdir,'service_discovery_command.txt').write_text(subprocess.list2cmdline(args),encoding='utf-8')
             Path(workdir,'service_discovery_stdout.txt').write_text(xml_text,encoding='utf-8')
             Path(workdir,'services.xml').write_text(xml_text,encoding='utf-8')
             Path(workdir,'services.json').write_text(json.dumps(services,indent=2,ensure_ascii=False),encoding='utf-8')
-            return ExecutionResult(status='success' if proc.returncode==0 else 'failed',exit_code=proc.returncode,stdout=xml_text,stderr=proc.stderr or '',started_at=started.isoformat(),finished_at=finished.isoformat(),duration_seconds=(finished-started).total_seconds(),metadata={'provider':'runner','target':target,'services':services,'service_count':len(services),'raw_xml':xml_text,'nmap_path':nmap,'args':args,'profile':'top1000','version_intensity':'normal','name_enrichment':name_enrichment})
+            return ExecutionResult(status='success' if proc.returncode==0 else 'failed',exit_code=proc.returncode,stdout=xml_text,stderr=proc.stderr or '',started_at=started.isoformat(),finished_at=finished.isoformat(),duration_seconds=(finished-started).total_seconds(),metadata={'provider':'runner','target':target,'services':services,'service_count':len(services),'port_states':port_states,'raw_xml':xml_text,'nmap_path':nmap,'args':args,'profile':'top1000','version_intensity':'normal','name_enrichment':name_enrichment})
         except subprocess.TimeoutExpired as exc:
             finished=datetime.now(timezone.utc)
             return ExecutionResult(status='timeout',exit_code=None,stdout=exc.stdout.decode(errors='replace') if isinstance(exc.stdout,bytes) else (exc.stdout or ''),stderr=exc.stderr.decode(errors='replace') if isinstance(exc.stderr,bytes) else (exc.stderr or ''),started_at=started.isoformat(),finished_at=finished.isoformat(),duration_seconds=(finished-started).total_seconds(),metadata={'provider':'runner','target':target,'services':[],'timeout':timeout_seconds,'nmap_path':nmap})

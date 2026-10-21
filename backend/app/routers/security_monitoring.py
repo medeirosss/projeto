@@ -1,5 +1,5 @@
 from fastapi import APIRouter,HTTPException,Body
-from app.services.security_monitoring_service import status,configure
+from app.services.security_monitoring_service import status,configure,verify_now
 router=APIRouter(prefix='/api/security-monitoring',tags=['security-monitoring'])
 
 @router.get('/campaigns/{campaign_uuid}')
@@ -13,3 +13,8 @@ def set_monitor(campaign_uuid:str,payload:dict=Body(...)):
         if not isinstance(payload.get('enabled'),bool):raise ValueError('enabled deve ser booleano')
         return configure(campaign_uuid,payload['enabled'])
     except ValueError as exc:raise HTTPException(400,str(exc))
+
+@router.post('/campaigns/{campaign_uuid}/verify-now')
+def verify_monitor_now(campaign_uuid:str):
+    try:return verify_now(campaign_uuid)
+    except ValueError as exc:raise HTTPException(409,str(exc))
