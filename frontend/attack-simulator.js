@@ -149,8 +149,9 @@ function dtLocal(v){if(!v)return '--';try{return new Date(v).toLocaleString();}c
 async function loadCampaigns(){
   try{
     const d=await api('/api/attack-simulator/campaigns');const rows=d.campaigns||[];
-    document.getElementById('campaignTable').innerHTML=rows.map(c=>{const st=c.execution_stats||{};const scope=(c.scope_cidrs||[]).join(', ');return `<tr><td><strong>${esc(c.name)}</strong><br><small>${esc(c.campaign_uuid)}</small></td><td>${esc(scope)}</td><td>${badge(c.execution_status||c.status)}<br><small>#${esc(c.execution_number||1)}</small></td><td>${esc(dtLocal(c.scheduled_start||c.start_at))}<br>→ ${esc(dtLocal(c.scheduled_end||c.end_at))}<br><small>${esc(c.daily_start)}–${esc(c.daily_end)}</small></td><td>${esc(st.discovered||0)} hosts<br>${esc(st.accessed||0)} acessados<br>${esc(st.confirmed||0)} paths</td><td>${esc(dtLocal(c.next_cycle_at))}</td><td><button class="btn secondary btn-sm camp-view" data-id="${esc(c.campaign_uuid)}">Attack Path</button> <button class="btn secondary btn-sm camp-edit" data-id="${esc(c.campaign_uuid)}">Ajustar</button> <button class="btn primary btn-sm camp-next" data-id="${esc(c.campaign_uuid)}">Próximo ciclo agora</button> <button class="btn secondary btn-sm camp-pause" data-id="${esc(c.campaign_uuid)}">Pausar</button> <button class="btn primary btn-sm camp-resume" data-id="${esc(c.campaign_uuid)}">Retomar</button> ${["completed","cancelled"].includes(String(c.execution_status||c.status).toLowerCase())?`<button class="btn primary btn-sm camp-new-execution" data-id="${esc(c.campaign_uuid)}">Nova execução</button>`:""} <button class="btn danger btn-sm camp-finish" data-id="${esc(c.campaign_uuid)}">Encerrar Campaign</button> <button class="btn danger btn-sm camp-delete" data-id="${esc(c.campaign_uuid)}">Excluir</button></td></tr>`}).join('')||'<tr><td colspan="7">Nenhuma Campaign.</td></tr>';
+    document.getElementById('campaignTable').innerHTML=rows.map(c=>{const st=c.execution_stats||{};const scope=(c.scope_cidrs||[]).join(', ');return `<tr><td><strong>${esc(c.name)}</strong><br><small>${esc(c.campaign_uuid)}</small></td><td>${esc(scope)}</td><td>${badge(c.execution_status||c.status)}<br><small>#${esc(c.execution_number||1)}</small></td><td>${esc(dtLocal(c.scheduled_start||c.start_at))}<br>→ ${esc(dtLocal(c.scheduled_end||c.end_at))}<br><small>${esc(c.daily_start)}–${esc(c.daily_end)}</small></td><td>${esc(st.discovered||0)} hosts<br>${esc(st.accessed||0)} acessados<br>${esc(st.confirmed||0)} paths</td><td>${esc(dtLocal(c.next_cycle_at))}</td><td><button class="btn secondary btn-sm camp-view" data-id="${esc(c.campaign_uuid)}">Attack Path</button> <button class="btn secondary btn-sm camp-monitor" data-id="${esc(c.campaign_uuid)}">Monitoring</button> <button class="btn secondary btn-sm camp-edit" data-id="${esc(c.campaign_uuid)}">Ajustar</button> <button class="btn primary btn-sm camp-next" data-id="${esc(c.campaign_uuid)}">Próximo ciclo agora</button> <button class="btn secondary btn-sm camp-pause" data-id="${esc(c.campaign_uuid)}">Pausar</button> <button class="btn primary btn-sm camp-resume" data-id="${esc(c.campaign_uuid)}">Retomar</button> ${["completed","cancelled"].includes(String(c.execution_status||c.status).toLowerCase())?`<button class="btn primary btn-sm camp-new-execution" data-id="${esc(c.campaign_uuid)}">Nova execução</button>`:""} <button class="btn danger btn-sm camp-finish" data-id="${esc(c.campaign_uuid)}">Encerrar Campaign</button> <button class="btn danger btn-sm camp-delete" data-id="${esc(c.campaign_uuid)}">Excluir</button></td></tr>`}).join('')||'<tr><td colspan="7">Nenhuma Campaign.</td></tr>';
     document.querySelectorAll('.camp-view').forEach(b=>b.onclick=()=>viewCampaign(b.dataset.id));
+    document.querySelectorAll('.camp-monitor').forEach(b=>b.onclick=()=>monitorCampaign(b.dataset.id));
     document.querySelectorAll('.camp-edit').forEach(b=>b.onclick=()=>editCampaign(b.dataset.id));
     document.querySelectorAll('.camp-next').forEach(b=>b.onclick=()=>nextCampaignCycle(b.dataset.id));
     document.querySelectorAll('.camp-pause').forEach(b=>b.onclick=()=>campaignAction(b.dataset.id,'pause'));
@@ -322,4 +323,19 @@ async function newCampaignExecution(id){
     await loadCampaigns();await viewCampaign(id);
     document.getElementById('campaignResult').textContent=`Nova execução #${d.execution_number} agendada. Aguardando Runner disponível.`;
   }catch(e){document.getElementById('campaignResult').textContent=e.message;}
+}
+
+// 5.9: lightweight, opt-in monitoring. No authenticated probes.
+async function monitorCampaign(id){
+ const out=document.getElementById('campaignResult');
+ try{
+   const url=`/api/security-monitoring/campaigns/${encodeURIComponent(id)}`;
+   const d=await api(url);
+   const lines=(d.events||[]).slice(0,15).map(e=>`${e.created_at||''} · ${e.ip_address} · ${e.event_type}`);
+   out.textContent=`Monitoring: ${d.enabled?'ATIVO':'DESATIVADO'}\nIntervalo: 60 min · Light · Sem autenticação · 2 confirmações\nExecuções: ${(d.runs||[]).length} (últimas 20)\nEventos:\n${lines.join('\n')||'Nenhum evento confirmado'}`;
+   if(confirm(`${d.enabled?'Desativar':'Ativar'} Monitoring para esta Campaign?\nA cada 60 minutos o Runner verificará somente os hosts conhecidos do último baseline, sem credenciais.`)){
+     const next=await api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:!d.enabled})});
+     out.textContent=`Monitoring ${next.enabled?'ativado':'desativado'}.\n`+out.textContent;
+   }
+ }catch(e){out.textContent='Monitoring: '+e.message;}
 }
