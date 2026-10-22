@@ -24,26 +24,54 @@ async function loadProviderStatus(){
 }
 async function loadSummary(){const d=await api('/api/attack-simulator/summary');document.getElementById('attackSimulationCount').textContent=d.simulations??0;}
 async function loadCredentials(){try{const d=await api('/api/actions/credentials');const all=d.credentials||[];const windows=all.filter(c=>['windows','wmi','winrm'].includes(String(c.type||c.credential_type||'').toLowerCase()));const ssh=all.filter(c=>['ssh','linux'].includes(String(c.type||c.credential_type||'').toLowerCase()));const snmp=all.filter(c=>['snmp','snmp_v2c','snmpv2c'].includes(String(c.type||c.credential_type||'').toLowerCase()));const opts=(rows,empty)=>`<option value="">${empty}</option>`+rows.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} — ${esc(c.type||c.credential_type||'credential')} — ${esc(c.domain?c.domain+'\\':'')}${esc(c.username||'')}</option>`).join('');document.getElementById('attackCredential').innerHTML=opts(all,'Nenhuma / não necessária');const cw=document.getElementById('campaignCredential');if(cw)cw.innerHTML=windows.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} — ${esc(c.type||c.credential_type||'credential')} — ${esc(c.domain?c.domain+'\\':'')}${esc(c.username||'')}</option>`).join('');const cn=document.getElementById('campaignSnmpCredential');if(cn)cn.innerHTML=opts(snmp,'Sem community SNMP');}catch(_e){}}
+let attackCatalogRows=[];
+let attackCatalogPage=1;
+let attackCatalogPageSize=25;
+let attackCatalogRequest=0;
+function renderAttackCatalog(){
+  const table=document.getElementById('attackCatalogTable');if(!table)return;
+  const count=attackCatalogRows.length;
+  const pages=Math.max(1,Math.ceil(count/attackCatalogPageSize));
+  attackCatalogPage=Math.max(1,Math.min(attackCatalogPage,pages));
+  const start=(attackCatalogPage-1)*attackCatalogPageSize;
+  const rows=attackCatalogRows.slice(start,start+attackCatalogPageSize);
+  table.innerHTML=rows.map(r=>{
+    const meta=r.metadata||{},provider=providerOfTask(r);
+    const providerBadge=provider==='metasploit'?'<span class="badge badge-muted">Metasploit</span>':'<span class="badge badge-ok">MAGI Native</span>';
+    const technical=JSON.stringify(r.detection||{},null,2);
+    return `<tr><td class="atk-catalog-name"><strong>${esc(r.name||r.task_key)}</strong><small>${esc(r.description||'Sem descrição disponível')}</small><details class="atk-technical"><summary>Detalhes técnicos</summary><dl><dt>Identificador</dt><dd>${esc(r.task_key)}</dd><dt>Fase</dt><dd>${esc(meta.attack_phase||'Não informada')}</dd><dt>Requer credencial</dt><dd>${meta.credential_required?'Sim':'Não'}</dd></dl><pre>${esc(technical)}</pre></details></td><td>${providerBadge}</td><td>${esc(r.category)}</td><td>${badge(r.impact)}</td><td class="atk-catalog-actions"><button class="btn secondary btn-sm atk-plan" data-id="${esc(r.id)}">Planejar</button><button class="btn primary btn-sm atk-run" data-id="${esc(r.id)}">Executar</button></td></tr>`;
+  }).join('')||'<tr><td colspan="5">Nenhuma simulação encontrada para os filtros atuais.</td></tr>';
+  const info=document.getElementById('attackCatalogPaginationInfo');
+  if(info)info.textContent=count?`Exibindo ${start+1}–${Math.min(start+attackCatalogPageSize,count)} de ${count} simulações`:'Nenhuma simulação';
+  const page=document.getElementById('attackCatalogPageLabel');if(page)page.textContent=`Página ${attackCatalogPage} de ${pages}`;
+  const prev=document.getElementById('attackCatalogPrev');if(prev)prev.disabled=attackCatalogPage<=1;
+  const next=document.getElementById('attackCatalogNext');if(next)next.disabled=attackCatalogPage>=pages;
+  table.querySelectorAll('.atk-plan').forEach(b=>b.addEventListener('click',()=>runAttack(b.dataset.id,true)));
+  table.querySelectorAll('.atk-run').forEach(b=>b.addEventListener('click',()=>runAttack(b.dataset.id,false)));
+}
 async function loadCatalog(){
+  const request=++attackCatalogRequest;
   const url=new URL('/api/attack-simulator/catalog',location.origin);
   const q=document.getElementById('attackSearch').value.trim();
   const c=document.getElementById('attackCategory').value;
   const provider=document.getElementById('attackProvider')?.value||'';
   if(q)url.searchParams.set('search',q);
   if(c)url.searchParams.set('category',c);
-  const d=await api(url);
-  let rows=d.simulations||[];
-  if(provider) rows=rows.filter(r=>providerOfTask(r)===provider);
-  catalogById={};rows.forEach(r=>catalogById[String(r.id)]=r);
-  document.getElementById('attackCatalogTable').innerHTML=rows.map(r=>{
-    const meta=r.metadata||{},req=meta.credential_required?' <span class="badge badge-muted">Credential</span>':'';
-    const provider=providerOfTask(r);
-    const providerBadge=provider==='metasploit'?'<span class="badge badge-muted">Metasploit</span>':'<span class="badge badge-ok">MAGI Native</span>';
-    return `<tr><td><strong>${esc(r.task_key)} - ${esc(r.name)}</strong>${req}<br><small>${esc(r.description)}</small></td><td>${providerBadge}</td><td>${esc(r.category)}</td><td>${esc(meta.attack_phase)}</td><td>${badge(r.impact)}</td><td><code>${esc(JSON.stringify(r.detection||{}))}</code></td><td><button class="btn secondary btn-sm atk-plan" data-id="${r.id}">Planejar</button> <button class="btn primary btn-sm atk-run" data-id="${r.id}">Executar</button></td></tr>`;
-  }).join('')||'<tr><td colspan="7">Nenhuma simulação.</td></tr>';
-  document.querySelectorAll('.atk-plan').forEach(b=>b.onclick=()=>runAttack(b.dataset.id,true));
-  document.querySelectorAll('.atk-run').forEach(b=>b.onclick=()=>runAttack(b.dataset.id,false));
+  try{
+    const d=await api(url);
+    if(request!==attackCatalogRequest)return;
+    let rows=d.simulations||[];
+    if(provider)rows=rows.filter(r=>providerOfTask(r)===provider);
+    catalogById={};rows.forEach(r=>catalogById[String(r.id)]=r);
+    attackCatalogRows=rows;
+    attackCatalogPage=1;
+    renderAttackCatalog();
+  }catch(e){
+    if(request!==attackCatalogRequest)return;
+    document.getElementById('attackCatalogTable').innerHTML=`<tr><td colspan="5">Falha ao carregar catálogo: ${esc(e.message)}</td></tr>`;
+  }
 }
+
 function executionPayload(id){
   const task=catalogById[String(id)]||{},meta=task.metadata||{};
   const isApplication=String(task.category||'').toLowerCase()==='application';
@@ -136,6 +164,9 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('attackSearch').addEventListener('input',loadCatalog);
   document.getElementById('attackCategory').addEventListener('change',()=>{loadCatalog();updateAttackTargetFields();});
   document.getElementById('attackProvider')?.addEventListener('change',loadCatalog);
+  document.getElementById('attackCatalogPrev')?.addEventListener('click',()=>{attackCatalogPage--;renderAttackCatalog();});
+  document.getElementById('attackCatalogNext')?.addEventListener('click',()=>{attackCatalogPage++;renderAttackCatalog();});
+  document.getElementById('attackCatalogPageSize')?.addEventListener('change',e=>{attackCatalogPageSize=Number(e.target.value)||25;attackCatalogPage=1;renderAttackCatalog();});
   document.getElementById('refreshAttackHistory').onclick=loadHistory;
   document.getElementById('syncAttackCatalog').onclick=async()=>{await syncCatalog();await loadProviderStatus();};
   document.querySelectorAll('.attack-nav-item').forEach(b=>b.onclick=()=>switchAttackView(b.dataset.view));

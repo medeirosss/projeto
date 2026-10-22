@@ -18,3 +18,33 @@ body.centric-page .magi-brand-panel .actions{display:flex;justify-content:flex-e
 body.centric-page .magi-brand-panel .actions button{padding:10px 14px;border:1px solid var(--magi-border);background:var(--magi-elevated);color:var(--magi-text)}
 body.centric-page .magi-brand-panel .actions .save{background:var(--magi-accent);color:#101820}
 body.centric-page .magi-build-id{font-size:10px;opacity:.6;white-space:nowrap}
+
+/* MAGI 6.1 — Attack catalog: uses shared design-system tokens. */
+body.centric-page .atk-section-heading{font-size:14px;margin:18px 0 12px;color:var(--magi-text)}
+body.centric-page .atk-target-grid{gap:16px;margin-bottom:16px}
+body.centric-page .atk-target-grid label{min-width:0}
+body.centric-page .atk-target-grid input,body.centric-page .atk-target-grid select{min-width:0;width:100%;box-sizing:border-box}
+body.centric-page .atk-scope{margin:16px 0 22px}
+body.centric-page .atk-catalog-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:20px 0 12px}
+body.centric-page .atk-catalog-heading h3{margin:0;font-size:16px;color:var(--magi-text)}
+body.centric-page .atk-catalog-heading span{font-size:12px;color:var(--magi-muted)}
+body.centric-page .atk-catalog-table{overflow-x:auto}
+body.centric-page .atk-catalog-table table{width:100%;border-collapse:collapse}
+body.centric-page .atk-catalog-table th,body.centric-page .atk-catalog-table td{padding:14px 12px;vertical-align:top}
+body.centric-page .atk-catalog-name{min-width:260px;max-width:680px}
+body.centric-page .atk-catalog-name strong{display:block;font-size:13px;line-height:1.45}
+body.centric-page .atk-catalog-name>small{display:block;color:var(--magi-muted);line-height:1.5;margin-top:5px}
+body.centric-page .atk-technical{margin-top:10px;font-size:12px}
+body.centric-page .atk-technical summary{cursor:pointer;color:var(--magi-accent);width:max-content}
+body.centric-page .atk-technical dl{display:grid;grid-template-columns:max-content 1fr;gap:5px 14px;margin:10px 0}
+body.centric-page .atk-technical dt{color:var(--magi-muted)}
+body.centric-page .atk-technical dd{margin:0;overflow-wrap:anywhere}
+body.centric-page .atk-technical pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow:auto;padding:12px;background:var(--magi-elevated);border:1px solid var(--magi-border);border-radius:8px}
+body.centric-page .atk-catalog-actions{min-width:104px}
+body.centric-page .atk-catalog-actions button{display:block;width:100%;margin:0 0 8px}
+body.centric-page .atk-pagination{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:flex-end;margin:16px 0;color:var(--magi-muted);font-size:12px}
+body.centric-page .atk-pagination>span:first-child{margin-right:auto}
+body.centric-page .atk-pagination label{display:flex;gap:8px;align-items:center}
+body.centric-page .atk-pagination select{width:auto;min-width:70px}
+body.centric-page .atk-pagination button:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:700px){body.centric-page .atk-pagination{justify-content:flex-start}body.centric-page .atk-pagination>span:first-child{flex-basis:100%}}
