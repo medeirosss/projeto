@@ -57,15 +57,13 @@ function buildHeader(activeKey){
   const menu = document.getElementById('mainMenu');
   if(!menu) return;
   const items = [
-    { key:'centric', href:'/', label:'MAGI' },
+    { key:'centric', href:'/', label:'Overview' },
+    { key:'targets', href:'/ativos', label:'Assets' },
+    { key:'validations', href:'/validacoes', label:'Security Validation' },
+    { key:'attack', href:'/attack-simulator', label:'Attack Simulation' },
+    { key:'alerts', href:'/alertas', label:'Monitoring & Alerts' },
     { key:'reports', href:'/relatorios', label:'Relatórios' },
-    { key:'actions', href:'/instalador', label:'Ações' },
-    { key:'alerts', href:'/alertas', label:'Alertas' },
-    { key:'validations', href:'/validacoes', label:'Tarefas' },
-    { key:'attack', href:'/attack-simulator', label:'Attack Simulator' },
-    { key:'targets', href:'/ativos', label:'Ativos' },
-    { key:'exposures', href:'/exposicoes', label:'Exposições' },
-    { key:'settings', href:'/configuracoes', label:'Configurações' }
+    { key:'settings', href:'/configuracoes', label:'Administração' }
   ];
   menu.innerHTML = items.map(item => `<a class="${item.key===activeKey?'active':''}" href="${item.href}">${item.label}</a>`).join('');
 }
@@ -107,8 +105,8 @@ function applyBrandingSettings(settings = {}){
   const brandName = settings.brand_name || theme.brand_name || theme.name || localStorage.getItem('centric-brand-name');
   const accentColor = settings.accent_color || theme.accent_color || theme.primary_color || localStorage.getItem('centric-accent-color');
   setBrandLogo(logoPath || 'logo.png');
-  setBrandName(brandName || 'Centric');
-  setAccentColor(accentColor || '#7c3aed');
+  setBrandName(brandName || 'MAGI');
+  setAccentColor(accentColor || '#c6ff57');
 }
 
 async function initializeBranding(){

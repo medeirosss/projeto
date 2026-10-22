@@ -270,9 +270,9 @@ async function bootSettings(){
   buildHeader('settings');
   settingsModules = await fetchModuleStatus();
   const groups = [
-    { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }, { key:'settingsStatusSection', label:'Status' }] },
+    { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }] },
     { title:'Discovery', items:[{ key:'settingsDiscoveryDnsSection', label:'DNS' }] },
-    { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }, { key:'settingsIpScopeSection', label:'IP Scope' }] }
+    { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }] }
   ];
   renderModuleSidebar('settingsSidebar', groups, (key)=> showSettingsSection(key));
   showSettingsSection('settingsMailSection');
@@ -328,9 +328,9 @@ bootSettings = async function(){
   buildHeader('settings');
   settingsModules = await fetchModuleStatus();
   const groups = [
-    { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }, { key:'settingsWebhookSection', label:'Webhook' }, { key:'settingsUsersSection', label:'Usuários' }, { key:'settingsStatusSection', label:'Status' }] },
+    { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }, { key:'settingsUsersSection', label:'Usuários' }] },
     { title:'Discovery', items:[{ key:'settingsDiscoveryDnsSection', label:'DNS' }] },
-    { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }, { key:'settingsIpScopeSection', label:'IP Scope' }] }
+    { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }] }
   ];
   renderModuleSidebar('settingsSidebar', groups, async (key)=> { showSettingsSection(key); if(key === 'settingsUsersSection') await loadAuthAccess(); });
   showSettingsSection('settingsMailSection');
@@ -421,9 +421,9 @@ bootSettings = async function(){
   buildHeader('settings');
   settingsModules = await fetchModuleStatus();
   const groups = [
-    { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }, { key:'settingsWebhookSection', label:'Webhook' }, { key:'settingsUsersSection', label:'Usuários' }, { key:'settingsStatusSection', label:'Status' }, { key:'settingsRunnersSection', label:'Runners' }] },
+    { title:'Fixos', items:[{ key:'settingsMailSection', label:'Mail Server' }, { key:'settingsBrandingSection', label:'Branding' }, { key:'settingsUsersSection', label:'Usuários' }, { key:'settingsRunnersSection', label:'Runners' }] },
     { title:'Discovery', items:[{ key:'settingsDiscoveryDnsSection', label:'DNS' }] },
-    { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }, { key:'settingsIpScopeSection', label:'IP Scope' }] }
+    { title:'UEM', items:[{ key:'settingsUemApiSection', label:'APIs' }, { key:'settingsAdSection', label:'Active Directory' }, { key:'settingsParametersSection', label:'Parâmetros' }] }
   ];
   renderModuleSidebar('settingsSidebar', groups, async (key)=> {
     showSettingsSection(key);
@@ -465,9 +465,9 @@ const _bootCredPrevious=bootSettings;
 bootSettings=async function(){
   buildHeader('settings');settingsModules=await fetchModuleStatus();
   const groups=[
-    {title:'Fixos',items:[{key:'settingsMailSection',label:'Mail Server'},{key:'settingsBrandingSection',label:'Branding'},{key:'settingsWebhookSection',label:'Webhook'},{key:'settingsUsersSection',label:'Usuários'},{key:'settingsStatusSection',label:'Status'},{key:'settingsRunnersSection',label:'Runners'}]},
+    {title:'Fixos',items:[{key:'settingsMailSection',label:'Mail Server'},{key:'settingsBrandingSection',label:'Branding'},{key:'settingsUsersSection',label:'Usuários'},{key:'settingsRunnersSection',label:'Runners'}]},
     {title:'Discovery',items:[{key:'settingsDiscoveryDnsSection',label:'DNS'},{key:'settingsCredentialsSection',label:'Credenciais'}]},
-    {title:'UEM',items:[{key:'settingsUemApiSection',label:'APIs'},{key:'settingsAdSection',label:'Active Directory'},{key:'settingsParametersSection',label:'Parâmetros'},{key:'settingsIpScopeSection',label:'IP Scope'}]}
+    {title:'UEM',items:[{key:'settingsUemApiSection',label:'APIs'},{key:'settingsAdSection',label:'Active Directory'},{key:'settingsParametersSection',label:'Parâmetros'}]}
   ];
   renderModuleSidebar('settingsSidebar',groups,async key=>{showSettingsSection(key);if(key==='settingsUsersSection')await loadAuthAccess();if(key==='settingsRunnersSection')await loadRunners();if(key==='settingsCredentialsSection')await loadCredentials()});
   showSettingsSection('settingsMailSection');bindFixedActions();await loadSettings();
@@ -502,10 +502,10 @@ const _bindDhcpPrev=bindFixedActions; bindFixedActions=function(){_bindDhcpPrev(
 const _bootDhcpPrev=bootSettings; bootSettings=async function(){
   buildHeader('settings');settingsModules=await fetchModuleStatus();
   const groups=[
-    {title:'Fixos',items:[{key:'settingsMailSection',label:'Mail Server'},{key:'settingsBrandingSection',label:'Branding'},{key:'settingsWebhookSection',label:'Webhook'},{key:'settingsUsersSection',label:'Usuários'},{key:'settingsStatusSection',label:'Status'},{key:'settingsRunnersSection',label:'Runners'}]},
+    {title:'Fixos',items:[{key:'settingsMailSection',label:'Mail Server'},{key:'settingsBrandingSection',label:'Branding'},{key:'settingsUsersSection',label:'Usuários'},{key:'settingsRunnersSection',label:'Runners'}]},
     {title:'Integrações',items:[{key:'settingsDhcpSection',label:'DHCP'}]},
     {title:'Discovery',items:[{key:'settingsDiscoveryDnsSection',label:'DNS'},{key:'settingsCredentialsSection',label:'Credenciais'}]},
-    {title:'UEM',items:[{key:'settingsUemApiSection',label:'APIs'},{key:'settingsAdSection',label:'Active Directory'},{key:'settingsParametersSection',label:'Parâmetros'},{key:'settingsIpScopeSection',label:'IP Scope'}]}
+    {title:'UEM',items:[{key:'settingsUemApiSection',label:'APIs'},{key:'settingsAdSection',label:'Active Directory'},{key:'settingsParametersSection',label:'Parâmetros'}]}
   ];
   renderModuleSidebar('settingsSidebar',groups,async key=>{showSettingsSection(key);if(key==='settingsUsersSection')await loadAuthAccess();if(key==='settingsRunnersSection')await loadRunners();if(key==='settingsCredentialsSection')await loadCredentials();if(key==='settingsDhcpSection')await loadDhcpIntegrations()});
   showSettingsSection('settingsMailSection');bindFixedActions();await loadSettings();
