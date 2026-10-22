@@ -1,0 +1,23 @@
+{
+  "manifest": {
+    "knowledge_schema": 1,
+    "knowledge_version": "2026.09.001",
+    "minimum_magi_version": "5.6.1",
+    "full_snapshot": true,
+    "source": "bundled"
+  },
+  "attacks": [
+    {"attack_uuid":"MAGI-KB-000001","name":"SMB Service Enumeration","description":"Enumeração de versão e características do serviço SMB exposto.","category":"Endpoint","impact":"SAFE","conditions":[{"type":"tcp_port","value":445}],"techniques":[{"technique_key":"MAGI-M-ATK-END-001","provider":"metasploit","executable":true,"simulation_impact":"SAFE"}]},
+    {"attack_uuid":"MAGI-KB-000002","name":"SMB Authenticated Access","description":"Uso de credencial válida para confirmar acesso autenticado ao serviço SMB.","category":"Endpoint","impact":"LOW","conditions":[{"type":"tcp_port","value":445},{"type":"credential_type","value":"windows","required":false}],"techniques":[{"technique_key":"MAGI-ATK-END-102","provider":"magi_native","executable":true,"simulation_impact":"LOW"}]},
+    {"attack_uuid":"MAGI-KB-000003","name":"SMB Relay","description":"Cenário de relay relacionado a ambientes SMB/NTLM quando controles de assinatura e autenticação permitem a técnica.","category":"Endpoint","impact":"HIGH","conditions":[{"type":"tcp_port","value":445},{"type":"finding","value":"smb_signing_not_required"}],"techniques":[]},
+    {"attack_uuid":"MAGI-KB-000004","name":"MS17-010 / EternalBlue","description":"Ataque associado à vulnerabilidade MS17-010. SMBv1 isoladamente não confirma vulnerabilidade; patch, versão e demais pré-condições devem ser correlacionados.","category":"Endpoint","impact":"HIGH","conditions":[{"type":"service","value":"smb"},{"type":"finding","value":"smbv1_enabled"}],"cves":["CVE-2017-0144"],"techniques":[]},
+    {"attack_uuid":"MAGI-KB-000005","name":"Kerberos Authentication Validation","description":"Validação controlada de autenticação Kerberos contra um controlador de domínio.","category":"Active Directory","impact":"LOW","conditions":[{"type":"tcp_port","value":88}],"techniques":[{"technique_key":"MAGI-M-ATK-AD-001","provider":"metasploit","executable":true,"simulation_impact":"LOW"}]},
+    {"attack_uuid":"MAGI-KB-000006","name":"WinRM Authenticated Remote Access","description":"Acesso remoto autenticado por WinRM quando o serviço e uma credencial compatível estão disponíveis.","category":"Endpoint","impact":"LOW","conditions":[{"type":"tcp_port_any","value":[5985,5986]}],"techniques":[{"technique_key":"MAGI-ATK-END-104","provider":"magi_native","executable":true,"simulation_impact":"LOW"}]},
+    {"attack_uuid":"MAGI-KB-000007","name":"SSH Authenticated Remote Access","description":"Acesso remoto autenticado por SSH em sistemas que expõem o serviço.","category":"Endpoint","impact":"LOW","conditions":[{"type":"tcp_port","value":22}],"techniques":[{"technique_key":"MAGI-ATK-END-103","provider":"magi_native","executable":true,"simulation_impact":"LOW"}]},
+    {"attack_uuid":"MAGI-KB-000008","name":"SNMP v2c Enumeration","description":"Enumeração de informações por SNMP v2c utilizando community conhecida.","category":"Network Node","impact":"LOW","conditions":[{"type":"udp_port","value":161}],"techniques":[{"technique_key":"MAGI-M-ATK-NET-001","provider":"metasploit","executable":true,"simulation_impact":"LOW"},{"technique_key":"MAGI-ATK-NET-101","provider":"magi_native","executable":true,"simulation_impact":"LOW"}]},
+    {"attack_uuid":"MAGI-KB-000009","name":"HTTP Methods Enumeration","description":"Enumeração dos métodos HTTP anunciados por uma aplicação web.","category":"Application","impact":"SAFE","conditions":[{"type":"tcp_port_any","value":[80,443,8080,8443]}],"techniques":[{"technique_key":"MAGI-M-ATK-APP-001","provider":"metasploit","executable":true,"simulation_impact":"SAFE"}]},
+    {"attack_uuid":"MAGI-KB-000010","name":"RDP Remote Access Exposure","description":"Presença de RDP exposto indica superfície de acesso remoto; esta entrada é informativa e não possui simulação MAGI nesta versão.","category":"Endpoint","impact":"MEDIUM","conditions":[{"type":"tcp_port","value":3389}],"techniques":[]},
+    {"attack_uuid":"MAGI-KB-000011","name":"SMB Share Enumeration","description":"Enumeração de compartilhamentos SMB acessíveis ao contexto utilizado.","category":"Endpoint","impact":"SAFE","conditions":[{"type":"tcp_port","value":445}],"techniques":[]},
+    {"attack_uuid":"MAGI-KB-000012","name":"HTTP Server/Header Enumeration","description":"Coleta de cabeçalhos e identificação de características expostas pelo servidor HTTP.","category":"Application","impact":"SAFE","conditions":[{"type":"tcp_port_any","value":[80,443,8080,8443]}],"techniques":[]}
+  ]
+}

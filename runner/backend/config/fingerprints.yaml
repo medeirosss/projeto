@@ -1,0 +1,75 @@
+version: 1
+rules:
+  - id: hostname-domain-controller
+    match:
+      hostname:
+        regex: ['^(dc|ad)[-_]?[0-9a-z]+']
+    asset_type: server
+    confidence: 96
+
+  - id: hostname-server
+    match:
+      hostname:
+        starts_with: ['srv-', 'server-', 'svr-', 'sql-', 'web-', 'db-']
+    asset_type: server
+    confidence: 92
+
+  - id: hostname-printer
+    match:
+      hostname:
+        starts_with: ['prn-', 'print-', 'printer-', 'imp-']
+    asset_type: printer
+    confidence: 94
+
+  - id: vendor-printer
+    match:
+      vendor:
+        contains: ['hewlett packard', 'hp inc', 'lexmark', 'xerox', 'brother industries', 'ricoh']
+      hostname:
+        contains: ['print', 'prn', 'printer', 'imp']
+    asset_type: printer
+    confidence: 90
+
+  - id: vendor-vmware
+    match:
+      vendor:
+        contains: ['vmware']
+    asset_type: virtual_machine
+    confidence: 88
+
+  - id: vendor-hyperv
+    match:
+      vendor:
+        contains: ['microsoft corporation']
+      hostname:
+        starts_with: ['hv-', 'hyperv-', 'host-']
+    asset_type: hypervisor
+    confidence: 86
+
+  - id: vendor-nas
+    match:
+      vendor:
+        contains: ['synology', 'qnap']
+    asset_type: nas
+    confidence: 92
+
+  - id: vendor-firewall
+    match:
+      vendor:
+        contains: ['fortinet', 'palo alto', 'checkpoint', 'sophos']
+    asset_type: firewall
+    confidence: 90
+
+  - id: vendor-network
+    match:
+      vendor:
+        contains: ['cisco', 'juniper', 'aruba', 'ubiquiti', 'mikrotik']
+    asset_type: network_device
+    confidence: 78
+
+  - id: hostname-workstation
+    match:
+      hostname:
+        starts_with: ['pc-', 'ws-', 'wks-', 'note-', 'nb-', 'desk-', 'lt-']
+    asset_type: workstation
+    confidence: 88

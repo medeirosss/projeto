@@ -1,0 +1,8 @@
+python generate_license.py `
+  --output licenses\CLIENTE-TESTE_license.json `
+  --customer-id CLIENTE-TESTE `
+  --customer-name "Cliente Teste" `
+  --domain "cliente.local" `
+  --expires-at 2026-11-17 `
+  --max-users 100 `
+  --max-endpoints 500

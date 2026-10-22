@@ -1,0 +1,17 @@
+ALTER TABLE atomic_tests
+ADD COLUMN IF NOT EXISTS approved_for_execution BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE atomic_tests
+ADD COLUMN IF NOT EXISTS risk_level VARCHAR(20) DEFAULT 'MEDIUM';
+
+ALTER TABLE atomic_tests
+ADD COLUMN IF NOT EXISTS safe_for_production BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE atomic_tests
+ADD COLUMN IF NOT EXISTS requires_admin BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE atomic_tests
+ADD COLUMN IF NOT EXISTS requires_reboot BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE atomic_tests
+ADD COLUMN IF NOT EXISTS allowed_runner_groups TEXT;

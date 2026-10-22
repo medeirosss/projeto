@@ -1,0 +1,7 @@
+{
+  "version": "2.7.1",
+  "package_url": "./magi_runner_v2_2.7.1.zip",
+  "sha256": "PUT_PACKAGE_SHA256_HERE",
+  "mandatory": false,
+  "notes": "Example manifest for local update tests. Replace package_url and sha256 with a real package."
+}

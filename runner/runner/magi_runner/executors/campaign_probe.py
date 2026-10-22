@@ -1,0 +1,336 @@
+from __future__ import annotations
+
+import ipaddress
+import json
+import re
+import socket
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from .base import ExecutionResult
+
+
+def _tcp_open(target: str, port: int, timeout: float = 1.2) -> bool:
+    try:
+        with socket.create_connection((target, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _icmp_alive(target: str, timeout_seconds: int) -> bool:
+    """Require a real ICMP Echo Reply from the Windows ping command.
+
+    Windows may return a process status that is not sufficient to distinguish
+    an Echo Reply from messages such as "Destination host unreachable".
+    MAGI Campaign therefore requires the TTL field that is present in a real
+    Echo Reply. No TTL means the candidate is not admitted to the Campaign.
+    """
+    try:
+        ms = max(250, min(1500, int(timeout_seconds * 1000)))
+        p = subprocess.run(
+            ["ping", "-n", "1", "-w", str(ms), target],
+            capture_output=True,
+            text=True,
+            timeout=max(2, timeout_seconds + 1),
+            shell=False,
+        )
+        output = f"{p.stdout or ''}\n{p.stderr or ''}"
+        target_token = str(ipaddress.ip_address(target))
+        echo_reply_from_target = any(
+            "TTL=" in line.upper()
+            and re.search(rf"(?<![0-9.]){re.escape(target_token)}(?![0-9.])", line)
+            for line in output.splitlines()
+        )
+        return p.returncode == 0 and echo_reply_from_target
+    except Exception:
+        return False
+
+
+def _ber_len(n: int) -> bytes:
+    return bytes([n]) if n < 128 else bytes([0x81, n])
+
+
+def _ber(tag: int, content: bytes) -> bytes:
+    return bytes([tag]) + _ber_len(len(content)) + content
+
+
+def _ber_int(n: int) -> bytes:
+    raw = n.to_bytes(max(1, (n.bit_length() + 7) // 8), "big")
+    if raw[0] & 0x80:
+        raw = b"\x00" + raw
+    return _ber(0x02, raw)
+
+
+def _ber_oid(parts: list[int]) -> bytes:
+    first = bytes([40 * parts[0] + parts[1]])
+    out = bytearray(first)
+    for n in parts[2:]:
+        stack = [n & 0x7F]
+        n >>= 7
+        while n:
+            stack.append((n & 0x7F) | 0x80)
+            n >>= 7
+        out.extend(reversed(stack))
+    return _ber(0x06, bytes(out))
+
+
+def _snmp_sysname(target: str, community: str, timeout: float = 1.5) -> tuple[bool, str | None, str | None]:
+    if not community:
+        return False, None, None
+    req_id = 0x4D414749
+    oid = [1, 3, 6, 1, 2, 1, 1, 5, 0]
+    vb = _ber(0x30, _ber_oid(oid) + _ber(0x05, b""))
+    vbl = _ber(0x30, vb)
+    pdu = _ber(0xA0, _ber_int(req_id) + _ber_int(0) + _ber_int(0) + vbl)
+    msg = _ber(0x30, _ber_int(1) + _ber(0x04, community.encode()) + pdu)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(timeout)
+    try:
+        s.sendto(msg, (target, 161))
+        data, _ = s.recvfrom(65535)
+        strings: list[str] = []
+
+        def walk(buf: bytes, start: int = 0, end: int | None = None) -> None:
+            end = len(buf) if end is None else end
+            i = start
+            while i + 2 <= end:
+                tag = buf[i]
+                i += 1
+                length = buf[i]
+                i += 1
+                if length & 0x80:
+                    count = length & 0x7F
+                    if i + count > end:
+                        return
+                    length = int.from_bytes(buf[i : i + count], "big")
+                    i += count
+                if i + length > end:
+                    return
+                val = buf[i : i + length]
+                if tag == 0x04:
+                    try:
+                        txt = val.decode("utf-8").strip()
+                        if txt and txt != community and all(ch.isprintable() for ch in txt):
+                            strings.append(txt)
+                    except Exception:
+                        pass
+                if tag in (0x30, 0xA0, 0xA2):
+                    walk(val, 0, len(val))
+                i += length
+
+        walk(data)
+        hostname = strings[-1] if strings else None
+        return True, hostname, None
+    except Exception as exc:
+        return False, None, str(exc)
+    finally:
+        s.close()
+
+def _read_tlv(buf: bytes, pos: int):
+    if pos + 2 > len(buf): raise ValueError('truncated tlv')
+    tag=buf[pos]; pos+=1; ln=buf[pos]; pos+=1
+    if ln & 0x80:
+        n=ln & 0x7f
+        if n<1 or n>4 or pos+n>len(buf): raise ValueError('invalid length')
+        ln=int.from_bytes(buf[pos:pos+n],'big'); pos+=n
+    if pos+ln>len(buf): raise ValueError('truncated value')
+    return tag,buf[pos:pos+ln],pos+ln
+
+def _decode_oid(raw: bytes)->list[int]:
+    if not raw:return []
+    first=raw[0]; out=[first//40,first%40]; val=0
+    for b in raw[1:]:
+        val=(val<<7)|(b&0x7f)
+        if not (b&0x80): out.append(val); val=0
+    return out
+
+def _snmp_getnext(target:str,community:str,oid:list[int],timeout:float=1.0):
+    req_id=0x4D470001
+    vb=_ber(0x30,_ber_oid(oid)+_ber(0x05,b'')); vbl=_ber(0x30,vb)
+    pdu=_ber(0xA1,_ber_int(req_id)+_ber_int(0)+_ber_int(0)+vbl)
+    msg=_ber(0x30,_ber_int(1)+_ber(0x04,community.encode())+pdu)
+    sock=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);sock.settimeout(timeout)
+    try:
+        sock.sendto(msg,(target,161)); data,_=sock.recvfrom(65535)
+        # Parse nested response: sequence -> version/community/PDU -> request/error/error-index/varbindlist -> varbind.
+        _,root,_=_read_tlv(data,0); pos=0
+        _,_,pos=_read_tlv(root,pos); _,_,pos=_read_tlv(root,pos); _,pduv,pos=_read_tlv(root,pos)
+        q=0; _,_,q=_read_tlv(pduv,q); _,err,q=_read_tlv(pduv,q); _,_,q=_read_tlv(pduv,q)
+        if int.from_bytes(err,'big'): return None,None,None
+        _,vblv,q=_read_tlv(pduv,q); _,vbv,_=_read_tlv(vblv,0)
+        r=0; _,oidraw,r=_read_tlv(vbv,r); vtag,vraw,r=_read_tlv(vbv,r)
+        return _decode_oid(oidraw),vtag,vraw
+    except Exception:return None,None,None
+    finally:sock.close()
+
+def _snmp_walk_strings(target:str,community:str,base:list[int],limit:int=32)->list[str]:
+    cur=list(base); out=[]
+    for _ in range(limit):
+        oid,tag,val=_snmp_getnext(target,community,cur)
+        if not oid or oid[:len(base)]!=base or oid==cur: break
+        cur=oid
+        if tag==0x04:
+            try:
+                txt=val.decode('utf-8',errors='replace').strip().strip('\\x00')
+                if txt and txt not in out and all(ch.isprintable() for ch in txt): out.append(txt[:255])
+            except Exception: pass
+    return out
+
+def _snmp_neighbors(target:str,community:str)->list[dict[str,str]]:
+    # LLDP-MIB lldpRemSysName and Cisco-CDP-MIB cdpCacheDeviceId.
+    sources=[('lldp',[1,0,8802,1,1,2,1,4,1,1,9]),('cdp',[1,3,6,1,4,1,9,9,23,1,2,1,1,6])]
+    found=[]
+    for proto,base in sources:
+        for name in _snmp_walk_strings(target,community,base):
+            found.append({'protocol':proto,'neighbor_name':name})
+    return found
+
+
+class CampaignProbeExecutor:
+    """Cheap existence/service precondition for Attack Campaign.
+
+    ICMP Echo Reply is the mandatory admission gate. Only candidates that
+    answer ping with a real TTL are admitted to the Campaign and then checked
+    for applicable WinRM/SMB/SSH/SNMP services. Credentials are never used as
+    host-discovery mechanisms.
+    """
+
+    name = "campaign_probe"
+
+    def run(self, job: dict[str, Any], workdir: str, timeout_seconds: int) -> ExecutionResult:
+        started = datetime.now(timezone.utc)
+        payload = job.get("payload") or {}
+        target = str(payload.get("target") or job.get("target") or "").strip()
+        ipaddress.ip_address(target)
+
+        enabled = set(payload.get("enabled_vectors") or [])
+
+        # 5.3.10: ICMP is the mandatory admission gate for Campaign.
+        # A candidate that does not answer a real Echo Reply is discarded
+        # immediately. Do not probe ports, SNMP or credentials on it.
+        icmp = _icmp_alive(target, min(2, max(1, timeout_seconds)))
+        if not icmp:
+            finished = datetime.now(timezone.utc)
+            confirmation = "discovery_not_confirmed"
+            metadata = {
+                "target": target,
+                "hostname": None,
+                "alive": False,
+                "icmp": False,
+                "open_ports": [],
+                "applicable_protocols": [],
+                "snmp_confirmed": False,
+                "snmp_error": None,
+                "protocol": "icmp",
+                "relation_type": "discovery",
+                "authenticated": False,
+                "executed_real_test": True,
+                "execution_scope": "campaign_remote",
+                "campaign_context": payload.get("campaign_context") or {},
+                "attack_result": confirmation,
+                "confirmation_status": confirmation,
+                "admission_reason": "no_echo_reply_from_target",
+                "barrier_reason": "No ICMP Echo Reply received from the target IP.",
+                "finding": {
+                    "status": confirmation,
+                    "detected": False,
+                    "message": f"Host {target} descartado: sem ICMP Echo Reply (TTL).",
+                },
+            }
+            Path(workdir, "campaign_probe.json").write_text(
+                json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            return ExecutionResult(
+                status="success",
+                exit_code=0,
+                stdout=json.dumps(metadata, ensure_ascii=False),
+                stderr="",
+                started_at=started.isoformat(),
+                finished_at=finished.isoformat(),
+                duration_seconds=(finished - started).total_seconds(),
+                metadata=metadata,
+            )
+
+        # Only ICMP-confirmed hosts are allowed to proceed to service discovery.
+        ports: list[int] = []
+        if "ssh" in enabled:
+            ports.append(22)
+        if "smb" in enabled:
+            ports.append(445)
+        if "winrm" in enabled:
+            ports.extend([5985, 5986])
+        ports = sorted(set(ports))
+
+        open_ports = [p for p in ports if _tcp_open(target, p, timeout=min(1.2, max(0.4, timeout_seconds / 10)))]
+
+        cred = payload.get("credential") or {}
+        snmp_confirmed = False
+        snmp_hostname = None
+        snmp_error = None
+        snmp_neighbors = []
+        if "snmp_v2c" in enabled and str(cred.get("secret") or ""):
+            snmp_confirmed, snmp_hostname, snmp_error = _snmp_sysname(
+                target, str(cred.get("secret") or ""), timeout=min(1.5, max(0.5, timeout_seconds / 8))
+            )
+            if snmp_confirmed and bool(payload.get("snmp_topology_enabled")):
+                snmp_neighbors = _snmp_neighbors(target, str(cred.get("secret") or ""))
+
+        # ICMP is authoritative for Campaign membership. Protocol checks only
+        # decide which access vectors are applicable after admission.
+        alive = True
+        applicable: list[str] = []
+        if 22 in open_ports and "ssh" in enabled:
+            applicable.append("ssh")
+        if 445 in open_ports and "smb" in enabled:
+            applicable.append("smb")
+        if ({5985, 5986} & set(open_ports)) and "winrm" in enabled:
+            applicable.append("winrm")
+        if snmp_confirmed and "snmp_v2c" in enabled:
+            applicable.append("snmp_v2c")
+
+        finished = datetime.now(timezone.utc)
+        confirmation = "discovery_confirmed" if alive else "discovery_not_confirmed"
+        metadata = {
+            "target": target,
+            "hostname": snmp_hostname,
+            "alive": alive,
+            "icmp": icmp,
+            "open_ports": open_ports,
+            "applicable_protocols": applicable,
+            "snmp_confirmed": snmp_confirmed,
+            "snmp_error": snmp_error,
+            "snmp_neighbors": snmp_neighbors,
+            "network_intelligence": {"lldp_cdp_enabled": bool(payload.get("snmp_topology_enabled")), "neighbor_count": len(snmp_neighbors)},
+            "protocol": "icmp",
+            "relation_type": "discovery",
+            "authenticated": False,
+            "executed_real_test": True,
+            "execution_scope": "campaign_remote",
+            "campaign_context": payload.get("campaign_context") or {},
+            "attack_result": confirmation,
+            "confirmation_status": confirmation,
+            "admission_reason": "icmp_echo_reply_from_target_confirmed",
+            "finding": {
+                "status": confirmation,
+                "detected": alive,
+                "message": (
+                    f"Host {target} detectado; protocolos aplicáveis: {', '.join(applicable) or 'nenhum vetor habilitado'}."
+                    if alive
+                    else f"Host {target} não respondeu ao preflight da Campaign."
+                ),
+            },
+        }
+        Path(workdir, "campaign_probe.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
+        return ExecutionResult(
+            status="success",
+            exit_code=0,
+            stdout=json.dumps(metadata, ensure_ascii=False),
+            stderr="",
+            started_at=started.isoformat(),
+            finished_at=finished.isoformat(),
+            duration_seconds=(finished - started).total_seconds(),
+            metadata=metadata,
+        )
