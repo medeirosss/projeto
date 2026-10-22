@@ -204,3 +204,22 @@ async def api_get_target(target_uuid:str):
 async def api_delete_target(target_uuid:str):
     if not repo.delete_target(target_uuid): raise HTTPException(404,"Ativo não encontrado.")
     return {"success":True}
+
+
+@router.get("/{target_uuid}/services/{protocol}/{port}/alert-policy")
+async def api_get_service_alert_policy(target_uuid:str,protocol:str,port:int):
+    from app.services.security_monitoring_service import get_service_policy
+    target=repo.get_target(target_uuid)
+    if not target:raise HTTPException(404,'Ativo não encontrado')
+    return {'policy':get_service_policy(target_uuid,protocol.lower(),port)}
+
+@router.put("/{target_uuid}/services/{protocol}/{port}/alert-policy")
+async def api_set_service_alert_policy(target_uuid:str,protocol:str,port:int,payload:dict):
+    from app.services.security_monitoring_service import set_service_policy
+    target=repo.get_target(target_uuid)
+    if not target:raise HTTPException(404,'Ativo não encontrado')
+    services=target.get('services') or []
+    if not any(int(x.get('port') or 0)==port and str(x.get('protocol') or 'tcp').lower()==protocol.lower() for x in services):
+        raise HTTPException(404,'Serviço não catalogado para este ativo')
+    try:return {'policy':set_service_policy(target_uuid,target['ip_address'],protocol.lower(),port,payload)}
+    except ValueError as exc:raise HTTPException(400,str(exc))

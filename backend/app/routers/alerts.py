@@ -80,3 +80,15 @@ async def api_alert_execution_result(alert_id: str, payload: Dict[str, Any] = Bo
         return {'success': True, 'alert': alert}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get('/service-monitoring/all')
+async def api_service_monitoring_alerts():
+    from app.services.security_monitoring_service import list_service_alerts
+    return {'alerts':list_service_alerts()}
+
+@router.post('/service-monitoring/{alert_id}/{action}')
+async def api_service_monitoring_action(alert_id:int,action:str):
+    from app.services.security_monitoring_service import service_alert_action
+    try:return service_alert_action(alert_id,action)
+    except ValueError as exc:raise HTTPException(409,str(exc))

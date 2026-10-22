@@ -58,6 +58,29 @@ def ensure_monitoring_schema():
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT security_monitor_alert_status CHECK(status IN ('open','acknowledged','closed'))
         )'''))
+        db.execute(text('''CREATE TABLE IF NOT EXISTS security_service_alert_policies (
+            id BIGSERIAL PRIMARY KEY, target_uuid VARCHAR(128) NOT NULL,
+            ip_address VARCHAR(45) NOT NULL, protocol VARCHAR(8) NOT NULL DEFAULT 'tcp',
+            port INTEGER NOT NULL CHECK(port BETWEEN 1 AND 65535),
+            enabled BOOLEAN NOT NULL DEFAULT TRUE, condition VARCHAR(20) NOT NULL DEFAULT 'unavailable',
+            polls INTEGER NOT NULL DEFAULT 2 CHECK(polls BETWEEN 1 AND 20),
+            cooldown_minutes INTEGER NOT NULL DEFAULT 60 CHECK(cooldown_minutes BETWEEN 0 AND 10080),
+            severity VARCHAR(16) NOT NULL DEFAULT 'warning',
+            last_state VARCHAR(24), consecutive INTEGER NOT NULL DEFAULT 0,
+            last_run_id BIGINT, last_notified_at TIMESTAMP, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(target_uuid,protocol,port))'''))
+        db.execute(text('''CREATE TABLE IF NOT EXISTS security_service_alerts (
+            id BIGSERIAL PRIMARY KEY, service_policy_id BIGINT NOT NULL REFERENCES security_service_alert_policies(id) ON DELETE CASCADE,
+            monitor_run_id BIGINT REFERENCES security_monitor_runs(id) ON DELETE SET NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'open', severity VARCHAR(16) NOT NULL,
+            event_type VARCHAR(40) NOT NULL DEFAULT 'SERVICE_UNAVAILABLE',
+            first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_notified_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            notification_count INTEGER NOT NULL DEFAULT 1,
+            resolved_at TIMESTAMP, acknowledged_at TIMESTAMP,
+            CONSTRAINT service_alert_status CHECK(status IN ('open','acknowledged','closed'))'''))
+        db.execute(text('''CREATE UNIQUE INDEX IF NOT EXISTS service_alert_one_active
+            ON security_service_alerts(service_policy_id) WHERE status IN ('open','acknowledged')'''))
         db.commit()
 
 
@@ -199,6 +222,8 @@ def tick():
             outcome=observed or 'inconclusive'
             db.execute(text('UPDATE security_monitor_service_checks SET status=:s,observed_state=:o,result=CAST(:v AS JSONB) WHERE id=:id'),
                 {'s':outcome,'o':observed,'v':json.dumps({'job_id':item['runner_job_id'],'state':outcome}),'id':item['id']})
+            if observed:
+                _evaluate_service_policies(db, item, observed)
             if not observed:continue
             prior=db.execute(text('''SELECT sc.observed_state FROM security_monitor_service_checks sc
                 JOIN security_monitor_runs r ON r.id=sc.run_id WHERE r.policy_id=:p AND sc.ip_address=:ip
@@ -215,7 +240,7 @@ def tick():
             SELECT e.id,e.policy_id,CASE WHEN e.event_type='HOST_UNREACHABLE' THEN 'warning'
             WHEN e.event_type='RECOVERED' THEN 'info'
             WHEN e.event_type='SERVICE_STATE_CHANGED' THEN 'warning' ELSE 'info' END
-            FROM security_monitor_events e ON CONFLICT(event_id) DO NOTHING'''))
+            FROM security_monitor_events e WHERE e.event_type <> 'SERVICE_STATE_CHANGED' ON CONFLICT(event_id) DO NOTHING'''))
         # Throttle new probes: at most 5 new Runner jobs per scheduler tick.
         pending=db.execute(text('''SELECT ch.id,ch.ip_address,r.id AS run_id FROM security_monitor_checks ch
             JOIN security_monitor_runs r ON r.id=ch.run_id WHERE r.status='running'
@@ -269,6 +294,13 @@ def tick():
                         for port in ports:
                             db.execute(text('''INSERT INTO security_monitor_service_checks(run_id,ip_address,port)
                                 VALUES(:r,:ip,:port) ON CONFLICT DO NOTHING'''),{'r':run_id,'ip':ip,'port':port})
+                    configured=db.execute(text('''SELECT ip_address,port FROM security_service_alert_policies
+                        WHERE enabled=TRUE AND protocol='tcp''')).mappings().all()
+                    for selected in configured:
+                        if selected['ip_address'] in ips:
+                            db.execute(text('''INSERT INTO security_monitor_service_checks(run_id,ip_address,port)
+                                VALUES(:r,:ip,:port) ON CONFLICT DO NOTHING'''),
+                                {'r':run_id,'ip':selected['ip_address'],'port':selected['port']})
                     db.execute(text('UPDATE security_monitor_policies SET next_run_at=CURRENT_TIMESTAMP+(:m * INTERVAL \'1 minute\') WHERE id=:p'),{'m':max(60,due['interval_minutes']),'p':due['id']})
         db.commit()
 
@@ -303,3 +335,96 @@ def update_alert(campaign_uuid: str, alert_id: int, action: str):
             raise ValueError('Alerta inexistente ou não está aberto')
         db.commit()
         return {'success': True, 'alert_id':row['id'], 'status':row['status']}
+
+
+def _evaluate_service_policies(db, item, observed):
+    """Evaluate only one completed observation per policy and run; unknown is not down."""
+    policies=db.execute(text("""SELECT * FROM security_service_alert_policies
+        WHERE ip_address=:ip AND protocol='tcp' AND port=:port AND enabled=TRUE FOR UPDATE"""),
+        {'ip':item['ip_address'],'port':item['port']}).mappings().all()
+    for p in policies:
+        if p['last_run_id']==item['run_id']:
+            continue
+        condition=p['condition']
+        matches=(observed=='closed' if condition=='unavailable' else observed=='open' if condition=='available' else (p['last_state'] is not None and (observed!=p['last_state'] or p['consecutive']>0)))
+        streak=(p['consecutive']+1) if matches and p['last_state']==observed else (1 if matches else 0)
+        db.execute(text("""UPDATE security_service_alert_policies SET last_state=:state,
+            consecutive=:n,last_run_id=:run,updated_at=CURRENT_TIMESTAMP WHERE id=:id"""),
+            {'state':observed,'n':streak,'run':item['run_id'],'id':p['id']})
+        active=db.execute(text("""SELECT * FROM security_service_alerts WHERE service_policy_id=:id
+            AND status IN ('open','acknowledged') ORDER BY id DESC LIMIT 1 FOR UPDATE"""),{'id':p['id']}).mappings().first()
+        if not matches:
+            if active:
+                db.execute(text("""UPDATE security_service_alerts SET status='closed',resolved_at=CURRENT_TIMESTAMP
+                    WHERE id=:id"""),{'id':active['id']})
+            continue
+        if streak < p['polls']:continue
+        if active:
+            if p['cooldown_minutes']>0:
+                db.execute(text("""UPDATE security_service_alerts SET notification_count=notification_count+1,
+                    last_notified_at=CURRENT_TIMESTAMP WHERE id=:id AND
+                    last_notified_at<=CURRENT_TIMESTAMP-(:minutes * INTERVAL '1 minute')"""),
+                    {'id':active['id'],'minutes':p['cooldown_minutes']})
+        else:
+            last=db.execute(text("""SELECT status FROM security_service_alerts WHERE service_policy_id=:p ORDER BY id DESC LIMIT 1"""),{'p':p['id']}).scalar()
+            if last=='closed' and p['consecutive']>p['polls']:
+                continue  # Manually closed; wait for recovery before a new incident.
+            db.execute(text("""INSERT INTO security_service_alerts(service_policy_id,monitor_run_id,severity,event_type)
+                VALUES(:p,:r,:s,:e)"""),{'p':p['id'],'r':item['run_id'],'s':p['severity'],
+                'e':'SERVICE_UNAVAILABLE' if observed=='closed' else 'SERVICE_AVAILABLE'})
+
+
+def get_service_policy(target_uuid, protocol, port):
+    with SessionLocal() as db:
+        row=db.execute(text("""SELECT * FROM security_service_alert_policies
+            WHERE target_uuid=:t AND protocol=:proto AND port=:port"""),
+            {'t':target_uuid,'proto':protocol,'port':port}).mappings().first()
+        return dict(row) if row else None
+
+
+def set_service_policy(target_uuid, ip, protocol, port, payload):
+    if protocol!='tcp':raise ValueError('Somente TCP é suportado pelo Monitoring Light')
+    condition=payload.get('condition','unavailable')
+    severity=payload.get('severity','warning')
+    polls=payload.get('polls',2)
+    cooldown=payload.get('cooldown_minutes',60)
+    enabled=payload.get('enabled',True)
+    if condition not in ('unavailable','available','both') or severity not in ('info','warning','critical'):
+        raise ValueError('Condição ou severidade inválida')
+    if type(polls)!=int or not 1<=polls<=20 or type(cooldown)!=int or not 0<=cooldown<=10080 or type(enabled)!=bool:
+        raise ValueError('Valores de configuração inválidos')
+    if not 1<=port<=65535:raise ValueError('Porta inválida')
+    with SessionLocal() as db:
+        row=db.execute(text("""INSERT INTO security_service_alert_policies
+            (target_uuid,ip_address,protocol,port,enabled,condition,polls,cooldown_minutes,severity)
+            VALUES(:t,:ip,:proto,:port,:enabled,:condition,:polls,:cooldown,:severity)
+            ON CONFLICT(target_uuid,protocol,port) DO UPDATE SET ip_address=EXCLUDED.ip_address,
+            enabled=EXCLUDED.enabled,condition=EXCLUDED.condition,polls=EXCLUDED.polls,
+            cooldown_minutes=EXCLUDED.cooldown_minutes,severity=EXCLUDED.severity,
+            consecutive=0,last_state=NULL,last_run_id=NULL,updated_at=CURRENT_TIMESTAMP
+            RETURNING *"""),{'t':target_uuid,'ip':ip,'proto':protocol,'port':port,'enabled':enabled,
+            'condition':condition,'polls':polls,'cooldown':cooldown,'severity':severity}).mappings().one()
+        db.commit()
+        return dict(row)
+
+
+def list_service_alerts():
+    with SessionLocal() as db:
+        rows=db.execute(text("""SELECT a.*,p.target_uuid,p.ip_address,p.port,p.protocol,p.condition
+            FROM security_service_alerts a JOIN security_service_alert_policies p ON p.id=a.service_policy_id
+            ORDER BY a.id DESC LIMIT 500""")).mappings().all()
+        return [dict(row) for row in rows]
+
+
+def service_alert_action(alert_id,action):
+    if action not in ('acknowledge','close'):raise ValueError('Ação inválida')
+    with SessionLocal() as db:
+        state='acknowledged' if action=='acknowledge' else 'closed'
+        row=db.execute(text("""UPDATE security_service_alerts SET status=:s,
+            acknowledged_at=CASE WHEN :s='acknowledged' THEN CURRENT_TIMESTAMP ELSE acknowledged_at END,
+            resolved_at=CASE WHEN :s='closed' THEN CURRENT_TIMESTAMP ELSE resolved_at END
+            WHERE id=:id AND status='open' RETURNING id,status"""),
+            {'s':state,'id':alert_id}).mappings().first()
+        if not row:raise ValueError('Alerta inexistente ou já tratado')
+        db.commit()
+        return dict(row)

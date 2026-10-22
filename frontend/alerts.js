@@ -581,3 +581,8 @@ async function bootAlerts(){
 }
 
 bootAlerts();
+
+
+async function loadServiceAlerts(){const table=document.getElementById('serviceAlertsRows');if(!table)return;try{const r=await fetch('/api/alerts/service-monitoring/all',{cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);const d=await r.json();table.innerHTML=(d.alerts||[]).map(a=>`<tr><td>${esc(a.ip_address)}</td><td>${esc(a.protocol)}:${Number(a.port)}</td><td>${esc(a.event_type)}</td><td>${esc(a.severity)}</td><td>${esc(a.status)}</td><td>${Number(a.notification_count||1)}</td><td>${esc(a.last_notified_at||'—')}</td><td>${a.status==='open'?`<button class="btn secondary btn-sm" onclick="manageServiceAlert(${Number(a.id)},'acknowledge')">Reconhecer</button> <button class="btn secondary btn-sm" onclick="manageServiceAlert(${Number(a.id)},'close')">Encerrar</button>`:'—'}</td></tr>`).join('')||'<tr><td colspan="8">Nenhum alerta de serviço registrado.</td></tr>'}catch(e){table.innerHTML=`<tr><td colspan="8">${esc(e.message)}</td></tr>`}}
+async function manageServiceAlert(id,action){try{const r=await fetch(`/api/alerts/service-monitoring/${id}/${action}`,{method:'POST'});if(!r.ok)throw Error(await r.text());await loadServiceAlerts()}catch(e){alert(e.message)}}
+document.addEventListener('DOMContentLoaded',()=>{loadServiceAlerts()});

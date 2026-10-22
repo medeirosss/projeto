@@ -164,7 +164,7 @@
       <div class="alert info-banner">Exibe horário de recebimento, horário de resolução e se o encerramento ocorreu manualmente ou via playbook.</div>
       <div class="card alerts-card"><div class="card-header">Histórico resolvido</div><div class="table-wrap"><table><thead><tr><th>Alerta</th><th>Recebido em</th><th>Resolvido em</th><th>Forma de resolução</th><th>Evento</th><th>MITRE</th><th>NIST</th><th>Status</th></tr></thead><tbody id="alertsResolvedTable"></tbody></table></div></div>
     </section>
-  </main>
+  <section class="card alerts-card" id="serviceAlertsSection" style="margin:20px 0"><div class="card-header">Alertas de serviços · Monitoring</div><div class="card-body"><p>Alertas configurados em Ativos → Ativos Analisados → Serviços.</p><button class="btn secondary btn-sm" onclick="loadServiceAlerts()">Atualizar alertas de serviços</button><div class="table-wrap"><table><thead><tr><th>Ativo</th><th>Serviço</th><th>Condição</th><th>Severidade</th><th>Estado</th><th>Notificações</th><th>Última notificação</th><th>Ação</th></tr></thead><tbody id="serviceAlertsRows"><tr><td colspan="8">Carregando...</td></tr></tbody></table></div></div></section></main>
 </div>
 <script src="/assets/common.js"></script><script src="/assets/alerts.js"></script>
 </body></html>
