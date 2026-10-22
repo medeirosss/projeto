@@ -1,0 +1,20 @@
+/* Shared controls, cards, tables, dialogs and branding */
+body.centric-page :is(.card,.modern-card,.kpi-card,.metric-card,.panel,.form-card,.scan-config-section,.pipeline-panel,.campaign-detail,.ap-panel){background:var(--magi-panel);color:var(--magi-text);border:1px solid var(--magi-border);border-radius:var(--magi-radius);box-shadow:none}
+body.centric-page :is(input:not([type=checkbox]):not([type=radio]),select,textarea){background:var(--magi-elevated)!important;color:var(--magi-text)!important;border:1px solid var(--magi-border)!important;border-radius:9px!important}
+body.centric-page :is(button,.btn){border-radius:9px}
+body.centric-page :is(.btn.primary,button.primary){background:var(--magi-accent)!important;color:#101820!important;border-color:transparent!important}
+body.centric-page :is(button,a,input,select,textarea):focus-visible{outline:2px solid var(--magi-accent);outline-offset:2px}
+body.centric-page table{color:var(--magi-text)}body.centric-page th{background:var(--magi-elevated)!important;color:var(--magi-muted)!important;border-bottom:1px solid var(--magi-border)}body.centric-page td{border-bottom:1px solid var(--magi-border)}
+body.centric-page .magi-brand-open{position:static!important;inset:auto!important;z-index:auto!important;display:inline-flex!important;align-items:center;justify-content:center;min-height:36px;margin:0;background:var(--magi-elevated)!important;color:var(--magi-accent)!important;border:1px solid var(--magi-border)!important;box-shadow:none!important;white-space:nowrap;padding:8px 12px}
+body.centric-page .magi-brand-dialog{position:fixed!important;inset:0!important;z-index:2147483000!important;display:none;align-items:center;justify-content:center;background:#000b;padding:20px}
+body.centric-page .magi-brand-dialog.open{display:flex!important}
+body.centric-page .magi-brand-panel{width:min(520px,100%);max-height:90vh;overflow:auto;background:var(--magi-panel);color:var(--magi-text);border:1px solid var(--magi-border);border-radius:16px;padding:24px;box-shadow:var(--magi-shadow)}
+body.centric-page .magi-brand-panel label{display:block;margin-top:14px;color:var(--magi-muted)}
+body.centric-page .magi-brand-panel input[type=text]{width:100%;padding:10px}
+body.centric-page .magi-brand-panel .magi-brand-swatches{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
+body.centric-page .magi-brand-panel .magi-brand-swatch{width:38px;height:38px;border-radius:50%;border:2px solid #fff5;cursor:pointer}
+body.centric-page .magi-brand-panel .magi-brand-swatch.selected{outline:2px solid var(--magi-text);outline-offset:3px}
+body.centric-page .magi-brand-panel .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+body.centric-page .magi-brand-panel .actions button{padding:10px 14px;border:1px solid var(--magi-border);background:var(--magi-elevated);color:var(--magi-text)}
+body.centric-page .magi-brand-panel .actions .save{background:var(--magi-accent);color:#101820}
+body.centric-page .magi-build-id{font-size:10px;opacity:.6;white-space:nowrap}

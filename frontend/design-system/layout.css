@@ -1,0 +1,19 @@
+/* Shared application shell across every authenticated module */
+html,body.centric-page{background:var(--magi-bg)!important;color:var(--magi-text)!important;min-height:100%;}
+body.centric-page::before{content:none!important}
+body.centric-page>.centric-shell,body.centric-page .centric-main,body.centric-page .report-layout,body.centric-page .page-content{background:transparent!important;background-image:none!important}
+body.centric-page .topbar,body.centric-page .modern-topbar{background:var(--magi-panel)!important;border-bottom:1px solid var(--magi-border)!important;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:64px;height:auto;padding:10px 18px;position:relative;z-index:10;flex-wrap:wrap}
+body.centric-page .top-left{display:flex;align-items:center;gap:16px;flex:1 1 auto;min-width:0;flex-wrap:wrap}
+body.centric-page .top-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+body.centric-page .menu{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+body.centric-page .menu a{border-radius:9px;padding:9px 11px;color:var(--magi-muted);border:1px solid transparent}
+body.centric-page .menu a.active,body.centric-page .menu a:hover{color:var(--magi-accent);background:color-mix(in srgb,var(--magi-accent) 10%,transparent);border-color:color-mix(in srgb,var(--magi-accent) 25%,transparent)}
+body.centric-page .centric-sidebar,body.centric-page .report-sidebar,body.centric-page .attack-subnav{background:var(--magi-panel)!important;border-color:var(--magi-border)!important}
+body.centric-page .attack-workspace{display:grid;grid-template-columns:minmax(175px,215px) minmax(0,1fr);gap:var(--magi-gap);align-items:start}
+body.centric-page .attack-workspace-content{min-width:0}
+body.centric-page .attack-subnav{border:1px solid var(--magi-border);border-radius:var(--magi-radius);padding:12px;position:sticky;top:16px}
+body.centric-page .attack-nav-item{display:block;width:100%;text-align:left;border-radius:9px;color:var(--magi-muted)}
+body.centric-page .panel,body.centric-page .metric-card,body.centric-page .ap-panel,body.centric-page .ap-kpis>div{background:var(--magi-panel);border:1px solid var(--magi-border);border-radius:var(--magi-radius);color:var(--magi-text)}
+body.centric-page .page-content{max-width:100%;padding:20px clamp(14px,2vw,32px)}
+body.centric-page .eyebrow{display:none}
+@media(max-width:900px){body.centric-page .attack-workspace{grid-template-columns:1fr}body.centric-page .attack-subnav{position:static;display:flex;flex-wrap:wrap;gap:6px}body.centric-page .attack-subnav h3{width:100%}body.centric-page .attack-nav-item{width:auto}body.centric-page .topbar{align-items:flex-start}}
