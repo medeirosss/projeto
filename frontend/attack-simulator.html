@@ -18,7 +18,7 @@
     .ap-evidence{max-height:420px;overflow:auto}
     .ap-badge{display:inline-block;padding:2px 7px;border:1px solid currentColor;border-radius:999px;font-size:12px}
   </style>
-<link rel="stylesheet" href="/assets/design-system/tokens.css?v=6.0.1"><link rel="stylesheet" href="/assets/design-system/layout.css?v=6.0.1"><link rel="stylesheet" href="/assets/design-system/components.css?v=6.1.0">
+<link rel="stylesheet" href="/assets/design-system/tokens.css?v=6.1.1"><link rel="stylesheet" href="/assets/design-system/layout.css?v=6.1.1"><link rel="stylesheet" href="/assets/design-system/components.css?v=6.1.1">
 </head>
 <body class="centric-page">
   <div class="topbar modern-topbar">
@@ -35,7 +35,6 @@
         <h1>MAGI Attack Simulator</h1>
         <p>Execuções pontuais MAGI Native e Metasploit, Campaign controlada e histórico rastreável em áreas separadas.</p>
       </div>
-      <button id="syncAttackCatalog" class="btn secondary">Sincronizar catálogo</button>
     </section>
 
     <div class="attack-workspace">
@@ -49,16 +48,9 @@
       </aside>
       <div class="attack-workspace-content">
 
-    <section class="grid-cards" id="attackSummaryCards" data-attack-view="attack">
-      <article class="metric-card"><span>Simulações</span><strong id="attackSimulationCount">--</strong></article>
-      <article class="metric-card"><span>Modo</span><strong>SAFE</strong></article>
-      <article class="metric-card"><span>Execução</span><strong>Runner remoto</strong></article>
-      <article class="metric-card"><span>Metasploit</span><strong id="metasploitProviderStatus">Verificando...</strong></article>
-    </section>
-
-    <section class="panel" data-attack-view="attack">
+    <section class="panel atk-main-panel" data-attack-view="attack">
       <div class="panel-header">
-        <div><h2>Catálogo de simulações</h2><p>Selecione uma técnica e consulte os detalhes antes de planejar ou executar. Metasploit é opcional por Runner.</p></div>
+        <div><h2>Catálogo de simulações</h2><p>Selecione uma técnica e consulte os detalhes antes de executar. Metasploit é opcional por Runner.</p></div>
       </div>
       <h3 class="atk-section-heading">Alvos e credenciais</h3>
       <div class="form-grid atk-target-grid">
@@ -96,7 +88,7 @@
         <span id="attackCatalogPageLabel">Página 1 de 1</span>
         <button class="btn secondary btn-sm" id="attackCatalogNext" type="button" disabled>Próxima</button>
       </div>
-      <pre id="attackResult" class="result-box">Selecione uma simulação para planejar ou executar.</pre>
+      <pre id="attackResult" class="result-box">Selecione uma simulação para executar.</pre>
     </section>
 
 
@@ -175,7 +167,7 @@
       </div>
     </div>
   </main>
-  <script src="/assets/common.js?v=6.1.0"></script>
-  <script src="/assets/attack-simulator.js?v=6.1.0"></script>
+  <script src="/assets/common.js?v=6.1.1"></script>
+  <script src="/assets/attack-simulator.js?v=6.1.1"></script>
 </body>
 </html>

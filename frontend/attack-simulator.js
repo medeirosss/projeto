@@ -28,6 +28,17 @@ let attackCatalogRows=[];
 let attackCatalogPage=1;
 let attackCatalogPageSize=25;
 let attackCatalogRequest=0;
+// MAGI 6.1.1: small local SVG glyphs; no external assets or brand assumptions.
+const magiGlyphs={
+  monitor:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>',
+  network:'<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-5h14v5"/>',
+  server:'<rect x="3" y="3" width="18" height="8" rx="2"/><rect x="3" y="13" width="18" height="8" rx="2"/><path d="M7 7h.01M7 17h.01M11 7h7M11 17h7"/>',
+  globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-5 5-5 13 0 18M12 3c5 5 5 13 0 18"/>',
+  shield:'<path d="M12 2 4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>'
+};
+function magiIcon(name){return `<svg class="magi-context-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${magiGlyphs[name]||magiGlyphs.shield}</svg>`;}
+function attackGlyph(r){const c=String(r.category||'').toLowerCase(), k=String(r.task_key||'').toLowerCase(), n=String(r.name||'').toLowerCase();if(c.includes('application')||/http|web|url/.test(n))return 'globe';if(/ldap|ldaps|sql|database/.test(n))return 'server';if(/kerberos|active directory|windows|endpoint/.test(c+' '+n)&&!/reachability|protocol|tcp/.test(n))return 'monitor';if(/network|reachability|tcp|snmp|ssh|rdp|winrm/.test(c+' '+n+' '+k))return 'network';return 'shield';}
+function addAttackFieldIcons(){const glyphs={attackTarget:'monitor',attackUrl:'globe',attackHostB:'network',attackCredential:'shield',attackCategory:'server',attackSearch:'globe',attackProvider:'server',attackTechniqueParameter:'shield'};Object.entries(glyphs).forEach(([id,glyph])=>{const el=document.getElementById(id);if(!el||el.parentElement?.querySelector('.magi-field-icon'))return;const wrap=document.createElement('span');wrap.className='magi-input-wrap';el.parentNode.insertBefore(wrap,el);wrap.appendChild(el);const i=document.createElement('span');i.className='magi-field-icon';i.innerHTML=magiIcon(glyph);wrap.insertBefore(i,el);});}
 function renderAttackCatalog(){
   const table=document.getElementById('attackCatalogTable');if(!table)return;
   const count=attackCatalogRows.length;
@@ -39,14 +50,13 @@ function renderAttackCatalog(){
     const meta=r.metadata||{},provider=providerOfTask(r);
     const providerBadge=provider==='metasploit'?'<span class="badge badge-muted">Metasploit</span>':'<span class="badge badge-ok">MAGI Native</span>';
     const technical=JSON.stringify(r.detection||{},null,2);
-    return `<tr><td class="atk-catalog-name"><strong>${esc(r.name||r.task_key)}</strong><small>${esc(r.description||'Sem descrição disponível')}</small><details class="atk-technical"><summary>Detalhes técnicos</summary><dl><dt>Identificador</dt><dd>${esc(r.task_key)}</dd><dt>Fase</dt><dd>${esc(meta.attack_phase||'Não informada')}</dd><dt>Requer credencial</dt><dd>${meta.credential_required?'Sim':'Não'}</dd></dl><pre>${esc(technical)}</pre></details></td><td>${providerBadge}</td><td>${esc(r.category)}</td><td>${badge(r.impact)}</td><td class="atk-catalog-actions"><button class="btn secondary btn-sm atk-plan" data-id="${esc(r.id)}">Planejar</button><button class="btn primary btn-sm atk-run" data-id="${esc(r.id)}">Executar</button></td></tr>`;
+    return `<tr><td class="atk-catalog-name"><div class="magi-attack-title"><span class="magi-attack-icon">${magiIcon(attackGlyph(r))}</span><div><strong>${esc(r.name||r.task_key)}</strong><small>${esc(r.description||'Sem descrição disponível')}</small><details class="atk-technical"><summary>Detalhes técnicos</summary><dl><dt>Identificador</dt><dd>${esc(r.task_key)}</dd><dt>Fase</dt><dd>${esc(meta.attack_phase||'Não informada')}</dd><dt>Requer credencial</dt><dd>${meta.credential_required?'Sim':'Não'}</dd></dl><pre>${esc(technical)}</pre></details></div></div></td><td>${providerBadge}</td><td>${esc(r.category)}</td><td>${badge(r.impact)}</td><td class="atk-catalog-actions"><button class="btn primary btn-sm atk-run" data-id="${esc(r.id)}">Executar</button></td></tr>`;
   }).join('')||'<tr><td colspan="5">Nenhuma simulação encontrada para os filtros atuais.</td></tr>';
   const info=document.getElementById('attackCatalogPaginationInfo');
   if(info)info.textContent=count?`Exibindo ${start+1}–${Math.min(start+attackCatalogPageSize,count)} de ${count} simulações`:'Nenhuma simulação';
   const page=document.getElementById('attackCatalogPageLabel');if(page)page.textContent=`Página ${attackCatalogPage} de ${pages}`;
   const prev=document.getElementById('attackCatalogPrev');if(prev)prev.disabled=attackCatalogPage<=1;
   const next=document.getElementById('attackCatalogNext');if(next)next.disabled=attackCatalogPage>=pages;
-  table.querySelectorAll('.atk-plan').forEach(b=>b.addEventListener('click',()=>runAttack(b.dataset.id,true)));
   table.querySelectorAll('.atk-run').forEach(b=>b.addEventListener('click',()=>runAttack(b.dataset.id,false)));
 }
 async function loadCatalog(){
@@ -160,7 +170,7 @@ function updateAttackTargetFields(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  buildHeader('attack');loadSummary();loadCredentials();loadCatalog();loadHistory();loadProviderStatus();updateAttackTargetFields();
+  buildHeader('attack');addAttackFieldIcons();loadSummary();loadCredentials();loadCatalog();loadHistory();loadProviderStatus();updateAttackTargetFields();
   document.getElementById('attackSearch').addEventListener('input',loadCatalog);
   document.getElementById('attackCategory').addEventListener('change',()=>{loadCatalog();updateAttackTargetFields();});
   document.getElementById('attackProvider')?.addEventListener('change',loadCatalog);
@@ -168,7 +178,6 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('attackCatalogNext')?.addEventListener('click',()=>{attackCatalogPage++;renderAttackCatalog();});
   document.getElementById('attackCatalogPageSize')?.addEventListener('change',e=>{attackCatalogPageSize=Number(e.target.value)||25;attackCatalogPage=1;renderAttackCatalog();});
   document.getElementById('refreshAttackHistory').onclick=loadHistory;
-  document.getElementById('syncAttackCatalog').onclick=async()=>{await syncCatalog();await loadProviderStatus();};
   document.querySelectorAll('.attack-nav-item').forEach(b=>b.onclick=()=>switchAttackView(b.dataset.view));
   document.querySelectorAll('.history-log-tab').forEach(b=>b.onclick=()=>{activeHistoryLogTab=b.dataset.logTab;renderHistoryLog();});
   const closeLog=document.getElementById('closeAttackHistoryLog');if(closeLog)closeLog.onclick=()=>{document.getElementById('attackHistoryLogPanel').style.display='none';};

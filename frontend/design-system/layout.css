@@ -17,3 +17,10 @@ body.centric-page .panel,body.centric-page .metric-card,body.centric-page .ap-pa
 body.centric-page .page-content{max-width:100%;padding:20px clamp(14px,2vw,32px)}
 body.centric-page .eyebrow{display:none}
 @media(max-width:900px){body.centric-page .attack-workspace{grid-template-columns:1fr}body.centric-page .attack-subnav{position:static;display:flex;flex-wrap:wrap;gap:6px}body.centric-page .attack-subnav h3{width:100%}body.centric-page .attack-nav-item{width:auto}body.centric-page .topbar{align-items:flex-start}}
+
+
+/* MAGI 6.1.1: attack workspace matches the shared full-height sidebar shell */
+body.centric-page .attack-workspace{align-items:stretch!important;min-height:calc(100vh - 165px)}
+body.centric-page .attack-subnav{position:relative;top:auto;align-self:stretch;min-height:100%;box-sizing:border-box;background:var(--magi-panel)!important;border-radius:0 0 var(--magi-radius) var(--magi-radius)}
+body.centric-page .attack-workspace-content{min-width:0}
+@media(max-width:900px){body.centric-page .attack-workspace{min-height:0}body.centric-page .attack-subnav{min-height:0;border-radius:var(--magi-radius)}}
