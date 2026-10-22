@@ -78,7 +78,8 @@ def ensure_monitoring_schema():
             last_notified_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             notification_count INTEGER NOT NULL DEFAULT 1,
             resolved_at TIMESTAMP, acknowledged_at TIMESTAMP,
-            CONSTRAINT service_alert_status CHECK(status IN ('open','acknowledged','closed'))'''))
+            CONSTRAINT service_alert_status CHECK(status IN ('open','acknowledged','closed'))
+        )'''))
         db.execute(text('''CREATE UNIQUE INDEX IF NOT EXISTS service_alert_one_active
             ON security_service_alerts(service_policy_id) WHERE status IN ('open','acknowledged')'''))
         db.commit()
