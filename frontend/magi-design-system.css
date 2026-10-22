@@ -9,3 +9,20 @@ body{background:var(--bg);color:var(--text);font-family:Inter,"Segoe UI",Arial,s
 input:not([type=checkbox]):not([type=radio]),select,textarea,.field input,.field select,.report-search-box input,.top-right select{background:var(--magi-input)!important;color:var(--magi-text)!important;border:1px solid var(--magi-border)!important;border-radius:9px!important;min-height:36px}input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button,.btn,.pagination button,.icon-button{border-radius:9px}.btn.primary,button.primary{background:var(--accent)!important;color:#0a1418!important;border-color:transparent!important}table,.modern-table{color:var(--text)}th,.modern-table th{background:#14222b!important;color:#aebec7!important;border-bottom:1px solid var(--border)}td,.modern-table td{border-bottom:1px solid var(--border);color:var(--text)}tbody tr:hover{background:rgba(198,255,87,.04)}.pagination button{background:var(--magi-input);color:var(--text);border:1px solid var(--border)}.badge,.asset-badge{border-radius:999px}
 @media(max-width:900px){.topbar{align-items:flex-start;flex-wrap:wrap}.menu{max-width:100%;overflow-x:auto}.report-layout{grid-template-columns:1fr}.report-sidebar{min-height:unset}}
+
+/* 6.0.0 H1: unified background on every module, no accidental radial stain */
+html,body,body.centric-page,body.centric-page[data-theme="dark"],.centric-shell,.centric-main,.report-layout {background:#080f14!important;background-image:none!important;}
+body.centric-page[data-theme="light"],body.centric-page[data-theme="light"] .centric-shell {background:#f4f7f8!important;}
+/* Deliberate ambient highlight, identical across all screens */
+body.centric-page[data-theme="dark"]::before{content:"";position:fixed;top:0;right:0;width:55vw;height:310px;pointer-events:none;z-index:0;background:radial-gradient(ellipse at top right,color-mix(in srgb,var(--accent) 9%,transparent),transparent 72%);}
+body.centric-page>*{position:relative;z-index:1;}
+.magi-brand-open{position:fixed;right:18px;bottom:18px;z-index:1200;background:var(--magi-panel);border:1px solid var(--magi-border);color:var(--magi-text);border-radius:12px;padding:11px 15px;cursor:pointer;box-shadow:0 8px 30px #0007;}
+.magi-brand-dialog{position:fixed;inset:0;z-index:1300;display:none;align-items:center;justify-content:center;background:#000a;padding:20px;}
+.magi-brand-dialog.open{display:flex;}
+.magi-brand-panel{background:#111d25;color:#edf4f5;border:1px solid #344650;border-radius:18px;width:min(450px,100%);padding:24px;box-shadow:0 25px 70px #0009;}
+.magi-brand-swatches{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0;}
+.magi-brand-swatch{width:38px;height:38px;border-radius:50%;border:2px solid #fff4;cursor:pointer;}
+.magi-brand-swatch.selected{outline:2px solid #fff;outline-offset:3px;}
+.magi-brand-panel .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;}
+.magi-brand-panel button.action{background:#1b2b34;color:white;border:1px solid #3a4d55;padding:9px 15px;border-radius:9px;cursor:pointer;}
+.magi-brand-panel button.action.save{background:var(--accent);color:#0b1418;border-color:transparent;}

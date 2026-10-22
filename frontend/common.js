@@ -179,3 +179,27 @@ async function bindUserMenu(){
 }
 
 document.addEventListener('DOMContentLoaded', ()=>{ bindThemeToggle(); initializeBranding(); bindUserMenu(); });
+
+
+// MAGI 6.0.0 H1 — usable global branding control, including legacy pages.
+function initializeMagiBrandControl(){
+  if(document.getElementById('magiBrandOpen'))return;
+  const trigger=document.createElement('button');trigger.id='magiBrandOpen';trigger.className='magi-brand-open';trigger.type='button';trigger.textContent='⚙ Personalizar tema';
+  trigger.title='Alterar cor principal do MAGI';document.body.appendChild(trigger);
+  const modal=document.createElement('div');modal.className='magi-brand-dialog';modal.id='magiBrandDialog';
+  modal.innerHTML=`<div class="magi-brand-panel" role="dialog" aria-modal="true" aria-labelledby="magiBrandTitle"><h2 id="magiBrandTitle">Personalização de tema</h2><p>Escolha a cor principal da interface. As cores de severidade não serão alteradas.</p><div class="magi-brand-swatches" id="magiBrandSwatches"></div><label for="magiBrandCustom">Cor personalizada</label><input type="color" id="magiBrandCustom" value="#c6ff57" style="width:80px;display:block;margin-top:8px"><div class="actions"><button class="action" type="button" id="magiBrandCancel">Cancelar</button><button class="action save" type="button" id="magiBrandSave">Salvar cor</button></div></div>`;
+  document.body.appendChild(modal);
+  const colors=['#c6ff57','#2998ff','#a855f7','#ff983f','#ff4858','#ec46b7','#00d5e8'];
+  const swatches=modal.querySelector('#magiBrandSwatches');const picker=modal.querySelector('#magiBrandCustom');
+  let previous='#c6ff57',selected=previous;
+  const render=()=>{swatches.querySelectorAll('button').forEach(b=>b.classList.toggle('selected',b.dataset.color.toLowerCase()===selected.toLowerCase()));picker.value=selected;setAccentColor(selected);};
+  colors.forEach(color=>{const b=document.createElement('button');b.type='button';b.className='magi-brand-swatch';b.dataset.color=color;b.style.background=color;b.setAttribute('aria-label','Cor '+color);b.addEventListener('click',()=>{selected=color;render();});swatches.appendChild(b);});
+  trigger.addEventListener('click',()=>{previous=localStorage.getItem('centric-accent-color')||getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#c6ff57';selected=/^#[0-9a-f]{6}$/i.test(previous)?previous:'#c6ff57';render();modal.classList.add('open');});
+  picker.addEventListener('input',()=>{selected=picker.value;render();});
+  const close=(save)=>{if(save){localStorage.setItem('centric-accent-color',selected);}else{setAccentColor(previous);}modal.classList.remove('open');};
+  modal.querySelector('#magiBrandCancel').addEventListener('click',()=>close(false));
+  modal.querySelector('#magiBrandSave').addEventListener('click',()=>close(true));
+  modal.addEventListener('click',e=>{if(e.target===modal)close(false);});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&modal.classList.contains('open'))close(false);});
+}
+document.addEventListener('DOMContentLoaded',initializeMagiBrandControl);
