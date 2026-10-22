@@ -332,7 +332,18 @@ async function monitorCampaign(id){
    const url=`/api/security-monitoring/campaigns/${encodeURIComponent(id)}`;
    const d=await api(url);
    const lines=(d.events||[]).slice(0,15).map(e=>`${e.created_at||''} · ${e.ip_address} · ${e.event_type}`);
-   out.textContent=`Monitoring: ${d.enabled?'ATIVO':'DESATIVADO'}\nIntervalo: 60 min · Light · Sem autenticação · 2 confirmações\nExecuções: ${(d.runs||[]).length} (últimas 20)\nEventos:\n${lines.join('\n')||'Nenhum evento confirmado'}`;
+   const alertLines=(d.alerts||[]).slice(0,10).map(a=>`#${a.id} · ${a.severity} · ${a.status} · ${a.ip_address} · ${a.event_type}`);
+   out.textContent=`Alertas (últimos 10):\n${alertLines.join('\n')||'Nenhum'}\n\nMonitoring: ${d.enabled?'ATIVO':'DESATIVADO'}\nIntervalo: 60 min · Light · Sem autenticação · 2 confirmações\nExecuções: ${(d.runs||[]).length} (últimas 20)\nEventos:\n${lines.join('\n')||'Nenhum evento confirmado'}`;
+   const openAlerts=(d.alerts||[]).filter(a=>a.status==='open');
+   if(openAlerts.length && confirm(`Há ${openAlerts.length} alertas abertos. Gerenciar um alerta agora?`)){
+     const selected=prompt('ID do alerta aberto (consulte a lista acima):');
+     const alert=openAlerts.find(a=>String(a.id)===String(selected));
+     if(!alert){out.textContent='ID de alerta aberto inválido.\n'+out.textContent;return;}
+     const action=confirm('OK = Reconhecer alerta; Cancelar = Encerrar alerta')?'acknowledge':'close';
+     await api(`${url}/alerts/${alert.id}/${action}`,{method:'POST'});
+     out.textContent=`Alerta #${alert.id}: ${action==='acknowledge'?'reconhecido':'encerrado'}.\n`+out.textContent;
+     return;
+   }
    if(d.enabled && confirm('Executar Verificar agora?\nOK = iniciar verificação manual.\nCancelar = continuar para as opções do Monitoring.')){
      const manual=await api(`${url}/verify-now`,{method:'POST'});
      out.textContent=`${manual.message}\n`+out.textContent;

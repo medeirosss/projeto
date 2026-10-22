@@ -47,6 +47,17 @@ def ensure_monitoring_schema():
             runner_job_id BIGINT REFERENCES runner_jobs(id) ON DELETE SET NULL,
             status VARCHAR(24) NOT NULL DEFAULT 'queued', observed_state VARCHAR(24),
             result JSONB, UNIQUE(run_id,ip_address,port,protocol))'''))
+        db.execute(text('''CREATE TABLE IF NOT EXISTS security_monitor_alerts (
+            id BIGSERIAL PRIMARY KEY,
+            event_id BIGINT NOT NULL UNIQUE REFERENCES security_monitor_events(id) ON DELETE CASCADE,
+            policy_id BIGINT NOT NULL REFERENCES security_monitor_policies(id) ON DELETE CASCADE,
+            status VARCHAR(20) NOT NULL DEFAULT 'open',
+            severity VARCHAR(16) NOT NULL DEFAULT 'warning',
+            acknowledged_at TIMESTAMP, closed_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT security_monitor_alert_status CHECK(status IN ('open','acknowledged','closed'))
+        )'''))
         db.commit()
 
 
@@ -131,10 +142,14 @@ def status(campaign_uuid):
     with SessionLocal() as db:
         campaign=_campaign(db,campaign_uuid)
         policy=db.execute(text('SELECT * FROM security_monitor_policies WHERE campaign_id=:c'),{'c':campaign['id']}).mappings().first()
-        if not policy:return {'success':True,'enabled':False,'interval_minutes':60,'mode':'light','authenticated':False,'confirmations':2,'runs':[],'events':[]}
+        if not policy:return {'success':True,'enabled':False,'interval_minutes':60,'mode':'light','authenticated':False,'confirmations':2,'runs':[],'events':[],'alerts':[]}
         runs=db.execute(text('SELECT id,baseline_id,status,started_at,finished_at,summary FROM security_monitor_runs WHERE policy_id=:p ORDER BY id DESC LIMIT 20'),{'p':policy['id']}).mappings().all()
         events=db.execute(text('SELECT id,run_id,ip_address,event_type,details,created_at FROM security_monitor_events WHERE policy_id=:p ORDER BY id DESC LIMIT 100'),{'p':policy['id']}).mappings().all()
-        return {'success':True,'enabled':policy['enabled'],'interval_minutes':policy['interval_minutes'],'mode':policy['mode'],'authenticated':policy['authenticated'],'confirmations':policy['confirmations'],'next_run_at':policy['next_run_at'],'runs':[dict(r) for r in runs],'events':[dict(r) for r in events]}
+        alerts=db.execute(text('''SELECT a.id,a.event_id,a.status,a.severity,a.created_at,a.acknowledged_at,a.closed_at,
+            e.ip_address,e.event_type,e.details FROM security_monitor_alerts a
+            JOIN security_monitor_events e ON e.id=a.event_id WHERE a.policy_id=:p
+            ORDER BY a.id DESC LIMIT 100'''),{'p':policy['id']}).mappings().all()
+        return {'success':True,'enabled':policy['enabled'],'interval_minutes':policy['interval_minutes'],'mode':policy['mode'],'authenticated':policy['authenticated'],'confirmations':policy['confirmations'],'next_run_at':policy['next_run_at'],'runs':[dict(r) for r in runs],'events':[dict(r) for r in events],'alerts':[dict(a) for a in alerts]}
 
 
 def _ips(snapshot):
@@ -195,6 +210,12 @@ def tick():
                 db.execute(text('''INSERT INTO security_monitor_events(policy_id,run_id,ip_address,event_type,details)
                     VALUES(:p,:r,:ip,'SERVICE_STATE_CHANGED',CAST(:d AS JSONB)) ON CONFLICT DO NOTHING'''),
                     {'p':item['policy_id'],'r':item['run_id'],'ip':item['ip_address'],'d':json.dumps(details)})
+        # Materialize each confirmed event once; no external notifications.
+        db.execute(text('''INSERT INTO security_monitor_alerts(event_id,policy_id,severity)
+            SELECT e.id,e.policy_id,CASE WHEN e.event_type='HOST_UNREACHABLE' THEN 'warning'
+            WHEN e.event_type='RECOVERED' THEN 'info'
+            WHEN e.event_type='SERVICE_STATE_CHANGED' THEN 'warning' ELSE 'info' END
+            FROM security_monitor_events e ON CONFLICT(event_id) DO NOTHING'''))
         # Throttle new probes: at most 5 new Runner jobs per scheduler tick.
         pending=db.execute(text('''SELECT ch.id,ch.ip_address,r.id AS run_id FROM security_monitor_checks ch
             JOIN security_monitor_runs r ON r.id=ch.run_id WHERE r.status='running'
@@ -262,3 +283,23 @@ def _interpret(job_status,result):
     if any(isinstance(h,dict) and str(h.get('state') or h.get('status') or '').lower() in ('up','online') for h in hosts):return 'up'
     if hosts and all(isinstance(h,dict) and str(h.get('state') or h.get('status') or '').lower() in ('down','offline') for h in hosts):return 'down'
     return 'inconclusive'
+
+
+def update_alert(campaign_uuid: str, alert_id: int, action: str):
+    if action not in ('acknowledge', 'close'):
+        raise ValueError('Ação inválida')
+    with SessionLocal() as db:
+        campaign = _campaign(db, campaign_uuid)
+        target = 'acknowledged' if action == 'acknowledge' else 'closed'
+        row = db.execute(text('''UPDATE security_monitor_alerts a SET status=:state,
+            acknowledged_at=CASE WHEN :state='acknowledged' THEN CURRENT_TIMESTAMP ELSE a.acknowledged_at END,
+            closed_at=CASE WHEN :state='closed' THEN CURRENT_TIMESTAMP ELSE a.closed_at END,
+            updated_at=CURRENT_TIMESTAMP
+            FROM security_monitor_policies p
+            WHERE a.policy_id=p.id AND p.campaign_id=:campaign AND a.id=:alert
+            AND a.status='open' RETURNING a.id,a.status'''),
+            {'state':target,'campaign':campaign['id'],'alert':alert_id}).mappings().first()
+        if not row:
+            raise ValueError('Alerta inexistente ou não está aberto')
+        db.commit()
+        return {'success': True, 'alert_id':row['id'], 'status':row['status']}
