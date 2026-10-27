@@ -18,7 +18,7 @@
     .ap-evidence{max-height:420px;overflow:auto}
     .ap-badge{display:inline-block;padding:2px 7px;border:1px solid currentColor;border-radius:999px;font-size:12px}
   </style>
-<link rel="stylesheet" href="/assets/design-system/tokens.css?v=6.1.2"><link rel="stylesheet" href="/assets/design-system/layout.css?v=6.1.2"><link rel="stylesheet" href="/assets/design-system/components.css?v=6.1.2">
+<link rel="stylesheet" href="/assets/design-system/tokens.css?v=6.2.0"><link rel="stylesheet" href="/assets/design-system/layout.css?v=6.2.0"><link rel="stylesheet" href="/assets/design-system/components.css?v=6.2.0">
 </head>
 <body class="centric-page">
   <div class="topbar modern-topbar">
@@ -108,10 +108,24 @@
     </section>
 
     <section class="panel" id="campaignPanel" data-attack-view="campaign">
-      <div class="panel-header">
-        <div><h2>Attack Campaign 5.7.3.2</h2><p>Campaign Windows com WinRM/SMB, Credential Set e Network Intelligence SNMP separado do lateral movement.</p></div>
-        <button id="refreshCampaigns" class="btn secondary">Atualizar</button>
+      <div class="panel-header magi-campaign-page-header">
+        <div><h2>Campaigns</h2><p>Gerencie campanhas configuradas, acompanhe execuções e consulte evidências.</p></div>
+        <div class="magi-campaign-header-actions"><button id="refreshCampaigns" class="btn secondary">Atualizar</button><button id="openCampaignCreator" type="button" class="btn primary" aria-controls="campaignCreator" aria-expanded="false">+ Nova Campaign</button></div>
       </div>
+      <section class="magi-campaign-section" aria-label="Campaigns configuradas">
+        <div class="magi-campaign-section-title"><h3>Campaigns configuradas</h3><span id="campaignListCount" class="magi-campaign-count">Carregando...</span></div>
+      <div class="table-wrap magi-campaign-list">
+        <table>
+          <thead><tr><th>Campaign</th><th>Scope</th><th>Execution</th><th>Janela</th><th>Progresso</th><th>Próximo ciclo</th><th>Ações</th></tr></thead>
+          <tbody id="campaignTable"><tr><td colspan="7">Nenhuma Campaign carregada.</td></tr></tbody>
+        </table>
+      </div>
+        <div id="campaignDetail" class="campaign-detail"></div>
+      </section>
+      <section class="magi-campaign-section magi-campaign-create-section" aria-label="Criar ou ajustar Campaign">
+        <button id="toggleCampaignCreator" class="magi-campaign-creator-toggle" type="button" aria-controls="campaignCreator" aria-expanded="false"><span>+ Criar nova Campaign</span><span class="magi-campaign-chevron" aria-hidden="true">⌄</span></button>
+        <div id="campaignCreator" hidden>
+          <p class="magi-campaign-creator-description">Defina rede, hosts, credenciais, DHCP, agendamento e políticas de execução.</p>
       <div class="form-grid magi-campaign-grid">
         <label class="magi-campaign-field "><span class="magi-campaign-label">Nome</span><span class="magi-input-wrap"><span class="magi-field-icon"><svg class="magi-context-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11V4h7l11 11-7 7L3 11Z"/><circle cx="7.5" cy="7.5" r="1"/></svg></span><input id="campaignName" placeholder="Rede Corporativa" /></span></label>
         <label class="magi-campaign-field "><span class="magi-campaign-label">Rede / máscara CIDR</span><span class="magi-input-wrap"><span class="magi-field-icon"><svg class="magi-context-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v6M5 17v-4h14v4"/></svg></span><input id="campaignScope" placeholder="192.168.0.0/24" /></span></label>
@@ -134,13 +148,8 @@
       </div>
       <div style="margin:12px 0"><button id="createCampaign" class="btn primary">Criar Campaign</button></div>
       <pre id="campaignResult" class="result-box">A Campaign pode atravessar vários dias; fora da janela diária ela pausa e retoma a frontier no próximo período.</pre>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Campaign</th><th>Scope</th><th>Execution</th><th>Janela</th><th>Progresso</th><th>Próximo ciclo</th><th>Ações</th></tr></thead>
-          <tbody id="campaignTable"><tr><td colspan="7">Nenhuma Campaign carregada.</td></tr></tbody>
-        </table>
-      </div>
-      <div id="campaignDetail" class="campaign-detail"></div>
+        </div>
+      </section>
     </section>
 
     <section class="panel" data-attack-view="history">
@@ -168,7 +177,7 @@
       </div>
     </div>
   </main>
-  <script src="/assets/common.js?v=6.1.2"></script>
-  <script src="/assets/attack-simulator.js?v=6.1.2"></script>
+  <script src="/assets/common.js?v=6.2.0"></script>
+  <script src="/assets/attack-simulator.js?v=6.2.0"></script>
 </body>
 </html>

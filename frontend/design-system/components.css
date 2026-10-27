@@ -81,3 +81,27 @@ body.centric-page #campaignPanel .magi-campaign-multi select[multiple]{height:10
 body.centric-page #campaignPanel .magi-campaign-multi .magi-field-icon{top:20px}
 body.centric-page #campaignPanel .magi-campaign-field input:disabled{opacity:.75;cursor:not-allowed}
 @media(max-width:820px){body.centric-page #campaignPanel .magi-campaign-grid{grid-template-columns:1fr;gap:14px}}
+
+/* MAGI 6.2.0: shared Campaign management layout */
+#campaignPanel .magi-campaign-page-header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+#campaignPanel .magi-campaign-header-actions{display:flex;gap:8px;align-items:center}
+#campaignPanel .magi-campaign-section{background:var(--card-bg,#111d25);border:1px solid var(--border-color,#293d49);border-radius:12px;padding:16px;margin-top:16px;min-width:0}
+#campaignPanel .magi-campaign-section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+#campaignPanel .magi-campaign-section-title h3{margin:0}
+#campaignPanel .magi-campaign-count{color:var(--muted,#9fb2be);font-size:12px}
+#campaignPanel .magi-campaign-creator-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;padding:12px 8px;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;text-align:left;cursor:pointer}
+#campaignPanel .magi-campaign-creator-toggle:hover{color:var(--accent,#c6ff57)}
+#campaignPanel .magi-campaign-creator-description{color:var(--muted,#9fb2be);margin:6px 0 18px}
+#campaignPanel .magi-campaign-list{overflow-x:auto}
+#campaignPanel .magi-campaign-create-section #campaignCreator[hidden]{display:none!important}
+#campaignPanel .magi-campaign-create-section #campaignCreator:not([hidden]){padding-top:8px}
+#campaignPanel .magi-campaign-creator-toggle[aria-expanded="true"] .magi-campaign-chevron{transform:rotate(180deg)}
+@media(max-width:720px){#campaignPanel .magi-campaign-header-actions{width:100%;justify-content:flex-end}#campaignPanel .magi-campaign-section{padding:12px}}
+
+#campaignPanel .magi-dhcp-coverage-summary{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin:14px 0;padding:16px;border-radius:12px;background:var(--card-bg,#111d25);border:1px solid var(--border-color,#293d49)}
+#campaignPanel .magi-dhcp-coverage-summary p{margin:8px 0;color:var(--muted,#9fb2be)}
+#campaignPanel .magi-coverage-gauge{width:175px;max-width:100%}
+#campaignPanel .magi-gauge-track,#campaignPanel .magi-gauge-fill{fill:none;stroke-width:15;stroke-linecap:round}
+#campaignPanel .magi-gauge-track{stroke:#344955}
+#campaignPanel .magi-gauge-fill{stroke:var(--accent,#c6ff57)}
+#campaignPanel .magi-gauge-value{font-size:29px;font-weight:700;fill:currentColor}

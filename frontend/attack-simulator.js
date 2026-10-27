@@ -188,7 +188,7 @@ function copyCredentialsToCampaign(){}
 function dtLocal(v){if(!v)return '--';try{return new Date(v).toLocaleString();}catch(_e){return v;}}
 async function loadCampaigns(){
   try{
-    const d=await api('/api/attack-simulator/campaigns');const rows=d.campaigns||[];
+    const d=await api('/api/attack-simulator/campaigns');const rows=d.campaigns||[];const count=document.getElementById('campaignListCount');if(count)count.textContent=rows.length+' Campaign'+(rows.length===1?'':'s');
     document.getElementById('campaignTable').innerHTML=rows.map(c=>{const st=c.execution_stats||{};const scope=(c.scope_cidrs||[]).join(', ');return `<tr><td><strong>${esc(c.name)}</strong><br><small>${esc(c.campaign_uuid)}</small></td><td>${esc(scope)}</td><td>${badge(c.execution_status||c.status)}<br><small>#${esc(c.execution_number||1)}</small></td><td>${esc(dtLocal(c.scheduled_start||c.start_at))}<br>→ ${esc(dtLocal(c.scheduled_end||c.end_at))}<br><small>${esc(c.daily_start)}–${esc(c.daily_end)}</small></td><td>${esc(st.discovered||0)} hosts<br>${esc(st.accessed||0)} acessados<br>${esc(st.confirmed||0)} paths</td><td>${esc(dtLocal(c.next_cycle_at))}</td><td><button class="btn secondary btn-sm camp-view" data-id="${esc(c.campaign_uuid)}">Attack Path</button> <button class="btn secondary btn-sm camp-monitor" data-id="${esc(c.campaign_uuid)}">Monitoring</button> <button class="btn secondary btn-sm camp-edit" data-id="${esc(c.campaign_uuid)}">Ajustar</button> <button class="btn primary btn-sm camp-next" data-id="${esc(c.campaign_uuid)}">Próximo ciclo agora</button> <button class="btn secondary btn-sm camp-pause" data-id="${esc(c.campaign_uuid)}">Pausar</button> <button class="btn primary btn-sm camp-resume" data-id="${esc(c.campaign_uuid)}">Retomar</button> ${["completed","cancelled"].includes(String(c.execution_status||c.status).toLowerCase())?`<button class="btn primary btn-sm camp-new-execution" data-id="${esc(c.campaign_uuid)}">Nova execução</button>`:""} <button class="btn danger btn-sm camp-finish" data-id="${esc(c.campaign_uuid)}">Encerrar Campaign</button> <button class="btn danger btn-sm camp-delete" data-id="${esc(c.campaign_uuid)}">Excluir</button></td></tr>`}).join('')||'<tr><td colspan="7">Nenhuma Campaign.</td></tr>';
     document.querySelectorAll('.camp-view').forEach(b=>b.onclick=()=>viewCampaign(b.dataset.id));
     document.querySelectorAll('.camp-monitor').forEach(b=>b.onclick=()=>monitorCampaign(b.dataset.id));
@@ -238,7 +238,7 @@ async function editCampaign(id){
     document.getElementById('campaignDailyStart').value=String(c.daily_start||'08:00').slice(0,5);
     document.getElementById('campaignDailyEnd').value=String(c.daily_end||'18:00').slice(0,5);
     document.getElementById('campaignRecurrence').value=c.recurrence_days||'';
-    document.getElementById('createCampaign').textContent='Salvar ajustes';
+    document.getElementById('createCampaign').textContent='Salvar ajustes';setCampaignCreatorOpen(true);
     document.getElementById('campaignResult').textContent='Editando Campaign existente. Histórico, assets e paths serão preservados.';
   }catch(e){document.getElementById('campaignResult').textContent=e.message;}
 }
@@ -260,11 +260,17 @@ async function viewCampaign(id){
       <div id="attackPathPanel" class="ap-panel">Carregando Attack Path...</div>`;
     document.querySelectorAll('.ap-tab').forEach(b=>b.onclick=()=>renderCampaignTab(id,b.dataset.tab,c));
     // DHCP coverage is visible immediately; no need to discover the Coverage tab.
-    const leases=c.dhcp_leases||[], leaseIps=new Set(leases.map(x=>x.ip_address));
-    const reached=(c.coverage||[]).filter(x=>leaseIps.has(x.ip_address)&&x.reached).length;
-    const pct=leaseIps.size?(100*reached/leaseIps.size).toFixed(1):'0.0';
-    const summary=document.createElement('div');summary.className='ap-panel';
-    summary.innerHTML=`<strong>Cobertura DHCP:</strong> ${reached} / ${leaseIps.size} IPs alcançados (${pct}%) <small>— snapshot da execução; alcance não significa acesso confirmado.</small>`;
+    const leases=Array.isArray(c.dhcp_leases)?c.dhcp_leases:[];
+    const reference=new Set(leases.map(x=>x.ip_address).filter(Boolean));
+    const coverageRows=Array.isArray(c.coverage)?c.coverage:[];
+    const covered=new Set(coverageRows.filter(x=>x.reached&&reference.has(x.ip_address)).map(x=>x.ip_address));
+    const pct=reference.size?Math.round(100*covered.size/reference.size):null;
+    const summary=document.createElement('div');summary.className='ap-panel magi-dhcp-coverage-summary';
+    if(pct===null){
+      summary.innerHTML='<strong>Cobertura DHCP</strong><p>Indisponível: não há IPs DHCP de referência nesta Campaign.</p>';
+    }else{
+      summary.innerHTML=`<div class="magi-coverage-gauge" role="img" aria-label="Cobertura DHCP ${pct}%"><svg viewBox="0 0 200 120" aria-hidden="true"><path d="M25 103 A75 75 0 0 1 175 103" pathLength="100" class="magi-gauge-track"/><path d="M25 103 A75 75 0 0 1 175 103" pathLength="100" class="magi-gauge-fill" style="stroke-dasharray:${pct} 100"/><text x="100" y="94" text-anchor="middle" class="magi-gauge-value">${pct}%</text></svg></div><div><strong>Cobertura DHCP</strong><p>${covered.size} de ${reference.size} IPs da referência DHCP alcançados</p><small>Baseada nos dados de alcance da Campaign. Alcance não comprova autenticação ou movimento lateral.</small></div>`;
+    }
     document.getElementById('attackPathPanel').before(summary);
     await renderCampaignTab(id,'coverage',c);
   }catch(e){document.getElementById('campaignResult').textContent=e.message;}
@@ -395,3 +401,18 @@ async function monitorCampaign(id){
    }
  }catch(e){out.textContent='Monitoring: '+e.message;}
 }
+
+// MAGI 6.2.0 — Existing campaigns first; creator is secondary and collapsible.
+function setCampaignCreatorOpen(open){
+  const creator=document.getElementById('campaignCreator');
+  if(!creator)return;
+  creator.hidden=!open;
+  ['openCampaignCreator','toggleCampaignCreator'].forEach(id=>{
+    const b=document.getElementById(id);if(b)b.setAttribute('aria-expanded',String(open));
+  });
+  if(open){document.querySelector('.magi-campaign-create-section')?.scrollIntoView({behavior:'smooth',block:'start'});}
+}
+window.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('openCampaignCreator')?.addEventListener('click',()=>setCampaignCreatorOpen(true));
+  document.getElementById('toggleCampaignCreator')?.addEventListener('click',()=>setCampaignCreatorOpen(!!document.getElementById('campaignCreator')?.hidden));
+});
