@@ -186,21 +186,29 @@ document.addEventListener('DOMContentLoaded',()=>{
 
 function copyCredentialsToCampaign(){}
 function dtLocal(v){if(!v)return '--';try{return new Date(v).toLocaleString();}catch(_e){return v;}}
-async function loadCampaigns(){
-  try{
-    const d=await api('/api/attack-simulator/campaigns');const rows=d.campaigns||[];const count=document.getElementById('campaignListCount');if(count)count.textContent=rows.length+' Campaign'+(rows.length===1?'':'s');
-    document.getElementById('campaignTable').innerHTML=rows.map(c=>{const st=c.execution_stats||{};const scope=(c.scope_cidrs||[]).join(', ');return `<tr><td><strong>${esc(c.name)}</strong><br><small>${esc(c.campaign_uuid)}</small></td><td>${esc(scope)}</td><td>${badge(c.execution_status||c.status)}<br><small>#${esc(c.execution_number||1)}</small></td><td>${esc(dtLocal(c.scheduled_start||c.start_at))}<br>→ ${esc(dtLocal(c.scheduled_end||c.end_at))}<br><small>${esc(c.daily_start)}–${esc(c.daily_end)}</small></td><td>${esc(st.discovered||0)} hosts<br>${esc(st.accessed||0)} acessados<br>${esc(st.confirmed||0)} paths</td><td>${esc(dtLocal(c.next_cycle_at))}</td><td><button class="btn secondary btn-sm camp-view" data-id="${esc(c.campaign_uuid)}">Attack Path</button> <button class="btn secondary btn-sm camp-monitor" data-id="${esc(c.campaign_uuid)}">Monitoring</button> <button class="btn secondary btn-sm camp-edit" data-id="${esc(c.campaign_uuid)}">Ajustar</button> <button class="btn primary btn-sm camp-next" data-id="${esc(c.campaign_uuid)}">Próximo ciclo agora</button> <button class="btn secondary btn-sm camp-pause" data-id="${esc(c.campaign_uuid)}">Pausar</button> <button class="btn primary btn-sm camp-resume" data-id="${esc(c.campaign_uuid)}">Retomar</button> ${["completed","cancelled"].includes(String(c.execution_status||c.status).toLowerCase())?`<button class="btn primary btn-sm camp-new-execution" data-id="${esc(c.campaign_uuid)}">Nova execução</button>`:""} <button class="btn danger btn-sm camp-finish" data-id="${esc(c.campaign_uuid)}">Encerrar Campaign</button> <button class="btn danger btn-sm camp-delete" data-id="${esc(c.campaign_uuid)}">Excluir</button></td></tr>`}).join('')||'<tr><td colspan="7">Nenhuma Campaign.</td></tr>';
-    document.querySelectorAll('.camp-view').forEach(b=>b.onclick=()=>viewCampaign(b.dataset.id));
-    document.querySelectorAll('.camp-monitor').forEach(b=>b.onclick=()=>monitorCampaign(b.dataset.id));
-    document.querySelectorAll('.camp-edit').forEach(b=>b.onclick=()=>editCampaign(b.dataset.id));
-    document.querySelectorAll('.camp-next').forEach(b=>b.onclick=()=>nextCampaignCycle(b.dataset.id));
-    document.querySelectorAll('.camp-pause').forEach(b=>b.onclick=()=>campaignAction(b.dataset.id,'pause'));
-    document.querySelectorAll('.camp-resume').forEach(b=>b.onclick=()=>campaignAction(b.dataset.id,'resume'));
-    document.querySelectorAll('.camp-new-execution').forEach(b=>b.onclick=()=>newCampaignExecution(b.dataset.id));
-    document.querySelectorAll('.camp-finish').forEach(b=>b.onclick=()=>finishCampaign(b.dataset.id));
-    document.querySelectorAll('.camp-delete').forEach(b=>b.onclick=()=>deleteCampaign(b.dataset.id));
-  }catch(e){document.getElementById('campaignResult').textContent=e.message;}
+let campaignListRows=[];
+let campaignPage=1;
+let campaignPageSize=25;
+function renderCampaignList(){
+  const rows=campaignListRows;const totalPages=Math.max(1,Math.ceil(rows.length/campaignPageSize));campaignPage=Math.min(Math.max(1,campaignPage),totalPages);
+  const count=document.getElementById('campaignListCount');if(count)count.textContent=rows.length+' Campaign'+(rows.length===1?'':'s');
+  const tbody=document.getElementById('campaignTable');if(!tbody)return;
+  tbody.innerHTML=rows.slice((campaignPage-1)*campaignPageSize,campaignPage*campaignPageSize).map(c=>{
+    const st=c.execution_stats||{},scope=(c.scope_cidrs||[]).join(', '),id=esc(c.campaign_uuid),status=String(c.execution_status||c.status||'').toLowerCase();
+    const completed=['completed','cancelled','finished','ended'].includes(status),paused=status.includes('paus'),running=['running','active','monitoring','in_progress'].some(x=>status.includes(x));
+    return `<tr><td><button class="magi-camp-name camp-view" data-id="${id}" type="button">${esc(c.name)}</button><br><small>${esc(c.campaign_uuid)}</small></td><td>${esc(scope)}</td><td>${badge(c.execution_status||c.status)}<br><small>Execução #${esc(c.execution_number||1)}</small></td><td>${esc(dtLocal(c.scheduled_start||c.start_at))}<br><small>até ${esc(dtLocal(c.scheduled_end||c.end_at))}</small></td><td>${esc(st.discovered||0)} hosts · ${esc(st.accessed||0)} acessos<br><small>${esc(st.confirmed||0)} caminhos</small></td><td>${esc(dtLocal(c.next_cycle_at))}</td><td><div class="magi-camp-actions"><button class="btn primary btn-sm camp-view" data-id="${id}">Detalhes</button> <button class="btn secondary btn-sm camp-monitor" data-id="${id}">Monitoring</button> ${!completed&&!paused?`<button class="btn secondary btn-sm camp-pause" data-id="${id}">Pausar</button>`:''}${!completed&&paused?`<button class="btn primary btn-sm camp-resume" data-id="${id}">Retomar</button>`:''}<details class="magi-camp-more"><summary aria-label="Mais ações">•••</summary><div class="magi-camp-menu"><button class="camp-edit" data-id="${id}">Ajustar</button><button class="camp-next" data-id="${id}">Próximo ciclo agora</button>${completed?`<button class="camp-new-execution" data-id="${id}">Nova execução</button>`:''}<button class="camp-finish" data-id="${id}">Encerrar Campaign</button><button class="camp-delete" data-id="${id}">Excluir</button></div></details></div></td></tr>`;
+  }).join('')||'<tr><td colspan="7">Nenhuma Campaign.</td></tr>';
+  const pageInfo=document.getElementById('campaignPageInfo');if(pageInfo)pageInfo.textContent=`Página ${campaignPage} de ${totalPages}`;
+  const prev=document.getElementById('campaignPagePrev'),next=document.getElementById('campaignPageNext');if(prev)prev.disabled=campaignPage<=1;if(next)next.disabled=campaignPage>=totalPages;
+  for(const [cls,fn] of [['camp-view',viewCampaign],['camp-monitor',monitorCampaign],['camp-edit',editCampaign],['camp-next',nextCampaignCycle],['camp-pause',id=>campaignAction(id,'pause')],['camp-resume',id=>campaignAction(id,'resume')],['camp-new-execution',newCampaignExecution],['camp-finish',finishCampaign],['camp-delete',deleteCampaign]]){
+    tbody.querySelectorAll('.'+cls).forEach(el=>el.onclick=()=>fn(el.dataset.id));
+  }
 }
+async function loadCampaigns(){
+  try{const d=await api('/api/attack-simulator/campaigns');campaignListRows=d.campaigns||[];renderCampaignList();}
+  catch(e){document.getElementById('campaignResult').textContent=e.message;}
+}
+
 let dhcpIntegrations=[];
 async function loadDhcpIntegrationsForCampaign(){try{const d=await api('/api/settings');dhcpIntegrations=d?.integrations?.dhcp||[];const el=document.getElementById('campaignDhcpIntegration');if(el)el.innerHTML='<option value="">Selecione um DHCP configurado</option>'+dhcpIntegrations.filter(x=>x.enabled!==false).map(x=>`<option value="${esc(x.id)}">${esc(x.name)} — ${esc(x.server)}</option>`).join('');}catch(_e){}}
 function selectedDhcpIntegration(){const id=document.getElementById('campaignDhcpIntegration')?.value;return dhcpIntegrations.find(x=>String(x.id)===String(id));}
@@ -252,35 +260,53 @@ async function deleteCampaign(id){
 }
 
 async function campaignAction(id,action){try{await api(`/api/attack-simulator/campaigns/${id}/${action}`,{method:'POST'});await loadCampaigns();await viewCampaign(id);}catch(e){document.getElementById('campaignResult').textContent=e.message;}}
+let selectedCampaignTab='summary';
+function campaignCoverageData(c){
+  const leases=Array.isArray(c.dhcp_leases)?c.dhcp_leases:[],cov=Array.isArray(c.coverage)?c.coverage:[];
+  const reference=new Set(leases.map(x=>x.ip_address).filter(Boolean));
+  const covered=new Set(cov.filter(x=>x.reached&&reference.has(x.ip_address)).map(x=>x.ip_address));
+  const outside=new Set(cov.filter(x=>x.reached&&x.ip_address&&!reference.has(x.ip_address)).map(x=>x.ip_address));
+  return {reference,covered,outside,pct:reference.size?Math.round(100*covered.size/reference.size):null};
+}
+function campaignGauge(data){
+  if(data.pct===null)return '<div class="magi-coverage-unavailable">Cobertura indisponível<br><small>Sem referência DHCP nesta execução.</small></div>';
+  return `<div class="magi-coverage-gauge" role="img" aria-label="Cobertura DHCP ${data.pct}%"><svg viewBox="0 0 200 120" aria-hidden="true"><path d="M25 103 A75 75 0 0 1 175 103" pathLength="100" class="magi-gauge-track"/><path d="M25 103 A75 75 0 0 1 175 103" pathLength="100" class="magi-gauge-fill" style="stroke-dasharray:${data.pct} 100"/><text x="100" y="94" text-anchor="middle" class="magi-gauge-value">${data.pct}%</text></svg></div>`;
+}
 async function viewCampaign(id){
   try{
-    const d=await api(`/api/attack-simulator/campaigns/${id}`),c=d.campaign||{},ex=(c.executions||[])[0]||{},st=ex.stats||{},paths=c.paths||[],assets=c.assets||[];
-    document.getElementById('campaignDetail').innerHTML=`<h3>${esc(c.name)} — Execution #${esc(ex.execution_number||'--')}</h3>
-      <div class="ap-tabs"><button class="btn secondary btn-sm ap-tab" data-tab="summary">Resumo</button><button class="btn primary btn-sm ap-tab" data-tab="path">Attack Path</button><button class="btn secondary btn-sm ap-tab" data-tab="network">Network Intelligence</button><button class="btn secondary btn-sm ap-tab" data-tab="coverage">Coverage</button><button class="btn secondary btn-sm ap-tab" data-tab="evidence">Evidências</button><button class="btn secondary btn-sm ap-tab" data-tab="cycles">Ciclos</button></div>
-      <div id="attackPathPanel" class="ap-panel">Carregando Attack Path...</div>`;
-    document.querySelectorAll('.ap-tab').forEach(b=>b.onclick=()=>renderCampaignTab(id,b.dataset.tab,c));
-    // DHCP coverage is visible immediately; no need to discover the Coverage tab.
-    const leases=Array.isArray(c.dhcp_leases)?c.dhcp_leases:[];
-    const reference=new Set(leases.map(x=>x.ip_address).filter(Boolean));
-    const coverageRows=Array.isArray(c.coverage)?c.coverage:[];
-    const covered=new Set(coverageRows.filter(x=>x.reached&&reference.has(x.ip_address)).map(x=>x.ip_address));
-    const pct=reference.size?Math.round(100*covered.size/reference.size):null;
-    const summary=document.createElement('div');summary.className='ap-panel magi-dhcp-coverage-summary';
-    if(pct===null){
-      summary.innerHTML='<strong>Cobertura DHCP</strong><p>Indisponível: não há IPs DHCP de referência nesta Campaign.</p>';
-    }else{
-      summary.innerHTML=`<div class="magi-coverage-gauge" role="img" aria-label="Cobertura DHCP ${pct}%"><svg viewBox="0 0 200 120" aria-hidden="true"><path d="M25 103 A75 75 0 0 1 175 103" pathLength="100" class="magi-gauge-track"/><path d="M25 103 A75 75 0 0 1 175 103" pathLength="100" class="magi-gauge-fill" style="stroke-dasharray:${pct} 100"/><text x="100" y="94" text-anchor="middle" class="magi-gauge-value">${pct}%</text></svg></div><div><strong>Cobertura DHCP</strong><p>${covered.size} de ${reference.size} IPs da referência DHCP alcançados</p><small>Baseada nos dados de alcance da Campaign. Alcance não comprova autenticação ou movimento lateral.</small></div>`;
-    }
-    document.getElementById('attackPathPanel').before(summary);
-    await renderCampaignTab(id,'coverage',c);
+    const d=await api(`/api/attack-simulator/campaigns/${id}`),c=d.campaign||{},ex=(c.executions||[])[0]||{};
+    const data=campaignCoverageData(c),stats=ex.stats||c.execution_stats||{};
+    const detail=document.getElementById('campaignDetail');
+    detail.innerHTML=`<div class="magi-camp-detail-header"><div><h3>${esc(c.name||'Campaign')}</h3><small>${esc((c.scope_cidrs||[]).join(', '))} · Execução #${esc(ex.execution_number||c.execution_number||'--')}</small></div><button type="button" class="btn secondary btn-sm" id="closeCampaignDetails">Fechar detalhes</button></div>
+      <div class="magi-camp-detail-grid"><div class="magi-camp-stat"><small>Hosts descobertos</small><strong>${esc(stats.discovered??stats.hosts_known??(c.assets||[]).length??0)}</strong></div><div class="magi-camp-stat"><small>Acessos confirmados</small><strong>${esc(stats.accessed??stats.access_confirmed??0)}</strong></div><div class="magi-camp-stat"><small>Ciclos executados</small><strong>${esc(stats.cycles??(c.cycles||[]).length)}</strong></div><div class="magi-camp-stat magi-camp-stat-coverage"><div><small>Cobertura DHCP</small><strong>${data.pct===null?'Indisponível':data.pct+'%'}</strong><small>${data.covered.size} / ${data.reference.size} IPs da referência</small></div>${campaignGauge(data)}</div></div>
+      <p class="magi-camp-footnote">Cobertura = IPs únicos da referência DHCP alcançados pela Campaign. Alcance não comprova autenticação.</p>
+      <div class="ap-tabs magi-camp-tabs" role="tablist" aria-label="Detalhes da Campaign">${[['summary','Overview'],['path','Attack Path'],['network','Rede'],['coverage','Cobertura'],['evidence','Evidências'],['cycles','Ciclos'],['history','Histórico']].map(([key,label])=>`<button type="button" class="btn secondary btn-sm ap-tab" role="tab" data-tab="${key}">${label}</button>`).join('')}</div>
+      <div id="attackPathPanel" class="ap-panel">Carregando resultados...</div>`;
+    document.getElementById('closeCampaignDetails').onclick=()=>{detail.innerHTML='';};
+    detail.querySelectorAll('.ap-tab').forEach(btn=>btn.onclick=()=>activateCampaignTab(id,btn.dataset.tab,c));
+    await activateCampaignTab(id,'summary',c);
+    detail.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){document.getElementById('campaignResult').textContent=e.message;}
 }
+async function activateCampaignTab(id,tab,c){
+  selectedCampaignTab=tab;
+  document.querySelectorAll('#campaignDetail .ap-tab').forEach(b=>{const active=b.dataset.tab===tab;b.classList.toggle('primary',active);b.classList.toggle('secondary',!active);b.setAttribute('aria-selected',String(active));});
+  await renderCampaignTab(id,tab,c);
+}
+
 function attackKindLabel(k){return ({ACCESS:'✓ ACCESS CONFIRMED',SNMP:'✓ SNMP DISCOVERY CONFIRMED',AUTHENTICATION_FAILED:'✕ AUTHENTICATION FAILED',TRANSPORT_FAILED:'✕ TRANSPORT FAILED',SERVICE_UNAVAILABLE:'✕ SERVICE UNAVAILABLE',BARRIER:'✕ BARRIER',DISCOVERY:'✓ DISCOVERY CONFIRMED'})[k]||k;}
 function attackKindClass(k){return ['ACCESS','DISCOVERY','SNMP'].includes(k)?'ap-badge-success':['AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'].includes(k)?'ap-badge-danger':'ap-badge-neutral';}
 async function renderCampaignTab(id,tab,cached){
   const panel=document.getElementById('attackPathPanel'); if(!panel)return;
   try{
-    if(tab==='cycles'){panel.innerHTML=`<h4>Ciclos</h4><pre>${esc(pretty((cached.cycles||[])))}</pre>`;return;}
+    if(tab==='cycles'){
+      const cycles=cached.cycles||[];
+      panel.innerHTML=`<h4>Ciclos da Campaign</h4><div class="magi-camp-records">${cycles.map((x,i)=>`<div class="ap-panel"><strong>Ciclo ${esc(x.cycle_number??x.number??i+1)}</strong><br><small>${esc(dtLocal(x.started_at||x.start_at||x.created_at))} · ${esc(x.status||'--')}</small><details><summary>Dados técnicos</summary><pre>${esc(pretty(x))}</pre></details></div>`).join('')||'<p>Nenhum ciclo registrado.</p>'}</div>`;return;
+    }
+    if(tab==='history'){
+      const runs=cached.executions||[];
+      panel.innerHTML=`<h4>Histórico de execuções</h4><p>Execuções disponíveis para esta Campaign, sem mesclar evidências de outras campanhas.</p><div class="magi-camp-records">${runs.map((x,i)=>`<div class="ap-panel"><strong>Execução #${esc(x.execution_number??i+1)}</strong> · ${esc(x.status||x.execution_status||'--')}<br><small>Início: ${esc(dtLocal(x.started_at||x.start_at||x.created_at))} · Fim: ${esc(dtLocal(x.finished_at||x.ended_at))}</small><details><summary>Detalhes registrados</summary><pre>${esc(pretty(x.stats||x))}</pre></details></div>`).join('')||'<p>Nenhuma execução registrada.</p>'}</div>`;return;
+    }
     const d=await api(`/api/attack-simulator/campaigns/${id}/attack-path`),a=d.attack_path||{},sum=a.summary||{},edges=a.edges||[];
     if(tab==='summary'){
       panel.innerHTML=`<h4>Resumo da Campaign</h4><div class="ap-kpis">
@@ -300,8 +326,8 @@ async function renderCampaignTab(id,tab,cached){
       panel.innerHTML=`<h4>Network Intelligence</h4><p>SNMP é tratado como descoberta de topologia, não como lateral movement.</p><div class="ap-kpis"><div><small>Dispositivos SNMP</small><br><strong>${snmp.length}</strong></div><div><small>Neighbors LLDP/CDP</small><br><strong>${neighbors.length}</strong></div></div><div class="ap-evidence">${neighbors.map(n=>`<div class="ap-panel"><strong>${esc(n.device)} → ${esc(n.neighbor)}</strong><br><small>${esc(String(n.protocol||'').toUpperCase())}</small></div>`).join('')||'<p>Nenhum neighbor LLDP/CDP retornado pelos dispositivos SNMP desta execução.</p>'}</div>`;return;
     }
     if(tab==='coverage'){
-      const cov=cached.coverage||[], leases=cached.dhcp_leases||[];const known=cov.length,reached=cov.filter(x=>x.reached).length,evaluated=cov.filter(x=>x.evaluated).length,notReached=cov.filter(x=>!x.reached).length,pending=cov.filter(x=>!x.evaluated).length,pct=known?((evaluated/known)*100).toFixed(1):'0.0';const leaseIps=new Set(leases.map(x=>x.ip_address));const dhcpFound=cov.filter(x=>leaseIps.has(x.ip_address)&&x.reached).length;const dhcpPct=leases.length?((dhcpFound/leases.length)*100).toFixed(1):'0.0';const outsideDhcp=cov.filter(x=>x.reached&&!leaseIps.has(x.ip_address)).length;
-      panel.innerHTML=`<h4>Campaign Coverage Intelligence</h4><p>Coverage considera ativos conhecidos por Campaign e Windows DHCP. DHCP lease não significa host online.</p><div class="ap-kpis"><div><small>Known assets</small><br><strong>${known}</strong></div><div><small>Reached</small><br><strong>${reached}</strong></div><div><small>Evaluated</small><br><strong>${evaluated}</strong></div><div><small>Not reached</small><br><strong>${notReached}</strong></div><div><small>Pending</small><br><strong>${pending}</strong></div><div><small>Known-asset coverage</small><br><strong>${pct}%</strong></div></div><div class="ap-kpis"><div><small>DHCP entregou</small><br><strong>${leases.length} IPs</strong></div><div><small>Campaign encontrou desses</small><br><strong>${dhcpFound} / ${leases.length}</strong></div><div><small>DHCP coverage</small><br><strong>${dhcpPct}%</strong></div><div><small>Encontrados fora do DHCP</small><br><strong>${outsideDhcp}</strong></div></div><p><strong>Snapshot DHCP:</strong> leases capturadas no início desta execução; alterações posteriores não mudam retroativamente este denominador.</p><div class="ap-evidence">${cov.map(x=>`<div class="ap-panel"><strong>${esc(x.hostname||x.ip_address)}</strong> — ${esc(x.ip_address)}<br><small>Sources: ${esc((x.sources||[]).join(', '))} | State: ${esc(x.state)} | Reached: ${x.reached?'yes':'no'} | Evaluated: ${x.evaluated?'yes':'no'}</small></div>`).join('')||'<p>Coverage ainda não possui observações.</p>'}</div>`;return;
+      const cov=cached.coverage||[],leases=cached.dhcp_leases||[],known=cov.length,reached=cov.filter(x=>x.reached).length,evaluated=cov.filter(x=>x.evaluated).length,notReached=cov.filter(x=>!x.reached).length,pending=cov.filter(x=>!x.evaluated).length,pct=known?((evaluated/known)*100).toFixed(1):'Indisponível';const cd=campaignCoverageData(cached),dhcpFound=cd.covered.size,dhcpPct=cd.pct===null?'Indisponível':cd.pct.toFixed(1)+'%',outsideDhcp=cd.outside.size;
+      panel.innerHTML=`<h4>Campaign Coverage Intelligence</h4><p>Coverage considera ativos conhecidos por Campaign e Windows DHCP. DHCP lease não significa host online.</p><div class="ap-kpis"><div><small>Known assets</small><br><strong>${known}</strong></div><div><small>Reached</small><br><strong>${reached}</strong></div><div><small>Evaluated</small><br><strong>${evaluated}</strong></div><div><small>Not reached</small><br><strong>${notReached}</strong></div><div><small>Pending</small><br><strong>${pending}</strong></div><div><small>Known-asset coverage</small><br><strong>${pct}%</strong></div></div><div class="ap-kpis"><div><small>DHCP entregou</small><br><strong>${cd.reference.size} IPs</strong></div><div><small>Campaign encontrou desses</small><br><strong>${dhcpFound} / ${cd.reference.size}</strong></div><div><small>DHCP coverage</small><br><strong>${dhcpPct}</strong></div><div><small>Encontrados fora do DHCP</small><br><strong>${outsideDhcp}</strong></div></div><p><strong>Snapshot DHCP:</strong> leases capturadas no início desta execução; alterações posteriores não mudam retroativamente este denominador.</p><div class="ap-evidence">${cov.map(x=>`<div class="ap-panel"><strong>${esc(x.hostname||x.ip_address)}</strong> — ${esc(x.ip_address)}<br><small>Sources: ${esc((x.sources||[]).join(', '))} | State: ${esc(x.state)} | Reached: ${x.reached?'yes':'no'} | Evaluated: ${x.evaluated?'yes':'no'}</small></div>`).join('')||'<p>Coverage ainda não possui observações.</p>'}</div>`;return;
     }
     if(tab==='evidence'){
       panel.innerHTML=`<h4>Evidências rastreáveis</h4><div class="ap-evidence">${(a.evidence||[]).map(e=>`<div class="ap-panel"><span class="ap-badge ${attackKindClass(e.kind)}">${esc(attackKindLabel(e.kind))}</span> <strong>${esc(e.origin)} → ${esc(e.target||'--')}</strong><br><small><strong>Target:</strong> ${esc(e.target||'--')} | Protocol: ${esc(e.protocol||'--')} | Hop: ${esc(e.hop??'--')} | Cycle: ${esc(e.cycle_id||'--')} | Runner Job: ${esc(e.runner_job_id||'--')}</small>${e.reason?`<br><strong>Motivo:</strong> ${esc(e.reason)}`:''}${e.result?`<pre>${esc(String(e.result))}</pre>`:''}</div>`).join('')||'<p>Sem evidências nesta execução.</p>'}</div>`;return;
@@ -315,7 +341,7 @@ async function renderCampaignTab(id,tab,cached){
   }catch(e){panel.textContent=e.message;}
 }
 
-window.addEventListener('load',()=>{setTimeout(()=>{copyCredentialsToCampaign();loadDhcpIntegrationsForCampaign();loadCampaigns();const rc=document.getElementById('refreshCampaigns'),cc=document.getElementById('createCampaign');if(rc)rc.onclick=loadCampaigns;if(cc)cc.onclick=createCampaign;},250);});
+window.addEventListener('load',()=>{setTimeout(()=>{copyCredentialsToCampaign();loadDhcpIntegrationsForCampaign();loadCampaigns();const rc=document.getElementById('refreshCampaigns'),cc=document.getElementById('createCampaign');if(rc)rc.onclick=loadCampaigns;if(cc)cc.onclick=createCampaign;document.getElementById('campaignPageSize')?.addEventListener('change',e=>{campaignPageSize=Number(e.target.value)||25;campaignPage=1;renderCampaignList();});document.getElementById('campaignPagePrev')?.addEventListener('click',()=>{campaignPage--;renderCampaignList();});document.getElementById('campaignPageNext')?.addEventListener('click',()=>{campaignPage++;renderCampaignList();});},250);});
 
 let correlationPlan=[];
 async function loadCorrelationTargets(){
