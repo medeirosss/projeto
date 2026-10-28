@@ -104,3 +104,10 @@ body.centric-page #campaignPanel .magi-campaign-field input:disabled{opacity:.75
 #campaignPanel .magi-gauge-track{stroke:#344955}
 #campaignPanel .magi-gauge-fill{stroke:var(--accent,#c6ff57)}
 #campaignPanel .magi-gauge-value{font-size:29px;font-weight:700;fill:currentColor}
+
+/* MAGI 6.2.5 R3: canonical shared dark surfaces; colors from tokens.css only. */
+body.centric-page[data-theme="dark"] :is(.card,.modern-card,.kpi-card,.metric-card,.stat,.panel,.form-card,.scan-config-section,.pipeline-panel,.campaign-detail,.ap-panel,.percent-box,.report-card,.dashboard-card,.summary-card,.info-bar,.summary-strip){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
+body.centric-page[data-theme="dark"] :is(.card-header,.clean-header,.panel-header,.report-header){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
+body.centric-page[data-theme="dark"] :is(table,.modern-table,table tbody,table tbody tr,table tbody td,.modern-table td){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
+body.centric-page[data-theme="dark"] :is(table thead,table thead tr,table th,.modern-table th){background:var(--magi-elevated);border-color:var(--magi-border)}
+body.centric-page[data-theme="dark"] :is(input:not([type=checkbox]):not([type=radio]),select,textarea){background:var(--magi-input);border-color:var(--magi-border);color:var(--magi-text)}
