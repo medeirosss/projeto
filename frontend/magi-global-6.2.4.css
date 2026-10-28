@@ -1,5 +1,4 @@
-/* MAGI 6.2.4 — shared visual tokens and overlay behavior */
-:root,body[data-theme="dark"]{--magi-bg:#080f14;--magi-panel:#111d25;--magi-input:#192833;--magi-border:#293a43;--magi-text:#edf4f5;--magi-muted:#9caeb8;--accent:#c6ff57;--bg:#080f14;--card:#111d25;--border:#293a43;--text:#edf4f5;--muted:#9caeb8;--blue:#c6ff57;--overlay-z:10000}
+/* 6.2.4 compatibility: tokens consolidated in design-system/tokens.css */
 body.centric-page,body.centric-page[data-theme="dark"]{background:#080f14!important;color:var(--magi-text)}
 body.centric-page .panel,body.centric-page .card,body.centric-page .modern-card,body.centric-page .ap-panel{background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
 body.centric-page input:not([type=checkbox]):not([type=radio]),body.centric-page select,body.centric-page textarea{background:var(--magi-input)!important;color:var(--magi-text)!important;border:1px solid var(--magi-border)!important}
