@@ -1,9 +1,14 @@
-/* MAGI 6.2.5 — shared surfaces; no hard-coded palette values. */
-html,body.centric-page,body.centric-page[data-theme="dark"]{background:var(--magi-bg)!important;color:var(--magi-text)!important}
-body.centric-page :is(.report-layout,.centric-main,.page-content,.content,.main-content){background-color:transparent}
-body.centric-page :is(.card,.panel,.modern-card,.report-card,.campaign-detail,.ap-panel){background-color:var(--magi-panel);color:var(--magi-text);border-color:var(--magi-border)}
-body.centric-page :is(table,thead,tbody,tr,td){border-color:var(--magi-border)}
-body.centric-page :is(table thead,table thead tr,table th){background-color:var(--magi-elevated)!important;color:var(--magi-muted)!important}
-body.centric-page :is(table tbody tr,table td){background-color:var(--magi-panel)!important;color:var(--magi-text)}
-body.centric-page table tbody tr:hover,body.centric-page table tbody tr:hover td{background-color:var(--magi-elevated)!important}
-body.centric-page :is(input:not([type=checkbox]):not([type=radio]),select,textarea){background-color:var(--magi-input)!important;color:var(--magi-text)!important;border-color:var(--magi-border)!important}
+/* MAGI 6.2.5r2 — canonical shared surfaces. Colors live ONLY in tokens.css. */
+html,body,body.centric-page,body.centric-page[data-theme],.centric-shell,.centric-main,.report-layout{background-color:var(--magi-bg);color:var(--magi-text);background-image:none}
+body.centric-page :is(.card,.modern-card,.kpi-card,.metric-card,.stat,.panel,.form-card,.scan-config-section,.pipeline-panel,.campaign-detail,.ap-panel,.percent-box,.report-card,.dashboard-card,.summary-card,.info-bar,.summary-strip){background-color:var(--magi-panel);color:var(--magi-text);border-color:var(--magi-border)}
+body.centric-page :is(.card-header,.clean-header,.panel-header,.report-header){background-color:var(--magi-panel);color:var(--magi-text);border-color:var(--magi-border)}
+body.centric-page :is(table,.modern-table){background-color:var(--magi-panel);color:var(--magi-text);border-color:var(--magi-border)}
+body.centric-page :is(table thead,table thead tr,table th,.modern-table th){background-color:var(--magi-elevated);color:var(--magi-muted);border-color:var(--magi-border)}
+body.centric-page :is(table tbody,table tbody tr,table tbody td,.modern-table td){background-color:var(--magi-panel);color:var(--magi-text);border-color:var(--magi-border)}
+body.centric-page :is(table tbody tr:hover,table tbody tr:hover td){background-color:var(--magi-elevated)}
+body.centric-page :is(input:not([type=checkbox]):not([type=radio]),select,textarea){background-color:var(--magi-input);color:var(--magi-text);border-color:var(--magi-border)}
+body.centric-page :is(.report-sidebar,.centric-sidebar,.attack-subnav){background-color:var(--magi-panel);border-color:var(--magi-border)}
+
+/* Common dashboard/table surfaces. Colors are always token-driven. */
+body.centric-page :is(.dashboard-panel,.dashboard-section,.widget,.widget-card,.kpi-tile,.metric-tile,.chart-card,.chart-panel,.report-panel,.report-table,.table-container,.table-wrapper,.table-card,.campaign-card,.campaign-panel,.campaign-list,.campaign-table,.overview-card,.overview-panel,.stat-card,.glass-card){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
+body.centric-page :is(.dashboard-panel,.chart-panel,.report-panel,.table-container,.table-wrapper,.campaign-panel) :is(.table-header,.thead,.section-header){background:var(--magi-elevated);border-color:var(--magi-border)}

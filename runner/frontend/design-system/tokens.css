@@ -1,15 +1,15 @@
 /* MAGI 6.2.5 — canonical theme tokens: single source of truth */
 :root,body[data-theme="dark"] {
  --magi-accent:#c6ff57;--accent:var(--magi-accent);--primary-color:var(--magi-accent);
- --magi-bg:#080f14;--magi-panel:#111d25;--magi-elevated:#192833;--magi-input:var(--magi-elevated);
- --magi-border:#293a43;--magi-text:#edf4f5;--magi-muted:#9caeb8;
- --magi-radius:12px;--magi-gap:16px;--magi-shadow:0 12px 35px #0004;
+ --magi-bg:#000000;--magi-panel:#0b0b0b;--magi-elevated:#151515;--magi-input:var(--magi-elevated);
+ --magi-border:#292929;--magi-text:#edf4f5;--magi-muted:#9caeb8;
+ --magi-radius:12px;--magi-gap:16px;--magi-shadow:0 12px 35px #0004;--magi-panel-deep:var(--magi-panel);--magi-input-bg:var(--magi-input);--magi-input-border:var(--magi-border);
  --bg:var(--magi-bg);--top:var(--magi-panel);--card:var(--magi-panel);--border:var(--magi-border);
  --text:var(--magi-text);--muted:var(--magi-muted);--blue:var(--magi-accent);--overlay-z:10000;color-scheme:dark;
 }
 body[data-theme="light"] {
  --magi-bg:#f4f7f8;--magi-panel:#ffffff;--magi-elevated:#edf2f5;--magi-input:var(--magi-elevated);
- --magi-border:#d5dfe4;--magi-text:#15242d;--magi-muted:#52636d;
+ --magi-border:#d5dfe4;--magi-panel-deep:var(--magi-panel);--magi-input-bg:var(--magi-input);--magi-input-border:var(--magi-border);--magi-text:#15242d;--magi-muted:#52636d;
  --bg:var(--magi-bg);--top:var(--magi-panel);--card:var(--magi-panel);--border:var(--magi-border);
  --text:var(--magi-text);--muted:var(--magi-muted);color-scheme:light;
 }
