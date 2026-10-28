@@ -804,17 +804,3 @@ html,body,body.centric-page{background-color:#000000!important}
 .magi-campaign-list-hidden{display:none!important}
 #campaignDetail.magi-campaign-standalone{display:block;width:100%;margin-top:16px;padding:18px;border:1px solid var(--magi-border,#293a43);border-radius:12px;background:var(--magi-panel,#111d25)}
 #campaignDetail.magi-campaign-standalone .magi-camp-detail-header{margin-bottom:16px}
-
-/* MAGI 6.2.3 — black structural canvas, evidence diagnostics, menu overlay */
-html,body,body.centric-page,.centric-shell,.centric-main,.report-layout,.report-main,.attack-layout,.attack-main,.attack-content,.attack-subnav,.centric-sidebar,.report-sidebar,.topbar,.modern-topbar{background-color:#000!important;background-image:none!important}
-body.centric-page[data-theme="dark"]::before{display:none!important}
-.magi-camp-more[open] .magi-camp-menu{position:fixed;z-index:9999}
-.magi-campaign-list{overflow-x:auto;overflow-y:visible;min-height:unset!important;max-height:none!important}
-.magi-evidence-controls{display:flex;gap:9px;flex-wrap:wrap;margin:14px 0}.magi-evidence-controls input{flex:1;min-width:230px}.magi-evidence-controls select{max-width:220px}
-.magi-evidence-summary{margin:10px 0 15px;color:#aebec7}.magi-evidence-summary strong{color:#edf4f5}
-.magi-evidence-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(270px,1fr);gap:12px;align-items:start}
-.magi-evidence-table-wrap,.magi-evidence-detail{border:1px solid #293b46;border-radius:10px;background:#090d10;min-width:0}
-.magi-evidence-table-wrap{overflow-x:auto}.magi-evidence-table{width:100%;border-collapse:collapse;font-size:12px}.magi-evidence-table th,.magi-evidence-table td{padding:11px 9px;text-align:left;white-space:nowrap}.magi-evidence-table tbody tr{cursor:pointer}.magi-evidence-table tbody tr.selected{outline:1px solid var(--accent,#c6ff57);outline-offset:-1px;background:#17201b}
-.magi-evidence-detail{padding:16px;overflow-wrap:anywhere}.magi-evidence-detail h4{margin:0 0 12px}.magi-evidence-detail dl{display:grid;grid-template-columns:100px 1fr;gap:10px;font-size:12px}.magi-evidence-detail dt{color:#9caeba}.magi-evidence-detail dd{margin:0}.magi-evidence-detail pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto;background:#101b23;padding:10px;border-radius:8px;font-size:11px}
-.magi-evidence-footer{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding:10px;font-size:12px}
-@media(max-width:1050px){.magi-evidence-layout{grid-template-columns:1fr}}

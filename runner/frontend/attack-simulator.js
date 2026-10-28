@@ -201,32 +201,14 @@ function renderCampaignList(){
   tbody.innerHTML=rows.slice((campaignPage-1)*campaignPageSize,campaignPage*campaignPageSize).map(c=>{
     const st=c.execution_stats||{},scope=(c.scope_cidrs||[]).join(', '),id=esc(c.campaign_uuid),status=String(c.execution_status||c.status||'').toLowerCase();
     const completed=['completed','cancelled','finished','ended'].includes(status),paused=status.includes('paus'),running=['running','active','monitoring','in_progress'].some(x=>status.includes(x));
-    return `<tr><td><button class="magi-camp-name camp-view" data-id="${id}" type="button">${esc(c.name)}</button><br><small>${esc(c.campaign_uuid)}</small></td><td>${esc(scope)}</td><td>${badge(c.execution_status||c.status)}<br><small>Execução #${esc(c.execution_number||1)}</small></td><td>${esc(dtLocal(c.scheduled_start||c.start_at))}<br><small>até ${esc(dtLocal(c.scheduled_end||c.end_at))}</small></td><td>${esc(st.discovered||0)} hosts · ${esc(st.accessed||0)} acessos<br><small>${esc(st.confirmed||0)} caminhos</small></td><td>${esc(dtLocal(c.next_cycle_at))}</td><td><div class="magi-camp-actions"><button class="btn primary btn-sm camp-view" data-id="${id}">Detalhes</button> <button class="btn secondary btn-sm camp-monitor" data-id="${id}">Monitoring</button> ${!completed&&!paused?`<button class="btn secondary btn-sm camp-pause" data-id="${id}">Pausar</button>`:''}${!completed&&paused?`<button class="btn primary btn-sm camp-resume" data-id="${id}">Retomar</button>`:''}<details class="magi-camp-more"><summary aria-label="Mais ações">•••</summary><div class="magi-camp-menu"><button class="camp-edit" data-id="${id}">Ajustar</button><button class="camp-next" data-id="${id}">Próximo ciclo agora</button>${completed?`<button class="camp-new-execution" data-id="${id}">Nova execução</button>`:''}<button class="camp-finish" data-id="${id}">Encerrar Campaign</button><button class="camp-delete" data-id="${id}">Excluir</button></div></details></div></td></tr>`;
+    return `<tr><td><button class="magi-camp-name camp-view" data-id="${id}" type="button">${esc(c.name)}</button><br><small>${esc(c.campaign_uuid)}</small></td><td>${esc(scope)}</td><td>${badge(c.execution_status||c.status)}<br><small>Execução #${esc(c.execution_number||1)}</small></td><td>${esc(dtLocal(c.scheduled_start||c.start_at))}<br><small>até ${esc(dtLocal(c.scheduled_end||c.end_at))}</small></td><td>${esc(st.discovered||0)} hosts · ${esc(st.accessed||0)} acessos<br><small>${esc(st.confirmed||0)} caminhos</small></td><td>${esc(dtLocal(c.next_cycle_at))}</td><td><div class="magi-camp-actions"><button class="btn primary btn-sm camp-view" data-id="${id}">Detalhes</button> <button class="btn secondary btn-sm camp-monitor" data-id="${id}">Monitoring</button> ${!completed&&!paused?`<button class="btn secondary btn-sm camp-pause" data-id="${id}">Pausar</button>`:''}${!completed&&paused?`<button class="btn primary btn-sm camp-resume" data-id="${id}">Retomar</button>`:''}<div class="magi-camp-more"><button type="button" class="magi-camp-menu-trigger" aria-label="Mais ações" aria-expanded="false">•••</button><div class="magi-camp-menu" hidden><button class="camp-edit" data-id="${id}">Ajustar</button><button class="camp-next" data-id="${id}">Próximo ciclo agora</button>${completed?`<button class="camp-new-execution" data-id="${id}">Nova execução</button>`:''}<button class="camp-finish" data-id="${id}">Encerrar Campaign</button><button class="camp-delete" data-id="${id}">Excluir</button></div></div></div></td></tr>`;
   }).join('')||'<tr><td colspan="7">Nenhuma Campaign.</td></tr>';
   const pageInfo=document.getElementById('campaignPageInfo');if(pageInfo)pageInfo.textContent=`Página ${campaignPage} de ${totalPages}`;
   const prev=document.getElementById('campaignPagePrev'),next=document.getElementById('campaignPageNext');if(prev)prev.disabled=campaignPage<=1;if(next)next.disabled=campaignPage>=totalPages;
-  installCampaignActionMenus(tbody);
   for(const [cls,fn] of [['camp-view',viewCampaign],['camp-monitor',monitorCampaign],['camp-edit',editCampaign],['camp-next',nextCampaignCycle],['camp-pause',id=>campaignAction(id,'pause')],['camp-resume',id=>campaignAction(id,'resume')],['camp-new-execution',newCampaignExecution],['camp-finish',finishCampaign],['camp-delete',deleteCampaign]]){
     tbody.querySelectorAll('.'+cls).forEach(el=>el.onclick=()=>fn(el.dataset.id));
   }
 }
-function installCampaignActionMenus(root){
-  root.querySelectorAll('.magi-camp-more').forEach(menu=>{
-    const popup=menu.querySelector('.magi-camp-menu');
-    menu.addEventListener('toggle',()=>{
-      if(!menu.open){popup.style.position='';popup.style.top='';popup.style.left='';popup.style.right='';return;}
-      root.querySelectorAll('.magi-camp-more[open]').forEach(other=>{if(other!==menu)other.open=false;});
-      const anchor=menu.querySelector('summary').getBoundingClientRect();
-      popup.style.position='fixed';popup.style.right='auto';popup.style.zIndex='9999';
-      const width=200;popup.style.left=Math.max(8,Math.min(window.innerWidth-width-8,anchor.right-width))+'px';
-      popup.style.top=(anchor.bottom+popup.scrollHeight+8>window.innerHeight?Math.max(8,anchor.top-popup.scrollHeight-5):anchor.bottom+5)+'px';
-    });
-  });
-}
-document.addEventListener('click',e=>{
-  document.querySelectorAll('.magi-camp-more[open]').forEach(m=>{if(!m.contains(e.target))m.open=false;});
-});
-window.addEventListener('scroll',()=>document.querySelectorAll('.magi-camp-more[open]').forEach(m=>m.open=false),true);
 async function loadCampaigns(){
   try{const d=await api('/api/attack-simulator/campaigns');campaignListRows=d.campaigns||[];renderCampaignList();}
   catch(e){document.getElementById('campaignResult').textContent=e.message;}
@@ -324,39 +306,38 @@ function campaignEvidenceClass(e){if(e.kind==='DISCOVERY')return campaignEvidenc
 function campaignFailureHint(e){const msg=[e.reason,e.result,e.error,e.error_code].filter(Boolean).map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ');if(/no icmp echo reply/i.test(msg))return 'ICMP sem resposta. Isso não comprova que o host está desligado; SMB, WinRM e autenticação exigem testes independentes.';if(/timeout|timed.out/i.test(msg))return 'Tempo limite excedido. A causa exata depende dos registros do Runner e da conectividade.';if(/connection refused/i.test(msg))return 'Conexão recusada pelo destino ou por um intermediário.';if(/auth|access denied|logon failure/i.test(msg))return 'Falha de autenticação ou autorização informada pelo teste.';return campaignEvidenceFailure(e)?'A tentativa não foi confirmada. Consulte o motivo e os dados técnicos registrados.':'Não há falha específica registrada neste evento.';}
 function attackKindLabel(k){return ({ACCESS:'✓ ACCESS CONFIRMED',SNMP:'✓ SNMP DISCOVERY CONFIRMED',AUTHENTICATION_FAILED:'✕ AUTHENTICATION FAILED',TRANSPORT_FAILED:'✕ TRANSPORT FAILED',SERVICE_UNAVAILABLE:'✕ SERVICE UNAVAILABLE',BARRIER:'✕ BARRIER',DISCOVERY:'✓ DISCOVERY CONFIRMED'})[k]||k;}
 function attackKindClass(k){return ['ACCESS','DISCOVERY','SNMP'].includes(k)?'ap-badge-success':['AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'].includes(k)?'ap-badge-danger':'ap-badge-neutral';}
-function campaignEvidenceIP(e){
-  const data=e.evidence||{},result=(e.result&&typeof e.result==='object')?e.result:{};
-  const fields=[e.target,e.target_ip,e.ip_address,e.host_ip,e.destination_ip,data.target_ip,data.ip_address,data.target,data.destination_ip,result.target_ip,result.ip_address,result.target];
-  for(const val of fields){const v=String(val||'').trim();if(/^\d{1,3}(?:\.\d{1,3}){3}$/.test(v))return v;}
-  const messages=[e.reason,typeof e.result==='string'?e.result:'',data.message,result.message].filter(Boolean).join(' ');
-  const match=messages.match(/(?:target|destino|host|ip)\s*[:=]\s*(\d{1,3}(?:\.\d{1,3}){3})/i);
-  return match?match[1]:'';
+// MAGI 6.2.3 — client-side evidence explorer; no backend or Runner changes.
+function campaignEvidenceIp(e){
+  const values=[e.target_ip,e.target_ip_address,e.destination_ip,e.ip_address,e.target];
+  for(const value of values){
+    const v=String(value??'').trim();
+    if(/^(?:\d{1,3}\.){3}\d{1,3}$/.test(v)&&v.split('.').every(x=>Number(x)<=255))return v;
+    if(v.includes(':')&&/^[0-9a-f:]+$/i.test(v))return v;
+  }
+  return 'não informado';
 }
-function campaignEvidenceHost(e,coverage){
-  const ip=campaignEvidenceIP(e),data=e.evidence||{};
-  return e.hostname||data.hostname||coverage.find(x=>x.ip_address===ip)?.hostname||'';
+let magiCampaignEvidenceRows=[];
+function magiEvidenceCsv(rows){
+  const cols=['ip','hostname','origin','protocol','cycle','runner_job','hop','classification','diagnostic'];
+  const quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  return '\uFEFF'+[cols.join(','),...rows.map(r=>cols.map(k=>quote(r[k])).join(','))].join('\r\n');
 }
-function campaignEvidenceStatus(e){
-  if(campaignEvidenceFailure(e)||['AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'].includes(e.kind))return 'failure';
-  if(['ACCESS','SNMP'].includes(e.kind))return 'success';
-  return 'neutral';
+function magiDownloadEvidenceCsv(){
+  const term=(document.getElementById('magiEvidenceSearch')?.value||'').toLowerCase();
+  const protocol=document.getElementById('magiEvidenceProtocol')?.value||'';
+  const rows=magiCampaignEvidenceRows.filter(r=>(!protocol||r.protocol===protocol)&&(!term||Object.values(r).some(v=>String(v??'').toLowerCase().includes(term))));
+  const blob=new Blob([magiEvidenceCsv(rows)],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='magi_campaign_evidencias.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-function renderCampaignEvidence(panel,records,coverage){
-  const missed=coverage.filter(x=>!x.reached&&!records.some(e=>campaignEvidenceIP(e)===x.ip_address));
-  const rows=records.map(e=>({...e,_ip:campaignEvidenceIP(e),_host:campaignEvidenceHost(e,coverage),_status:campaignEvidenceStatus(e),_missing:false})).concat(missed.map(x=>({_ip:x.ip_address||'',_host:x.hostname||'',_status:'neutral',_missing:true,kind:'NOT_TESTED',reason:'Ativo conhecido, sem alcance confirmado e sem evidência individual disponível.'})));
-  panel.innerHTML=`<div class="magi-evidence-head"><h4>Evidências da execução</h4><p>Resultados registrados pelo Runner. Clique em uma linha para consultar o diagnóstico e os dados técnicos.</p></div>
-  <div class="magi-evidence-controls"><input id="magiEvidenceSearch" type="search" placeholder="Buscar IP, hostname, job ou mensagem…" aria-label="Buscar evidências"><select id="magiEvidenceStatus"><option value="">Todos os resultados</option><option value="failure">Falhas</option><option value="success">Sucessos</option><option value="neutral">Sem confirmação</option></select><select id="magiEvidenceProtocol"><option value="">Todos os protocolos</option>${[...new Set(rows.map(e=>e.protocol||e.kind||'Não informado'))].map(v=>`<option>${esc(v)}</option>`).join('')}</select><button class="btn secondary btn-sm" id="magiEvidenceExport" type="button">Exportar CSV</button></div>
-  <div class="magi-evidence-summary">Total: <strong>${rows.length}</strong> · Sucesso: <strong>${rows.filter(x=>x._status==='success').length}</strong> · Falha: <strong>${rows.filter(x=>x._status==='failure').length}</strong> · Sem confirmação: <strong>${rows.filter(x=>x._status==='neutral').length}</strong></div>
-  <div class="magi-evidence-layout"><div class="magi-evidence-table-wrap"><table class="magi-evidence-table"><thead><tr><th>IP destino</th><th>Hostname</th><th>Protocolo</th><th>Ciclo</th><th>Runner Job</th><th>Resultado</th></tr></thead><tbody id="magiEvidenceRows"></tbody></table><div class="magi-evidence-footer"><label>Por página <select id="magiEvidencePageSize"><option>25</option><option>50</option><option>100</option><option>500</option></select></label><span id="magiEvidencePageInfo"></span><button class="btn secondary btn-sm" id="magiEvidencePrev">Anterior</button><button class="btn secondary btn-sm" id="magiEvidenceNext">Próxima</button></div></div><aside class="magi-evidence-detail" id="magiEvidenceDetail"><h4>Detalhes da evidência</h4><p>Selecione uma linha para consultar o resultado.</p></aside></div>`;
-  let page=1,selected=-1;
-  const search=panel.querySelector('#magiEvidenceSearch'),status=panel.querySelector('#magiEvidenceStatus'),proto=panel.querySelector('#magiEvidenceProtocol'),size=panel.querySelector('#magiEvidencePageSize');
-  function filtered(){const q=search.value.trim().toLowerCase();return rows.map((r,i)=>({r,i})).filter(({r})=>(!q||[r._ip,r._host,r.runner_job_id,r.reason,r.result,r.kind].map(x=>typeof x==='object'?JSON.stringify(x):String(x||'')).join(' ').toLowerCase().includes(q))&&(!status.value||r._status===status.value)&&(!proto.value||(r.protocol||r.kind||'Não informado')===proto.value));}
-  function showDetail(i){selected=i;const e=rows[i];if(!e)return;const result=typeof e.result==='object'?pretty(e.result):String(e.result||'');const message=[e.reason,e.error,e.error_code].filter(Boolean).join(' | ');panel.querySelector('#magiEvidenceDetail').innerHTML=`<h4>Detalhes da evidência</h4><p><span class="ap-badge ${e._status==='failure'?'ap-badge-danger':'ap-badge-neutral'}">${esc(e._missing?'Sem teste individual':campaignEvidenceLabel(e))}</span></p><dl><dt>IP destino</dt><dd>${esc(e._ip||'Não registrado')}</dd><dt>Hostname</dt><dd>${esc(e._host||'Não informado')}</dd><dt>Protocolo</dt><dd>${esc(e.protocol||e.kind||'Não informado')}</dd><dt>Ciclo</dt><dd>${esc(e.cycle_id??'Não informado')}</dd><dt>Runner Job</dt><dd>${esc(e.runner_job_id??'Não informado')}</dd></dl><h5>Diagnóstico</h5><p>${esc(e._missing?e.reason:campaignFailureHint(e))}</p>${message?`<h5>Mensagem original</h5><pre>${esc(message)}</pre>`:''}${result?`<h5>Resultado técnico do Runner</h5><pre>${esc(result)}</pre>`:''}<small>Sem dados de destino ou protocolo, o MAGI não infere resultados.</small>`;panel.querySelectorAll('#magiEvidenceRows tr').forEach(tr=>tr.classList.toggle('selected',Number(tr.dataset.index)===i));}
-  function render(){const f=filtered(),limit=Number(size.value),pages=Math.max(1,Math.ceil(f.length/limit));page=Math.min(page,pages);panel.querySelector('#magiEvidenceRows').innerHTML=f.slice((page-1)*limit,page*limit).map(({r,i})=>`<tr data-index="${i}" class="${i===selected?'selected':''}"><td>${esc(r._ip||'Não registrado')}</td><td>${esc(r._host||'—')}</td><td>${esc(r.protocol||r.kind||'—')}</td><td>${esc(r.cycle_id??'—')}</td><td>${esc(r.runner_job_id??'—')}</td><td><span class="ap-badge ${r._status==='failure'?'ap-badge-danger':'ap-badge-neutral'}">${esc(r._missing?'Sem resultado':campaignEvidenceLabel(r))}</span></td></tr>`).join('')||'<tr><td colspan="6">Nenhuma evidência encontrada.</td></tr>';panel.querySelector('#magiEvidencePageInfo').textContent=`Página ${page} de ${pages}`;panel.querySelector('#magiEvidencePrev').disabled=page===1;panel.querySelector('#magiEvidenceNext').disabled=page===pages;panel.querySelectorAll('#magiEvidenceRows tr[data-index]').forEach(tr=>tr.onclick=()=>showDetail(Number(tr.dataset.index)));}
-  for(const el of [search,status,proto,size])el.addEventListener(el===search?'input':'change',()=>{page=1;render();});
-  panel.querySelector('#magiEvidencePrev').onclick=()=>{page--;render();};panel.querySelector('#magiEvidenceNext').onclick=()=>{page++;render();};
-  panel.querySelector('#magiEvidenceExport').onclick=()=>{const values=[['IP destino','Hostname','Protocolo','Ciclo','Runner Job','Status','Motivo'],...filtered().map(({r})=>[r._ip,r._host,r.protocol||r.kind,r.cycle_id,r.runner_job_id,r._status,r.reason])];const csv=values.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\r\n');const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='magi-campaign-evidencias.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-  render();if(rows.length)showDetail(0);
+function magiFilterEvidence(){
+  const term=(document.getElementById('magiEvidenceSearch')?.value||'').toLowerCase();
+  const protocol=document.getElementById('magiEvidenceProtocol')?.value||'';
+  let visible=0;
+  document.querySelectorAll('#magiEvidenceItems > .ap-panel').forEach(el=>{
+    const ok=(!protocol||el.dataset.protocol===protocol)&&(!term||el.textContent.toLowerCase().includes(term));
+    el.hidden=!ok;if(ok)visible++;
+  });
+  const counter=document.getElementById('magiEvidenceCount');if(counter)counter.textContent=visible+' registro(s) visível(is)';
 }
 async function renderCampaignTab(id,tab,cached){
   const panel=document.getElementById('attackPathPanel'); if(!panel)return;
@@ -392,8 +373,12 @@ async function renderCampaignTab(id,tab,cached){
       panel.innerHTML=`<h4>Campaign Coverage Intelligence</h4><p>Coverage considera ativos conhecidos por Campaign e Windows DHCP. DHCP lease não significa host online.</p><div class="ap-kpis"><div><small>Known assets</small><br><strong>${known}</strong></div><div><small>Reached</small><br><strong>${reached}</strong></div><div><small>Evaluated</small><br><strong>${evaluated}</strong></div><div><small>Not reached</small><br><strong>${notReached}</strong></div><div><small>Pending</small><br><strong>${pending}</strong></div><div><small>Known-asset coverage</small><br><strong>${pct}%</strong></div></div><div class="ap-kpis"><div><small>DHCP entregou</small><br><strong>${cd.reference.size} IPs</strong></div><div><small>Campaign encontrou desses</small><br><strong>${dhcpFound} / ${cd.reference.size}</strong></div><div><small>DHCP coverage</small><br><strong>${dhcpPct}</strong></div><div><small>Encontrados fora do DHCP</small><br><strong>${outsideDhcp}</strong></div></div><p><strong>Snapshot DHCP:</strong> leases capturadas no início desta execução; alterações posteriores não mudam retroativamente este denominador.</p><div class="ap-evidence">${cov.map(x=>`<div class="ap-panel"><strong>${esc(x.hostname||x.ip_address)}</strong> — ${esc(x.ip_address)}<br><small>Sources: ${esc((x.sources||[]).join(', '))} | State: ${esc(x.state)} | Reached: ${x.reached?'yes':'no'} | Evaluated: ${x.evaluated?'yes':'no'}</small></div>`).join('')||'<p>Coverage ainda não possui observações.</p>'}</div>`;return;
     }
     if(tab==='evidence'){
-      renderCampaignEvidence(panel,a.evidence||[],cached.coverage||[]);
-      return;
+      const records=a.evidence||[];
+      const observed=new Set(records.map(e=>String(e.target||'').trim()).filter(Boolean));
+      const missed=(cached.coverage||[]).filter(x=>!x.reached&&!observed.has(String(x.ip_address||'').trim()));
+      magiCampaignEvidenceRows=[...records.map(e=>({ip:campaignEvidenceIp(e),hostname:String(e.hostname||e.target_hostname||''),origin:String(e.origin||'Runner'),protocol:String(e.protocol||'Não informado'),cycle:String(e.cycle_id??''),runner_job:String(e.runner_job_id??''),hop:String(e.hop??''),classification:campaignEvidenceLabel(e),diagnostic:campaignFailureHint(e)})),...missed.map(x=>({ip:String(x.ip_address||''),hostname:String(x.hostname||''),origin:'Inventário',protocol:'Não executado',cycle:'',runner_job:'',hop:'',classification:'SEM ALCANCE CONFIRMADO',diagnostic:'Sem resultado individual disponível'}))];
+      const protocols=[...new Set(magiCampaignEvidenceRows.map(r=>r.protocol))].sort();
+      panel.innerHTML=`<h4>Diagnóstico e evidências por host</h4><div class="magi-evidence-tools" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0"><input id="magiEvidenceSearch" type="search" placeholder="Pesquisar IP, hostname, protocolo, job ou diagnóstico" aria-label="Pesquisar evidências" oninput="magiFilterEvidence()" style="flex:2;min-width:220px"><select id="magiEvidenceProtocol" aria-label="Filtrar protocolo" onchange="magiFilterEvidence()"><option value="">Todos os protocolos</option>${protocols.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')}</select><button type="button" class="btn secondary btn-sm" onclick="magiDownloadEvidenceCsv()">Exportar CSV</button><small id="magiEvidenceCount">${magiCampaignEvidenceRows.length} registro(s) visível(is)</small></div><p>Somente testes registrados são classificados. Ausência de ICMP não equivale a host offline; protocolos não executados permanecem sem resultado.</p><div class="ap-evidence" id="magiEvidenceItems">${records.map(e=>`<div class="ap-panel" data-protocol="${esc(e.protocol||'Não informado')}"><span class="ap-badge ${campaignEvidenceClass(e)}">${esc(campaignEvidenceLabel(e))}</span> <strong>${esc(e.origin||'Runner')} → ${esc(e.target||'Destino não informado')}</strong><br><small><strong>Protocolo:</strong> ${esc(e.protocol||'Não informado')} | <strong>Ciclo:</strong> ${esc(e.cycle_id??'Não informado')} | <strong>Runner Job:</strong> ${esc(e.runner_job_id??'Não informado')} | <strong>IP:</strong> ${esc(campaignEvidenceIp(e))}</small><p><strong>Diagnóstico:</strong> ${esc(campaignFailureHint(e))}</p>${e.reason?`<p><strong>Motivo original:</strong> ${esc(e.reason)}</p>`:''}${e.result?`<details><summary>Resultado técnico do Runner</summary><pre>${esc(typeof e.result==='object'?pretty(e.result):String(e.result))}</pre></details>`:''}</div>`).join('')}${missed.map(x=>`<div class="ap-panel" data-protocol="Não executado"><span class="ap-badge ap-badge-neutral">SEM ALCANCE CONFIRMADO</span> <strong>${esc(x.hostname||x.ip_address||'Host')}</strong> — ${esc(x.ip_address||'--')}<p>Ativo conhecido por ${esc((x.sources||[]).join(', ')||'inventário')}, mas não alcançado. Não há evidência de falha específica neste conjunto de resultados.</p><small>ICMP / SMB / WinRM / autenticação: sem resultados individuais disponíveis.</small></div>`).join('')}${!records.length&&!missed.length?'<p>Nenhuma evidência de execução disponível.</p>':''}</div>`;return;
     }
     const visible=edges.filter(e=>['ACCESS','SNMP','AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'].includes(e.kind));
     panel.innerHTML=`<h4>Attack Path — somente esta Campaign / Execution #${esc(a.execution_number||'--')}</h4>
@@ -505,3 +490,12 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('openCampaignCreator')?.addEventListener('click',()=>setCampaignCreatorOpen(true));
   document.getElementById('toggleCampaignCreator')?.addEventListener('click',()=>setCampaignCreatorOpen(!!document.getElementById('campaignCreator')?.hidden));
 });
+
+/* MAGI 6.2.4: floating action menus, outside clipped table ancestors. */
+(function(){
+ let active=null, trigger=null;
+ function closeMenu(){if(!active)return;active.hidden=true;active.classList.remove('magi-floating-menu');active.style.left='';active.style.top='';active.style.right='';if(trigger){trigger.setAttribute('aria-expanded','false');trigger.parentElement?.appendChild(active);}active=null;trigger=null;}
+ function positionMenu(){if(!active||!trigger)return;const r=trigger.getBoundingClientRect();const w=active.offsetWidth||210,h=active.offsetHeight||180;const left=Math.max(8,Math.min(r.right-w,window.innerWidth-w-8));const below=window.innerHeight-r.bottom;const top=below>=h+8||below>=r.top?Math.min(r.bottom+5,window.innerHeight-h-8):Math.max(8,r.top-h-5);active.style.left=left+'px';active.style.top=top+'px';}
+ document.addEventListener('click',function(e){const b=e.target.closest?.('.magi-camp-menu-trigger');if(b){e.preventDefault();e.stopPropagation();if(trigger===b){closeMenu();return;}closeMenu();trigger=b;active=b.parentElement.querySelector('.magi-camp-menu');if(!active)return;document.body.appendChild(active);active.classList.add('magi-floating-menu');active.hidden=false;b.setAttribute('aria-expanded','true');positionMenu();return;}if(active&&!e.target.closest?.('.magi-floating-menu'))closeMenu();else if(active&&e.target.closest?.('.magi-floating-menu button'))setTimeout(closeMenu,0);},true);
+ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});window.addEventListener('resize',positionMenu);window.addEventListener('scroll',positionMenu,true);
+})();
