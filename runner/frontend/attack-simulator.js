@@ -24,26 +24,64 @@ async function loadProviderStatus(){
 }
 async function loadSummary(){const d=await api('/api/attack-simulator/summary');document.getElementById('attackSimulationCount').textContent=d.simulations??0;}
 async function loadCredentials(){try{const d=await api('/api/actions/credentials');const all=d.credentials||[];const windows=all.filter(c=>['windows','wmi','winrm'].includes(String(c.type||c.credential_type||'').toLowerCase()));const ssh=all.filter(c=>['ssh','linux'].includes(String(c.type||c.credential_type||'').toLowerCase()));const snmp=all.filter(c=>['snmp','snmp_v2c','snmpv2c'].includes(String(c.type||c.credential_type||'').toLowerCase()));const opts=(rows,empty)=>`<option value="">${empty}</option>`+rows.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} — ${esc(c.type||c.credential_type||'credential')} — ${esc(c.domain?c.domain+'\\':'')}${esc(c.username||'')}</option>`).join('');document.getElementById('attackCredential').innerHTML=opts(all,'Nenhuma / não necessária');const cw=document.getElementById('campaignCredential');if(cw)cw.innerHTML=windows.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} — ${esc(c.type||c.credential_type||'credential')} — ${esc(c.domain?c.domain+'\\':'')}${esc(c.username||'')}</option>`).join('');const cn=document.getElementById('campaignSnmpCredential');if(cn)cn.innerHTML=opts(snmp,'Sem community SNMP');}catch(_e){}}
+let attackCatalogRows=[];
+let attackCatalogPage=1;
+let attackCatalogPageSize=25;
+let attackCatalogRequest=0;
+// MAGI 6.1.1: small local SVG glyphs; no external assets or brand assumptions.
+const magiGlyphs={
+  monitor:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>',
+  network:'<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-5h14v5"/>',
+  server:'<rect x="3" y="3" width="18" height="8" rx="2"/><rect x="3" y="13" width="18" height="8" rx="2"/><path d="M7 7h.01M7 17h.01M11 7h7M11 17h7"/>',
+  globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-5 5-5 13 0 18M12 3c5 5 5 13 0 18"/>',
+  shield:'<path d="M12 2 4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>'
+};
+function magiIcon(name){return `<svg class="magi-context-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${magiGlyphs[name]||magiGlyphs.shield}</svg>`;}
+function attackGlyph(r){const c=String(r.category||'').toLowerCase(), k=String(r.task_key||'').toLowerCase(), n=String(r.name||'').toLowerCase();if(c.includes('application')||/http|web|url/.test(n))return 'globe';if(/ldap|ldaps|sql|database/.test(n))return 'server';if(/kerberos|active directory|windows|endpoint/.test(c+' '+n)&&!/reachability|protocol|tcp/.test(n))return 'monitor';if(/network|reachability|tcp|snmp|ssh|rdp|winrm/.test(c+' '+n+' '+k))return 'network';return 'shield';}
+function addAttackFieldIcons(){const glyphs={attackTarget:'monitor',attackUrl:'globe',attackHostB:'network',attackCredential:'shield',attackCategory:'server',attackSearch:'globe',attackProvider:'server',attackTechniqueParameter:'shield'};Object.entries(glyphs).forEach(([id,glyph])=>{const el=document.getElementById(id);if(!el||el.parentElement?.querySelector('.magi-field-icon'))return;const wrap=document.createElement('span');wrap.className='magi-input-wrap';el.parentNode.insertBefore(wrap,el);wrap.appendChild(el);const i=document.createElement('span');i.className='magi-field-icon';i.innerHTML=magiIcon(glyph);wrap.insertBefore(i,el);});}
+function renderAttackCatalog(){
+  const table=document.getElementById('attackCatalogTable');if(!table)return;
+  const count=attackCatalogRows.length;
+  const pages=Math.max(1,Math.ceil(count/attackCatalogPageSize));
+  attackCatalogPage=Math.max(1,Math.min(attackCatalogPage,pages));
+  const start=(attackCatalogPage-1)*attackCatalogPageSize;
+  const rows=attackCatalogRows.slice(start,start+attackCatalogPageSize);
+  table.innerHTML=rows.map(r=>{
+    const meta=r.metadata||{},provider=providerOfTask(r);
+    const providerBadge=provider==='metasploit'?'<span class="badge badge-muted">Metasploit</span>':'<span class="badge badge-ok">MAGI Native</span>';
+    const technical=JSON.stringify(r.detection||{},null,2);
+    return `<tr><td class="atk-catalog-name"><div class="magi-attack-title"><span class="magi-attack-icon">${magiIcon(attackGlyph(r))}</span><div><strong>${esc(r.name||r.task_key)}</strong><small>${esc(r.description||'Sem descrição disponível')}</small><details class="atk-technical"><summary>Detalhes técnicos</summary><dl><dt>Identificador</dt><dd>${esc(r.task_key)}</dd><dt>Fase</dt><dd>${esc(meta.attack_phase||'Não informada')}</dd><dt>Requer credencial</dt><dd>${meta.credential_required?'Sim':'Não'}</dd></dl><pre>${esc(technical)}</pre></details></div></div></td><td>${providerBadge}</td><td>${esc(r.category)}</td><td>${badge(r.impact)}</td><td class="atk-catalog-actions"><button class="btn primary btn-sm atk-run" data-id="${esc(r.id)}">Executar</button></td></tr>`;
+  }).join('')||'<tr><td colspan="5">Nenhuma simulação encontrada para os filtros atuais.</td></tr>';
+  const info=document.getElementById('attackCatalogPaginationInfo');
+  if(info)info.textContent=count?`Exibindo ${start+1}–${Math.min(start+attackCatalogPageSize,count)} de ${count} simulações`:'Nenhuma simulação';
+  const page=document.getElementById('attackCatalogPageLabel');if(page)page.textContent=`Página ${attackCatalogPage} de ${pages}`;
+  const prev=document.getElementById('attackCatalogPrev');if(prev)prev.disabled=attackCatalogPage<=1;
+  const next=document.getElementById('attackCatalogNext');if(next)next.disabled=attackCatalogPage>=pages;
+  table.querySelectorAll('.atk-run').forEach(b=>b.addEventListener('click',()=>runAttack(b.dataset.id,false)));
+}
 async function loadCatalog(){
+  const request=++attackCatalogRequest;
   const url=new URL('/api/attack-simulator/catalog',location.origin);
   const q=document.getElementById('attackSearch').value.trim();
   const c=document.getElementById('attackCategory').value;
   const provider=document.getElementById('attackProvider')?.value||'';
   if(q)url.searchParams.set('search',q);
   if(c)url.searchParams.set('category',c);
-  const d=await api(url);
-  let rows=d.simulations||[];
-  if(provider) rows=rows.filter(r=>providerOfTask(r)===provider);
-  catalogById={};rows.forEach(r=>catalogById[String(r.id)]=r);
-  document.getElementById('attackCatalogTable').innerHTML=rows.map(r=>{
-    const meta=r.metadata||{},req=meta.credential_required?' <span class="badge badge-muted">Credential</span>':'';
-    const provider=providerOfTask(r);
-    const providerBadge=provider==='metasploit'?'<span class="badge badge-muted">Metasploit</span>':'<span class="badge badge-ok">MAGI Native</span>';
-    return `<tr><td><strong>${esc(r.task_key)} - ${esc(r.name)}</strong>${req}<br><small>${esc(r.description)}</small></td><td>${providerBadge}</td><td>${esc(r.category)}</td><td>${esc(meta.attack_phase)}</td><td>${badge(r.impact)}</td><td><code>${esc(JSON.stringify(r.detection||{}))}</code></td><td><button class="btn secondary btn-sm atk-plan" data-id="${r.id}">Planejar</button> <button class="btn primary btn-sm atk-run" data-id="${r.id}">Executar</button></td></tr>`;
-  }).join('')||'<tr><td colspan="7">Nenhuma simulação.</td></tr>';
-  document.querySelectorAll('.atk-plan').forEach(b=>b.onclick=()=>runAttack(b.dataset.id,true));
-  document.querySelectorAll('.atk-run').forEach(b=>b.onclick=()=>runAttack(b.dataset.id,false));
+  try{
+    const d=await api(url);
+    if(request!==attackCatalogRequest)return;
+    let rows=d.simulations||[];
+    if(provider)rows=rows.filter(r=>providerOfTask(r)===provider);
+    catalogById={};rows.forEach(r=>catalogById[String(r.id)]=r);
+    attackCatalogRows=rows;
+    attackCatalogPage=1;
+    renderAttackCatalog();
+  }catch(e){
+    if(request!==attackCatalogRequest)return;
+    document.getElementById('attackCatalogTable').innerHTML=`<tr><td colspan="5">Falha ao carregar catálogo: ${esc(e.message)}</td></tr>`;
+  }
 }
+
 function executionPayload(id){
   const task=catalogById[String(id)]||{},meta=task.metadata||{};
   const isApplication=String(task.category||'').toLowerCase()==='application';
@@ -132,12 +170,14 @@ function updateAttackTargetFields(){
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
-  buildHeader('attack');loadSummary();loadCredentials();loadCatalog();loadHistory();loadProviderStatus();updateAttackTargetFields();
+  buildHeader('attack');addAttackFieldIcons();loadSummary();loadCredentials();loadCatalog();loadHistory();loadProviderStatus();updateAttackTargetFields();
   document.getElementById('attackSearch').addEventListener('input',loadCatalog);
   document.getElementById('attackCategory').addEventListener('change',()=>{loadCatalog();updateAttackTargetFields();});
   document.getElementById('attackProvider')?.addEventListener('change',loadCatalog);
+  document.getElementById('attackCatalogPrev')?.addEventListener('click',()=>{attackCatalogPage--;renderAttackCatalog();});
+  document.getElementById('attackCatalogNext')?.addEventListener('click',()=>{attackCatalogPage++;renderAttackCatalog();});
+  document.getElementById('attackCatalogPageSize')?.addEventListener('change',e=>{attackCatalogPageSize=Number(e.target.value)||25;attackCatalogPage=1;renderAttackCatalog();});
   document.getElementById('refreshAttackHistory').onclick=loadHistory;
-  document.getElementById('syncAttackCatalog').onclick=async()=>{await syncCatalog();await loadProviderStatus();};
   document.querySelectorAll('.attack-nav-item').forEach(b=>b.onclick=()=>switchAttackView(b.dataset.view));
   document.querySelectorAll('.history-log-tab').forEach(b=>b.onclick=()=>{activeHistoryLogTab=b.dataset.logTab;renderHistoryLog();});
   const closeLog=document.getElementById('closeAttackHistoryLog');if(closeLog)closeLog.onclick=()=>{document.getElementById('attackHistoryLogPanel').style.display='none';};
@@ -146,21 +186,52 @@ document.addEventListener('DOMContentLoaded',()=>{
 
 function copyCredentialsToCampaign(){}
 function dtLocal(v){if(!v)return '--';try{return new Date(v).toLocaleString();}catch(_e){return v;}}
-async function loadCampaigns(){
-  try{
-    const d=await api('/api/attack-simulator/campaigns');const rows=d.campaigns||[];
-    document.getElementById('campaignTable').innerHTML=rows.map(c=>{const st=c.execution_stats||{};const scope=(c.scope_cidrs||[]).join(', ');return `<tr><td><strong>${esc(c.name)}</strong><br><small>${esc(c.campaign_uuid)}</small></td><td>${esc(scope)}</td><td>${badge(c.execution_status||c.status)}<br><small>#${esc(c.execution_number||1)}</small></td><td>${esc(dtLocal(c.scheduled_start||c.start_at))}<br>→ ${esc(dtLocal(c.scheduled_end||c.end_at))}<br><small>${esc(c.daily_start)}–${esc(c.daily_end)}</small></td><td>${esc(st.discovered||0)} hosts<br>${esc(st.accessed||0)} acessados<br>${esc(st.confirmed||0)} paths</td><td>${esc(dtLocal(c.next_cycle_at))}</td><td><button class="btn secondary btn-sm camp-view" data-id="${esc(c.campaign_uuid)}">Attack Path</button> <button class="btn secondary btn-sm camp-monitor" data-id="${esc(c.campaign_uuid)}">Monitoring</button> <button class="btn secondary btn-sm camp-edit" data-id="${esc(c.campaign_uuid)}">Ajustar</button> <button class="btn primary btn-sm camp-next" data-id="${esc(c.campaign_uuid)}">Próximo ciclo agora</button> <button class="btn secondary btn-sm camp-pause" data-id="${esc(c.campaign_uuid)}">Pausar</button> <button class="btn primary btn-sm camp-resume" data-id="${esc(c.campaign_uuid)}">Retomar</button> ${["completed","cancelled"].includes(String(c.execution_status||c.status).toLowerCase())?`<button class="btn primary btn-sm camp-new-execution" data-id="${esc(c.campaign_uuid)}">Nova execução</button>`:""} <button class="btn danger btn-sm camp-finish" data-id="${esc(c.campaign_uuid)}">Encerrar Campaign</button> <button class="btn danger btn-sm camp-delete" data-id="${esc(c.campaign_uuid)}">Excluir</button></td></tr>`}).join('')||'<tr><td colspan="7">Nenhuma Campaign.</td></tr>';
-    document.querySelectorAll('.camp-view').forEach(b=>b.onclick=()=>viewCampaign(b.dataset.id));
-    document.querySelectorAll('.camp-monitor').forEach(b=>b.onclick=()=>monitorCampaign(b.dataset.id));
-    document.querySelectorAll('.camp-edit').forEach(b=>b.onclick=()=>editCampaign(b.dataset.id));
-    document.querySelectorAll('.camp-next').forEach(b=>b.onclick=()=>nextCampaignCycle(b.dataset.id));
-    document.querySelectorAll('.camp-pause').forEach(b=>b.onclick=()=>campaignAction(b.dataset.id,'pause'));
-    document.querySelectorAll('.camp-resume').forEach(b=>b.onclick=()=>campaignAction(b.dataset.id,'resume'));
-    document.querySelectorAll('.camp-new-execution').forEach(b=>b.onclick=()=>newCampaignExecution(b.dataset.id));
-    document.querySelectorAll('.camp-finish').forEach(b=>b.onclick=()=>finishCampaign(b.dataset.id));
-    document.querySelectorAll('.camp-delete').forEach(b=>b.onclick=()=>deleteCampaign(b.dataset.id));
-  }catch(e){document.getElementById('campaignResult').textContent=e.message;}
+let campaignListRows=[];
+let activeCampaignId=null;
+function campaignRoute(id){return '#campaign/'+encodeURIComponent(id);}
+function closeCampaignPage(){activeCampaignId=null;const list=document.querySelector('#campaignPanel .magi-campaign-section');const create=document.querySelector('#campaignPanel .magi-campaign-create-section');if(list)list.classList.remove('magi-campaign-list-hidden');if(create)create.classList.remove('magi-campaign-list-hidden');const detail=document.getElementById('campaignDetail');if(detail){detail.innerHTML='';detail.classList.remove('magi-campaign-standalone');}if(location.hash.startsWith('#campaign/'))history.pushState(null,'','#campaign');}
+function openCampaignPage(id){activeCampaignId=id;const list=document.querySelector('#campaignPanel .magi-campaign-section');const create=document.querySelector('#campaignPanel .magi-campaign-create-section');if(list)list.classList.add('magi-campaign-list-hidden');if(create)create.classList.add('magi-campaign-list-hidden');const detail=document.getElementById('campaignDetail');detail.classList.add('magi-campaign-standalone');document.getElementById('campaignPanel').appendChild(detail);if(location.hash!==campaignRoute(id))history.pushState(null,'',campaignRoute(id));}
+
+let campaignPage=1;
+let campaignPageSize=25;
+function renderCampaignList(){
+  const rows=campaignListRows;const totalPages=Math.max(1,Math.ceil(rows.length/campaignPageSize));campaignPage=Math.min(Math.max(1,campaignPage),totalPages);
+  const count=document.getElementById('campaignListCount');if(count)count.textContent=rows.length+' Campaign'+(rows.length===1?'':'s');
+  const tbody=document.getElementById('campaignTable');if(!tbody)return;
+  tbody.innerHTML=rows.slice((campaignPage-1)*campaignPageSize,campaignPage*campaignPageSize).map(c=>{
+    const st=c.execution_stats||{},scope=(c.scope_cidrs||[]).join(', '),id=esc(c.campaign_uuid),status=String(c.execution_status||c.status||'').toLowerCase();
+    const completed=['completed','cancelled','finished','ended'].includes(status),paused=status.includes('paus'),running=['running','active','monitoring','in_progress'].some(x=>status.includes(x));
+    return `<tr><td><button class="magi-camp-name camp-view" data-id="${id}" type="button">${esc(c.name)}</button><br><small>${esc(c.campaign_uuid)}</small></td><td>${esc(scope)}</td><td>${badge(c.execution_status||c.status)}<br><small>Execução #${esc(c.execution_number||1)}</small></td><td>${esc(dtLocal(c.scheduled_start||c.start_at))}<br><small>até ${esc(dtLocal(c.scheduled_end||c.end_at))}</small></td><td>${esc(st.discovered||0)} hosts · ${esc(st.accessed||0)} acessos<br><small>${esc(st.confirmed||0)} caminhos</small></td><td>${esc(dtLocal(c.next_cycle_at))}</td><td><div class="magi-camp-actions"><button class="btn primary btn-sm camp-view" data-id="${id}">Detalhes</button> <button class="btn secondary btn-sm camp-monitor" data-id="${id}">Monitoring</button> ${!completed&&!paused?`<button class="btn secondary btn-sm camp-pause" data-id="${id}">Pausar</button>`:''}${!completed&&paused?`<button class="btn primary btn-sm camp-resume" data-id="${id}">Retomar</button>`:''}<details class="magi-camp-more"><summary aria-label="Mais ações">•••</summary><div class="magi-camp-menu"><button class="camp-edit" data-id="${id}">Ajustar</button><button class="camp-next" data-id="${id}">Próximo ciclo agora</button>${completed?`<button class="camp-new-execution" data-id="${id}">Nova execução</button>`:''}<button class="camp-finish" data-id="${id}">Encerrar Campaign</button><button class="camp-delete" data-id="${id}">Excluir</button></div></details></div></td></tr>`;
+  }).join('')||'<tr><td colspan="7">Nenhuma Campaign.</td></tr>';
+  const pageInfo=document.getElementById('campaignPageInfo');if(pageInfo)pageInfo.textContent=`Página ${campaignPage} de ${totalPages}`;
+  const prev=document.getElementById('campaignPagePrev'),next=document.getElementById('campaignPageNext');if(prev)prev.disabled=campaignPage<=1;if(next)next.disabled=campaignPage>=totalPages;
+  installCampaignActionMenus(tbody);
+  for(const [cls,fn] of [['camp-view',viewCampaign],['camp-monitor',monitorCampaign],['camp-edit',editCampaign],['camp-next',nextCampaignCycle],['camp-pause',id=>campaignAction(id,'pause')],['camp-resume',id=>campaignAction(id,'resume')],['camp-new-execution',newCampaignExecution],['camp-finish',finishCampaign],['camp-delete',deleteCampaign]]){
+    tbody.querySelectorAll('.'+cls).forEach(el=>el.onclick=()=>fn(el.dataset.id));
+  }
 }
+function installCampaignActionMenus(root){
+  root.querySelectorAll('.magi-camp-more').forEach(menu=>{
+    const popup=menu.querySelector('.magi-camp-menu');
+    menu.addEventListener('toggle',()=>{
+      if(!menu.open){popup.style.position='';popup.style.top='';popup.style.left='';popup.style.right='';return;}
+      root.querySelectorAll('.magi-camp-more[open]').forEach(other=>{if(other!==menu)other.open=false;});
+      const anchor=menu.querySelector('summary').getBoundingClientRect();
+      popup.style.position='fixed';popup.style.right='auto';popup.style.zIndex='9999';
+      const width=200;popup.style.left=Math.max(8,Math.min(window.innerWidth-width-8,anchor.right-width))+'px';
+      popup.style.top=(anchor.bottom+popup.scrollHeight+8>window.innerHeight?Math.max(8,anchor.top-popup.scrollHeight-5):anchor.bottom+5)+'px';
+    });
+  });
+}
+document.addEventListener('click',e=>{
+  document.querySelectorAll('.magi-camp-more[open]').forEach(m=>{if(!m.contains(e.target))m.open=false;});
+});
+window.addEventListener('scroll',()=>document.querySelectorAll('.magi-camp-more[open]').forEach(m=>m.open=false),true);
+async function loadCampaigns(){
+  try{const d=await api('/api/attack-simulator/campaigns');campaignListRows=d.campaigns||[];renderCampaignList();}
+  catch(e){document.getElementById('campaignResult').textContent=e.message;}
+}
+
 let dhcpIntegrations=[];
 async function loadDhcpIntegrationsForCampaign(){try{const d=await api('/api/settings');dhcpIntegrations=d?.integrations?.dhcp||[];const el=document.getElementById('campaignDhcpIntegration');if(el)el.innerHTML='<option value="">Selecione um DHCP configurado</option>'+dhcpIntegrations.filter(x=>x.enabled!==false).map(x=>`<option value="${esc(x.id)}">${esc(x.name)} — ${esc(x.server)}</option>`).join('');}catch(_e){}}
 function selectedDhcpIntegration(){const id=document.getElementById('campaignDhcpIntegration')?.value;return dhcpIntegrations.find(x=>String(x.id)===String(id));}
@@ -198,7 +269,7 @@ async function editCampaign(id){
     document.getElementById('campaignDailyStart').value=String(c.daily_start||'08:00').slice(0,5);
     document.getElementById('campaignDailyEnd').value=String(c.daily_end||'18:00').slice(0,5);
     document.getElementById('campaignRecurrence').value=c.recurrence_days||'';
-    document.getElementById('createCampaign').textContent='Salvar ajustes';
+    document.getElementById('createCampaign').textContent='Salvar ajustes';setCampaignCreatorOpen(true);
     document.getElementById('campaignResult').textContent='Editando Campaign existente. Histórico, assets e paths serão preservados.';
   }catch(e){document.getElementById('campaignResult').textContent=e.message;}
 }
@@ -212,29 +283,92 @@ async function deleteCampaign(id){
 }
 
 async function campaignAction(id,action){try{await api(`/api/attack-simulator/campaigns/${id}/${action}`,{method:'POST'});await loadCampaigns();await viewCampaign(id);}catch(e){document.getElementById('campaignResult').textContent=e.message;}}
+let selectedCampaignTab='summary';
+function campaignCoverageData(c){
+  const leases=Array.isArray(c.dhcp_leases)?c.dhcp_leases:[],cov=Array.isArray(c.coverage)?c.coverage:[];
+  const reference=new Set(leases.map(x=>x.ip_address).filter(Boolean));
+  const covered=new Set(cov.filter(x=>x.reached&&reference.has(x.ip_address)).map(x=>x.ip_address));
+  const outside=new Set(cov.filter(x=>x.reached&&x.ip_address&&!reference.has(x.ip_address)).map(x=>x.ip_address));
+  return {reference,covered,outside,pct:reference.size?Math.round(100*covered.size/reference.size):null};
+}
+function campaignGauge(data){
+  if(data.pct===null)return '<div class="magi-coverage-unavailable">Cobertura indisponível<br><small>Sem referência DHCP nesta execução.</small></div>';
+  return `<div class="magi-coverage-gauge" role="img" aria-label="Cobertura DHCP ${data.pct}%"><svg viewBox="0 0 200 120" aria-hidden="true"><path d="M25 103 A75 75 0 0 1 175 103" pathLength="100" class="magi-gauge-track"/><path d="M25 103 A75 75 0 0 1 175 103" pathLength="100" class="magi-gauge-fill" style="stroke-dasharray:${data.pct} 100"/><text x="100" y="94" text-anchor="middle" class="magi-gauge-value">${data.pct}%</text></svg></div>`;
+}
 async function viewCampaign(id){
   try{
-    const d=await api(`/api/attack-simulator/campaigns/${id}`),c=d.campaign||{},ex=(c.executions||[])[0]||{},st=ex.stats||{},paths=c.paths||[],assets=c.assets||[];
-    document.getElementById('campaignDetail').innerHTML=`<h3>${esc(c.name)} — Execution #${esc(ex.execution_number||'--')}</h3>
-      <div class="ap-tabs"><button class="btn secondary btn-sm ap-tab" data-tab="summary">Resumo</button><button class="btn primary btn-sm ap-tab" data-tab="path">Attack Path</button><button class="btn secondary btn-sm ap-tab" data-tab="network">Network Intelligence</button><button class="btn secondary btn-sm ap-tab" data-tab="coverage">Coverage</button><button class="btn secondary btn-sm ap-tab" data-tab="evidence">Evidências</button><button class="btn secondary btn-sm ap-tab" data-tab="cycles">Ciclos</button></div>
-      <div id="attackPathPanel" class="ap-panel">Carregando Attack Path...</div>`;
-    document.querySelectorAll('.ap-tab').forEach(b=>b.onclick=()=>renderCampaignTab(id,b.dataset.tab,c));
-    // DHCP coverage is visible immediately; no need to discover the Coverage tab.
-    const leases=c.dhcp_leases||[], leaseIps=new Set(leases.map(x=>x.ip_address));
-    const reached=(c.coverage||[]).filter(x=>leaseIps.has(x.ip_address)&&x.reached).length;
-    const pct=leaseIps.size?(100*reached/leaseIps.size).toFixed(1):'0.0';
-    const summary=document.createElement('div');summary.className='ap-panel';
-    summary.innerHTML=`<strong>Cobertura DHCP:</strong> ${reached} / ${leaseIps.size} IPs alcançados (${pct}%) <small>— snapshot da execução; alcance não significa acesso confirmado.</small>`;
-    document.getElementById('attackPathPanel').before(summary);
-    await renderCampaignTab(id,'coverage',c);
+    const d=await api(`/api/attack-simulator/campaigns/${id}`),c=d.campaign||{},ex=(c.executions||[])[0]||{};
+    const data=campaignCoverageData(c),stats=ex.stats||c.execution_stats||{};
+    const detail=document.getElementById('campaignDetail');
+    openCampaignPage(id);
+    detail.innerHTML=`<div class="magi-camp-detail-header"><div><h3>${esc(c.name||'Campaign')}</h3><small>${esc((c.scope_cidrs||[]).join(', '))} · Execução #${esc(ex.execution_number||c.execution_number||'--')}</small></div><button type="button" class="btn secondary btn-sm" id="closeCampaignDetails">Fechar detalhes</button></div>
+      <div class="magi-camp-detail-grid"><div class="magi-camp-stat"><small>Hosts descobertos</small><strong>${esc(stats.discovered??stats.hosts_known??(c.assets||[]).length??0)}</strong></div><div class="magi-camp-stat"><small>Acessos confirmados</small><strong>${esc(stats.accessed??stats.access_confirmed??0)}</strong></div><div class="magi-camp-stat"><small>Ciclos executados</small><strong>${esc(stats.cycles??(c.cycles||[]).length)}</strong></div><div class="magi-camp-stat magi-camp-stat-coverage"><div><small>Cobertura DHCP</small><strong>${data.pct===null?'Indisponível':data.pct+'%'}</strong><small>${data.covered.size} / ${data.reference.size} IPs da referência</small></div>${campaignGauge(data)}</div></div>
+      <p class="magi-camp-footnote">Cobertura = IPs únicos da referência DHCP alcançados pela Campaign. Alcance não comprova autenticação.</p>
+      <div class="ap-tabs magi-camp-tabs" role="tablist" aria-label="Detalhes da Campaign">${[['summary','Overview'],['path','Attack Path'],['network','Rede'],['coverage','Cobertura'],['evidence','Evidências'],['cycles','Ciclos'],['history','Histórico']].map(([key,label])=>`<button type="button" class="btn secondary btn-sm ap-tab" role="tab" data-tab="${key}">${label}</button>`).join('')}</div>
+      <div id="attackPathPanel" class="ap-panel">Carregando resultados...</div>`;
+    document.getElementById('closeCampaignDetails').onclick=closeCampaignPage;
+    detail.querySelectorAll('.ap-tab').forEach(btn=>btn.onclick=()=>activateCampaignTab(id,btn.dataset.tab,c));
+    await activateCampaignTab(id,'summary',c);
+    detail.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){document.getElementById('campaignResult').textContent=e.message;}
 }
+async function activateCampaignTab(id,tab,c){
+  selectedCampaignTab=tab;
+  document.querySelectorAll('#campaignDetail .ap-tab').forEach(b=>{const active=b.dataset.tab===tab;b.classList.toggle('primary',active);b.classList.toggle('secondary',!active);b.setAttribute('aria-selected',String(active));});
+  await renderCampaignTab(id,tab,c);
+}
+
+function campaignEvidenceFailure(e){const value=[e.result,e.reason,e.status,e.error,e.error_code,e.evidence?.status,e.evidence?.reason].filter(x=>x!==undefined&&x!==null).map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ').toLowerCase();return /discovery_not_confirmed|not.confirmed|no icmp echo reply|timeout|timed.out|connection.refused|auth.failed|access.denied|unreachable|failed|error/.test(value);}
+function campaignEvidenceLabel(e){if(e.kind==='DISCOVERY')return campaignEvidenceFailure(e)?'✕ DESCOBERTA NÃO CONFIRMADA':'DESCOBERTA REGISTRADA';return attackKindLabel(e.kind);}
+function campaignEvidenceClass(e){if(e.kind==='DISCOVERY')return campaignEvidenceFailure(e)?'ap-badge-danger':'ap-badge-neutral';return attackKindClass(e.kind);}
+function campaignFailureHint(e){const msg=[e.reason,e.result,e.error,e.error_code].filter(Boolean).map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ');if(/no icmp echo reply/i.test(msg))return 'ICMP sem resposta. Isso não comprova que o host está desligado; SMB, WinRM e autenticação exigem testes independentes.';if(/timeout|timed.out/i.test(msg))return 'Tempo limite excedido. A causa exata depende dos registros do Runner e da conectividade.';if(/connection refused/i.test(msg))return 'Conexão recusada pelo destino ou por um intermediário.';if(/auth|access denied|logon failure/i.test(msg))return 'Falha de autenticação ou autorização informada pelo teste.';return campaignEvidenceFailure(e)?'A tentativa não foi confirmada. Consulte o motivo e os dados técnicos registrados.':'Não há falha específica registrada neste evento.';}
 function attackKindLabel(k){return ({ACCESS:'✓ ACCESS CONFIRMED',SNMP:'✓ SNMP DISCOVERY CONFIRMED',AUTHENTICATION_FAILED:'✕ AUTHENTICATION FAILED',TRANSPORT_FAILED:'✕ TRANSPORT FAILED',SERVICE_UNAVAILABLE:'✕ SERVICE UNAVAILABLE',BARRIER:'✕ BARRIER',DISCOVERY:'✓ DISCOVERY CONFIRMED'})[k]||k;}
 function attackKindClass(k){return ['ACCESS','DISCOVERY','SNMP'].includes(k)?'ap-badge-success':['AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'].includes(k)?'ap-badge-danger':'ap-badge-neutral';}
+function campaignEvidenceIP(e){
+  const data=e.evidence||{},result=(e.result&&typeof e.result==='object')?e.result:{};
+  const fields=[e.target,e.target_ip,e.ip_address,e.host_ip,e.destination_ip,data.target_ip,data.ip_address,data.target,data.destination_ip,result.target_ip,result.ip_address,result.target];
+  for(const val of fields){const v=String(val||'').trim();if(/^\d{1,3}(?:\.\d{1,3}){3}$/.test(v))return v;}
+  const messages=[e.reason,typeof e.result==='string'?e.result:'',data.message,result.message].filter(Boolean).join(' ');
+  const match=messages.match(/(?:target|destino|host|ip)\s*[:=]\s*(\d{1,3}(?:\.\d{1,3}){3})/i);
+  return match?match[1]:'';
+}
+function campaignEvidenceHost(e,coverage){
+  const ip=campaignEvidenceIP(e),data=e.evidence||{};
+  return e.hostname||data.hostname||coverage.find(x=>x.ip_address===ip)?.hostname||'';
+}
+function campaignEvidenceStatus(e){
+  if(campaignEvidenceFailure(e)||['AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'].includes(e.kind))return 'failure';
+  if(['ACCESS','SNMP'].includes(e.kind))return 'success';
+  return 'neutral';
+}
+function renderCampaignEvidence(panel,records,coverage){
+  const missed=coverage.filter(x=>!x.reached&&!records.some(e=>campaignEvidenceIP(e)===x.ip_address));
+  const rows=records.map(e=>({...e,_ip:campaignEvidenceIP(e),_host:campaignEvidenceHost(e,coverage),_status:campaignEvidenceStatus(e),_missing:false})).concat(missed.map(x=>({_ip:x.ip_address||'',_host:x.hostname||'',_status:'neutral',_missing:true,kind:'NOT_TESTED',reason:'Ativo conhecido, sem alcance confirmado e sem evidência individual disponível.'})));
+  panel.innerHTML=`<div class="magi-evidence-head"><h4>Evidências da execução</h4><p>Resultados registrados pelo Runner. Clique em uma linha para consultar o diagnóstico e os dados técnicos.</p></div>
+  <div class="magi-evidence-controls"><input id="magiEvidenceSearch" type="search" placeholder="Buscar IP, hostname, job ou mensagem…" aria-label="Buscar evidências"><select id="magiEvidenceStatus"><option value="">Todos os resultados</option><option value="failure">Falhas</option><option value="success">Sucessos</option><option value="neutral">Sem confirmação</option></select><select id="magiEvidenceProtocol"><option value="">Todos os protocolos</option>${[...new Set(rows.map(e=>e.protocol||e.kind||'Não informado'))].map(v=>`<option>${esc(v)}</option>`).join('')}</select><button class="btn secondary btn-sm" id="magiEvidenceExport" type="button">Exportar CSV</button></div>
+  <div class="magi-evidence-summary">Total: <strong>${rows.length}</strong> · Sucesso: <strong>${rows.filter(x=>x._status==='success').length}</strong> · Falha: <strong>${rows.filter(x=>x._status==='failure').length}</strong> · Sem confirmação: <strong>${rows.filter(x=>x._status==='neutral').length}</strong></div>
+  <div class="magi-evidence-layout"><div class="magi-evidence-table-wrap"><table class="magi-evidence-table"><thead><tr><th>IP destino</th><th>Hostname</th><th>Protocolo</th><th>Ciclo</th><th>Runner Job</th><th>Resultado</th></tr></thead><tbody id="magiEvidenceRows"></tbody></table><div class="magi-evidence-footer"><label>Por página <select id="magiEvidencePageSize"><option>25</option><option>50</option><option>100</option><option>500</option></select></label><span id="magiEvidencePageInfo"></span><button class="btn secondary btn-sm" id="magiEvidencePrev">Anterior</button><button class="btn secondary btn-sm" id="magiEvidenceNext">Próxima</button></div></div><aside class="magi-evidence-detail" id="magiEvidenceDetail"><h4>Detalhes da evidência</h4><p>Selecione uma linha para consultar o resultado.</p></aside></div>`;
+  let page=1,selected=-1;
+  const search=panel.querySelector('#magiEvidenceSearch'),status=panel.querySelector('#magiEvidenceStatus'),proto=panel.querySelector('#magiEvidenceProtocol'),size=panel.querySelector('#magiEvidencePageSize');
+  function filtered(){const q=search.value.trim().toLowerCase();return rows.map((r,i)=>({r,i})).filter(({r})=>(!q||[r._ip,r._host,r.runner_job_id,r.reason,r.result,r.kind].map(x=>typeof x==='object'?JSON.stringify(x):String(x||'')).join(' ').toLowerCase().includes(q))&&(!status.value||r._status===status.value)&&(!proto.value||(r.protocol||r.kind||'Não informado')===proto.value));}
+  function showDetail(i){selected=i;const e=rows[i];if(!e)return;const result=typeof e.result==='object'?pretty(e.result):String(e.result||'');const message=[e.reason,e.error,e.error_code].filter(Boolean).join(' | ');panel.querySelector('#magiEvidenceDetail').innerHTML=`<h4>Detalhes da evidência</h4><p><span class="ap-badge ${e._status==='failure'?'ap-badge-danger':'ap-badge-neutral'}">${esc(e._missing?'Sem teste individual':campaignEvidenceLabel(e))}</span></p><dl><dt>IP destino</dt><dd>${esc(e._ip||'Não registrado')}</dd><dt>Hostname</dt><dd>${esc(e._host||'Não informado')}</dd><dt>Protocolo</dt><dd>${esc(e.protocol||e.kind||'Não informado')}</dd><dt>Ciclo</dt><dd>${esc(e.cycle_id??'Não informado')}</dd><dt>Runner Job</dt><dd>${esc(e.runner_job_id??'Não informado')}</dd></dl><h5>Diagnóstico</h5><p>${esc(e._missing?e.reason:campaignFailureHint(e))}</p>${message?`<h5>Mensagem original</h5><pre>${esc(message)}</pre>`:''}${result?`<h5>Resultado técnico do Runner</h5><pre>${esc(result)}</pre>`:''}<small>Sem dados de destino ou protocolo, o MAGI não infere resultados.</small>`;panel.querySelectorAll('#magiEvidenceRows tr').forEach(tr=>tr.classList.toggle('selected',Number(tr.dataset.index)===i));}
+  function render(){const f=filtered(),limit=Number(size.value),pages=Math.max(1,Math.ceil(f.length/limit));page=Math.min(page,pages);panel.querySelector('#magiEvidenceRows').innerHTML=f.slice((page-1)*limit,page*limit).map(({r,i})=>`<tr data-index="${i}" class="${i===selected?'selected':''}"><td>${esc(r._ip||'Não registrado')}</td><td>${esc(r._host||'—')}</td><td>${esc(r.protocol||r.kind||'—')}</td><td>${esc(r.cycle_id??'—')}</td><td>${esc(r.runner_job_id??'—')}</td><td><span class="ap-badge ${r._status==='failure'?'ap-badge-danger':'ap-badge-neutral'}">${esc(r._missing?'Sem resultado':campaignEvidenceLabel(r))}</span></td></tr>`).join('')||'<tr><td colspan="6">Nenhuma evidência encontrada.</td></tr>';panel.querySelector('#magiEvidencePageInfo').textContent=`Página ${page} de ${pages}`;panel.querySelector('#magiEvidencePrev').disabled=page===1;panel.querySelector('#magiEvidenceNext').disabled=page===pages;panel.querySelectorAll('#magiEvidenceRows tr[data-index]').forEach(tr=>tr.onclick=()=>showDetail(Number(tr.dataset.index)));}
+  for(const el of [search,status,proto,size])el.addEventListener(el===search?'input':'change',()=>{page=1;render();});
+  panel.querySelector('#magiEvidencePrev').onclick=()=>{page--;render();};panel.querySelector('#magiEvidenceNext').onclick=()=>{page++;render();};
+  panel.querySelector('#magiEvidenceExport').onclick=()=>{const values=[['IP destino','Hostname','Protocolo','Ciclo','Runner Job','Status','Motivo'],...filtered().map(({r})=>[r._ip,r._host,r.protocol||r.kind,r.cycle_id,r.runner_job_id,r._status,r.reason])];const csv=values.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\r\n');const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='magi-campaign-evidencias.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+  render();if(rows.length)showDetail(0);
+}
 async function renderCampaignTab(id,tab,cached){
   const panel=document.getElementById('attackPathPanel'); if(!panel)return;
   try{
-    if(tab==='cycles'){panel.innerHTML=`<h4>Ciclos</h4><pre>${esc(pretty((cached.cycles||[])))}</pre>`;return;}
+    if(tab==='cycles'){
+      const cycles=cached.cycles||[];
+      panel.innerHTML=`<h4>Ciclos da Campaign</h4><div class="magi-camp-records">${cycles.map((x,i)=>`<div class="ap-panel"><strong>Ciclo ${esc(x.cycle_number??x.number??i+1)}</strong><br><small>${esc(dtLocal(x.started_at||x.start_at||x.created_at))} · ${esc(x.status||'--')}</small><details><summary>Dados técnicos</summary><pre>${esc(pretty(x))}</pre></details></div>`).join('')||'<p>Nenhum ciclo registrado.</p>'}</div>`;return;
+    }
+    if(tab==='history'){
+      const runs=cached.executions||[];
+      panel.innerHTML=`<h4>Histórico de execuções</h4><p>Execuções disponíveis para esta Campaign, sem mesclar evidências de outras campanhas.</p><div class="magi-camp-records">${runs.map((x,i)=>`<div class="ap-panel"><strong>Execução #${esc(x.execution_number??i+1)}</strong> · ${esc(x.status||x.execution_status||'--')}<br><small>Início: ${esc(dtLocal(x.started_at||x.start_at||x.created_at))} · Fim: ${esc(dtLocal(x.finished_at||x.ended_at))}</small><details><summary>Detalhes registrados</summary><pre>${esc(pretty(x.stats||x))}</pre></details></div>`).join('')||'<p>Nenhuma execução registrada.</p>'}</div>`;return;
+    }
     const d=await api(`/api/attack-simulator/campaigns/${id}/attack-path`),a=d.attack_path||{},sum=a.summary||{},edges=a.edges||[];
     if(tab==='summary'){
       panel.innerHTML=`<h4>Resumo da Campaign</h4><div class="ap-kpis">
@@ -254,11 +388,12 @@ async function renderCampaignTab(id,tab,cached){
       panel.innerHTML=`<h4>Network Intelligence</h4><p>SNMP é tratado como descoberta de topologia, não como lateral movement.</p><div class="ap-kpis"><div><small>Dispositivos SNMP</small><br><strong>${snmp.length}</strong></div><div><small>Neighbors LLDP/CDP</small><br><strong>${neighbors.length}</strong></div></div><div class="ap-evidence">${neighbors.map(n=>`<div class="ap-panel"><strong>${esc(n.device)} → ${esc(n.neighbor)}</strong><br><small>${esc(String(n.protocol||'').toUpperCase())}</small></div>`).join('')||'<p>Nenhum neighbor LLDP/CDP retornado pelos dispositivos SNMP desta execução.</p>'}</div>`;return;
     }
     if(tab==='coverage'){
-      const cov=cached.coverage||[], leases=cached.dhcp_leases||[];const known=cov.length,reached=cov.filter(x=>x.reached).length,evaluated=cov.filter(x=>x.evaluated).length,notReached=cov.filter(x=>!x.reached).length,pending=cov.filter(x=>!x.evaluated).length,pct=known?((evaluated/known)*100).toFixed(1):'0.0';const leaseIps=new Set(leases.map(x=>x.ip_address));const dhcpFound=cov.filter(x=>leaseIps.has(x.ip_address)&&x.reached).length;const dhcpPct=leases.length?((dhcpFound/leases.length)*100).toFixed(1):'0.0';const outsideDhcp=cov.filter(x=>x.reached&&!leaseIps.has(x.ip_address)).length;
-      panel.innerHTML=`<h4>Campaign Coverage Intelligence</h4><p>Coverage considera ativos conhecidos por Campaign e Windows DHCP. DHCP lease não significa host online.</p><div class="ap-kpis"><div><small>Known assets</small><br><strong>${known}</strong></div><div><small>Reached</small><br><strong>${reached}</strong></div><div><small>Evaluated</small><br><strong>${evaluated}</strong></div><div><small>Not reached</small><br><strong>${notReached}</strong></div><div><small>Pending</small><br><strong>${pending}</strong></div><div><small>Known-asset coverage</small><br><strong>${pct}%</strong></div></div><div class="ap-kpis"><div><small>DHCP entregou</small><br><strong>${leases.length} IPs</strong></div><div><small>Campaign encontrou desses</small><br><strong>${dhcpFound} / ${leases.length}</strong></div><div><small>DHCP coverage</small><br><strong>${dhcpPct}%</strong></div><div><small>Encontrados fora do DHCP</small><br><strong>${outsideDhcp}</strong></div></div><p><strong>Snapshot DHCP:</strong> leases capturadas no início desta execução; alterações posteriores não mudam retroativamente este denominador.</p><div class="ap-evidence">${cov.map(x=>`<div class="ap-panel"><strong>${esc(x.hostname||x.ip_address)}</strong> — ${esc(x.ip_address)}<br><small>Sources: ${esc((x.sources||[]).join(', '))} | State: ${esc(x.state)} | Reached: ${x.reached?'yes':'no'} | Evaluated: ${x.evaluated?'yes':'no'}</small></div>`).join('')||'<p>Coverage ainda não possui observações.</p>'}</div>`;return;
+      const cov=cached.coverage||[],leases=cached.dhcp_leases||[],known=cov.length,reached=cov.filter(x=>x.reached).length,evaluated=cov.filter(x=>x.evaluated).length,notReached=cov.filter(x=>!x.reached).length,pending=cov.filter(x=>!x.evaluated).length,pct=known?((evaluated/known)*100).toFixed(1):'Indisponível';const cd=campaignCoverageData(cached),dhcpFound=cd.covered.size,dhcpPct=cd.pct===null?'Indisponível':cd.pct.toFixed(1)+'%',outsideDhcp=cd.outside.size;
+      panel.innerHTML=`<h4>Campaign Coverage Intelligence</h4><p>Coverage considera ativos conhecidos por Campaign e Windows DHCP. DHCP lease não significa host online.</p><div class="ap-kpis"><div><small>Known assets</small><br><strong>${known}</strong></div><div><small>Reached</small><br><strong>${reached}</strong></div><div><small>Evaluated</small><br><strong>${evaluated}</strong></div><div><small>Not reached</small><br><strong>${notReached}</strong></div><div><small>Pending</small><br><strong>${pending}</strong></div><div><small>Known-asset coverage</small><br><strong>${pct}%</strong></div></div><div class="ap-kpis"><div><small>DHCP entregou</small><br><strong>${cd.reference.size} IPs</strong></div><div><small>Campaign encontrou desses</small><br><strong>${dhcpFound} / ${cd.reference.size}</strong></div><div><small>DHCP coverage</small><br><strong>${dhcpPct}</strong></div><div><small>Encontrados fora do DHCP</small><br><strong>${outsideDhcp}</strong></div></div><p><strong>Snapshot DHCP:</strong> leases capturadas no início desta execução; alterações posteriores não mudam retroativamente este denominador.</p><div class="ap-evidence">${cov.map(x=>`<div class="ap-panel"><strong>${esc(x.hostname||x.ip_address)}</strong> — ${esc(x.ip_address)}<br><small>Sources: ${esc((x.sources||[]).join(', '))} | State: ${esc(x.state)} | Reached: ${x.reached?'yes':'no'} | Evaluated: ${x.evaluated?'yes':'no'}</small></div>`).join('')||'<p>Coverage ainda não possui observações.</p>'}</div>`;return;
     }
     if(tab==='evidence'){
-      panel.innerHTML=`<h4>Evidências rastreáveis</h4><div class="ap-evidence">${(a.evidence||[]).map(e=>`<div class="ap-panel"><span class="ap-badge ${attackKindClass(e.kind)}">${esc(attackKindLabel(e.kind))}</span> <strong>${esc(e.origin)} → ${esc(e.target||'--')}</strong><br><small><strong>Target:</strong> ${esc(e.target||'--')} | Protocol: ${esc(e.protocol||'--')} | Hop: ${esc(e.hop??'--')} | Cycle: ${esc(e.cycle_id||'--')} | Runner Job: ${esc(e.runner_job_id||'--')}</small>${e.reason?`<br><strong>Motivo:</strong> ${esc(e.reason)}`:''}${e.result?`<pre>${esc(String(e.result))}</pre>`:''}</div>`).join('')||'<p>Sem evidências nesta execução.</p>'}</div>`;return;
+      renderCampaignEvidence(panel,a.evidence||[],cached.coverage||[]);
+      return;
     }
     const visible=edges.filter(e=>['ACCESS','SNMP','AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'].includes(e.kind));
     panel.innerHTML=`<h4>Attack Path — somente esta Campaign / Execution #${esc(a.execution_number||'--')}</h4>
@@ -269,7 +404,7 @@ async function renderCampaignTab(id,tab,cached){
   }catch(e){panel.textContent=e.message;}
 }
 
-window.addEventListener('load',()=>{setTimeout(()=>{copyCredentialsToCampaign();loadDhcpIntegrationsForCampaign();loadCampaigns();const rc=document.getElementById('refreshCampaigns'),cc=document.getElementById('createCampaign');if(rc)rc.onclick=loadCampaigns;if(cc)cc.onclick=createCampaign;},250);});
+window.addEventListener('load',()=>{setTimeout(()=>{copyCredentialsToCampaign();loadDhcpIntegrationsForCampaign();loadCampaigns().then(()=>{const match=location.hash.match(/^#campaign\/(.+)$/);if(match)viewCampaign(decodeURIComponent(match[1]));});const rc=document.getElementById('refreshCampaigns'),cc=document.getElementById('createCampaign');if(rc)rc.onclick=loadCampaigns;if(cc)cc.onclick=createCampaign;document.getElementById('campaignPageSize')?.addEventListener('change',e=>{campaignPageSize=Number(e.target.value)||25;campaignPage=1;renderCampaignList();});document.getElementById('campaignPagePrev')?.addEventListener('click',()=>{campaignPage--;renderCampaignList();});document.getElementById('campaignPageNext')?.addEventListener('click',()=>{campaignPage++;renderCampaignList();});},250);});
 
 let correlationPlan=[];
 async function loadCorrelationTargets(){
@@ -355,3 +490,18 @@ async function monitorCampaign(id){
    }
  }catch(e){out.textContent='Monitoring: '+e.message;}
 }
+
+// MAGI 6.2.0 — Existing campaigns first; creator is secondary and collapsible.
+function setCampaignCreatorOpen(open){
+  const creator=document.getElementById('campaignCreator');
+  if(!creator)return;
+  creator.hidden=!open;
+  ['openCampaignCreator','toggleCampaignCreator'].forEach(id=>{
+    const b=document.getElementById(id);if(b)b.setAttribute('aria-expanded',String(open));
+  });
+  if(open){document.querySelector('.magi-campaign-create-section')?.scrollIntoView({behavior:'smooth',block:'start'});}
+}
+window.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('openCampaignCreator')?.addEventListener('click',()=>setCampaignCreatorOpen(true));
+  document.getElementById('toggleCampaignCreator')?.addEventListener('click',()=>setCampaignCreatorOpen(!!document.getElementById('campaignCreator')?.hidden));
+});

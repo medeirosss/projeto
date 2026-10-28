@@ -22,8 +22,8 @@ function buildPayload(){
   return {
     theme: {
       logo_path: document.getElementById('logo_path')?.value.trim() || 'logo.png',
-      brand_name: document.getElementById('brand_name')?.value.trim() || 'Centric',
-      accent_color: document.getElementById('accent_color')?.value || '#7c3aed'
+      brand_name: document.getElementById('brand_name')?.value.trim() || 'MAGI',
+      accent_color: document.getElementById('accent_color')?.value || '#c6ff57'
     },
     modules: { uem: { enabled: moduleState.uem }, security: { enabled: moduleState.security } },
     mail_server: {
@@ -105,8 +105,8 @@ async function loadSettings(){
   currentSettings = data;
   const branding = data?.theme || {};
   const savedLogo = branding.logo_path || 'logo.png';
-  const savedName = branding.brand_name || 'Centric';
-  const savedAccent = branding.accent_color || '#7c3aed';
+  const savedName = branding.brand_name || 'MAGI';
+  const savedAccent = branding.accent_color || '#c6ff57';
   setBrandLogo(savedLogo);
   setBrandName(savedName);
   setAccentColor(savedAccent);
@@ -187,8 +187,8 @@ async function forceScan(){
 
 function updateBrandingPreview(){
   const logoValue = document.getElementById('logo_path')?.value || 'logo.png';
-  const nameValue = document.getElementById('brand_name')?.value || 'Centric';
-  const accentValue = document.getElementById('accent_color')?.value || '#7c3aed';
+  const nameValue = document.getElementById('brand_name')?.value || 'MAGI';
+  const accentValue = document.getElementById('accent_color')?.value || '#c6ff57';
   const logo = document.getElementById('brandingPreviewLogo');
   const name = document.getElementById('brandingPreviewName');
   if(logo) logo.src = normalizeAssetPath(logoValue);
@@ -203,11 +203,11 @@ function resetBranding(){
   const name = document.getElementById('brand_name');
   const color = document.getElementById('accent_color');
   if(logo) logo.value = 'logo.png';
-  if(name) name.value = 'Centric';
-  if(color) color.value = '#7c3aed';
-  localStorage.removeItem('centric-brand-logo');
-  localStorage.removeItem('centric-brand-name');
-  localStorage.removeItem('centric-accent-color');
+  if(name) name.value = 'MAGI';
+  if(color) color.value = '#c6ff57';
+  
+  
+  
   updateBrandingPreview();
   setMessage('brandingStatusBox', 'Padrão restaurado. Clique em Salvar branding para persistir.');
 }
@@ -233,10 +233,7 @@ function bindBrandingActions(){
     });
   }
   document.getElementById('saveBrandingSettingsBtn')?.addEventListener('click', async () => {
-    localStorage.setItem('centric-brand-logo', document.getElementById('logo_path')?.value || 'logo.png');
-    localStorage.setItem('centric-brand-name', document.getElementById('brand_name')?.value || 'Centric');
-    localStorage.setItem('centric-accent-color', document.getElementById('accent_color')?.value || '#7c3aed');
-    await saveSettings('brandingStatusBox');
+    if(await saveSettings('brandingStatusBox')) document.dispatchEvent(new CustomEvent('magi:branding-saved'));
   });
   document.getElementById('resetBrandingBtn')?.addEventListener('click', resetBranding);
 }
@@ -597,3 +594,6 @@ async function scanDhcpLease(button){
   }catch(e){status.textContent='Erro: '+e.message;}finally{button.disabled=false;}
 }
 
+
+// Keep the administration branding form in sync with the global editor.
+document.addEventListener('magi:branding-saved',()=>{if(typeof loadSettings==='function')loadSettings();});

@@ -1,0 +1,7 @@
+MAGI 6.1.0 — Attack Simulator UI
+Base: MAGI 6.0.1
+Catalog: compact table, expandable technical details, client-side pagination 25/50/100/500, filters unchanged.
+Target and scope form spacing adjusted; safety limits and existing APIs unchanged.
+Modified: frontend/attack-simulator.html, frontend/attack-simulator.js, frontend/design-system/components.css
+Validation: node --check and ZIP CRC check.
+Not validated against a running Docker/PostgreSQL/Runner environment.

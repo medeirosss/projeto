@@ -91,35 +91,31 @@ function setBrandName(name){
   });
 }
 
+const MAGI_FRONTEND_BUILD = '6.0.1';
+let magiBrandingCurrent = {logo_path:'logo.png',brand_name:'MAGI',accent_color:'#c6ff57'};
 function setAccentColor(color){
-  const value = String(color || '').trim();
-  if(!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)) return;
-  document.documentElement.style.setProperty('--accent', value);
-  document.documentElement.style.setProperty('--primary-color', value);
-  document.documentElement.style.setProperty('--blue', value);
+  const value=String(color||'').trim();
+  if(!/^#[0-9a-fA-F]{6}$/.test(value))return;
+  document.documentElement.style.setProperty('--magi-accent',value);
+  document.documentElement.style.setProperty('--accent',value);
+  document.documentElement.style.setProperty('--primary-color',value);
+  document.documentElement.style.setProperty('--blue',value);
 }
-
-function applyBrandingSettings(settings = {}){
-  const theme = settings.theme || settings.branding || {};
-  const logoPath = settings.logo_path || theme.logo_path || theme.logo || localStorage.getItem('centric-brand-logo');
-  const brandName = settings.brand_name || theme.brand_name || theme.name || localStorage.getItem('centric-brand-name');
-  const accentColor = localStorage.getItem('centric-accent-color') || settings.accent_color || theme.accent_color || theme.primary_color;
-  setBrandLogo(logoPath || 'logo.png');
-  setBrandName(brandName || 'MAGI');
-  setAccentColor(accentColor || '#c6ff57');
+function applyBrandingSettings(settings={}){
+  const theme=settings.theme||settings.branding||{};
+  const next={
+    logo_path:theme.logo_path||settings.logo_path||'logo.png',
+    brand_name:theme.brand_name||settings.brand_name||'MAGI',
+    accent_color:theme.accent_color||settings.accent_color||'#c6ff57'
+  };
+  magiBrandingCurrent=next;
+  setBrandLogo(next.logo_path);setBrandName(next.brand_name);setAccentColor(next.accent_color);
+  document.dispatchEvent(new CustomEvent('magi:branding-updated',{detail:{...next}}));
 }
-
 async function initializeBranding(){
   applyBrandingSettings();
-  try{
-    const res = await fetch('/api/settings');
-    if(res.ok){
-      const data = await res.json();
-      applyBrandingSettings(data);
-    }
-  }catch(_e){
-    // Mantém branding local/default quando o endpoint ainda não estiver disponível.
-  }
+  try{const response=await fetch('/api/settings',{cache:'no-store'});if(response.ok)applyBrandingSettings(await response.json());}
+  catch(_error){/* keep safe defaults if offline */}
 }
 
 function renderModuleSidebar(containerId, groups, onClick){
@@ -181,25 +177,38 @@ async function bindUserMenu(){
 document.addEventListener('DOMContentLoaded', ()=>{ bindThemeToggle(); initializeBranding(); bindUserMenu(); });
 
 
-// MAGI 6.0.0 H1 — usable global branding control, including legacy pages.
+// Shared branding editor. Server settings are authoritative; no conflicting localStorage overrides.
 function initializeMagiBrandControl(){
-  if(document.getElementById('magiBrandOpen'))return;
-  const trigger=document.createElement('button');trigger.id='magiBrandOpen';trigger.className='magi-brand-open';trigger.type='button';trigger.textContent='◉ Tema';
-  trigger.title='Alterar cor principal do MAGI';const header=document.querySelector('.topbar,.modern-topbar,header');const nav=document.getElementById('mainMenu');if(nav){nav.insertAdjacentElement('afterend',trigger);}else if(header){header.appendChild(trigger);}else{document.body.appendChild(trigger);}
-  const modal=document.createElement('div');modal.className='magi-brand-dialog';modal.id='magiBrandDialog';
-  modal.innerHTML=`<div class="magi-brand-panel" role="dialog" aria-modal="true" aria-labelledby="magiBrandTitle"><h2 id="magiBrandTitle">Personalização de tema</h2><p>Escolha a cor principal da interface. As cores de severidade não serão alteradas.</p><div class="magi-brand-swatches" id="magiBrandSwatches"></div><label for="magiBrandCustom">Cor personalizada</label><input type="color" id="magiBrandCustom" value="#c6ff57" style="width:80px;display:block;margin-top:8px"><div class="actions"><button class="action" type="button" id="magiBrandCancel">Cancelar</button><button class="action save" type="button" id="magiBrandSave">Salvar cor</button></div></div>`;
+  if(document.getElementById('magiBrandOpen')||!document.body.classList.contains('centric-page'))return;
+  const header=document.querySelector('.topbar,.modern-topbar');
+  if(!header)return;
+  let right=header.querySelector('.top-right');
+  if(!right){right=document.createElement('div');right.className='top-right';header.appendChild(right);}
+  const trigger=document.createElement('button');trigger.type='button';trigger.id='magiBrandOpen';trigger.className='magi-brand-open';trigger.textContent='◉ Personalizar';right.prepend(trigger);
+  const version=document.createElement('span');version.className='magi-build-id';version.textContent='UI '+MAGI_FRONTEND_BUILD;version.title='Versão do frontend';right.appendChild(version);
+  const modal=document.createElement('div');modal.id='magiBrandDialog';modal.className='magi-brand-dialog';
+  modal.innerHTML=`<section class="magi-brand-panel" role="dialog" aria-modal="true" aria-labelledby="magiBrandTitle"><h2 id="magiBrandTitle">Identidade visual MAGI</h2><p>Personalização compartilhada entre os módulos. Alterações são salvas no servidor.</p><label for="magiBrandName">Nome do produto</label><input type="text" id="magiBrandName" maxlength="80"><label for="magiBrandLogo">Logotipo (caminho ou URL)</label><input type="text" id="magiBrandLogo"><label>Cor principal</label><div id="magiBrandSwatches" class="magi-brand-swatches"></div><input type="color" id="magiBrandCustom" aria-label="Cor personalizada"><label for="magiBrandAppearance">Aparência neste navegador</label><select id="magiBrandAppearance"><option value="dark">Escuro</option><option value="light">Claro</option></select><p id="magiBrandStatus" role="status" aria-live="polite"></p><div class="actions"><button type="button" id="magiBrandCancel">Cancelar</button><button type="button" id="magiBrandSave" class="save">Salvar</button></div></section>`;
   document.body.appendChild(modal);
   const colors=['#c6ff57','#2998ff','#a855f7','#ff983f','#ff4858','#ec46b7','#00d5e8'];
   const swatches=modal.querySelector('#magiBrandSwatches');const picker=modal.querySelector('#magiBrandCustom');
-  let previous='#c6ff57',selected=previous;
-  const render=()=>{swatches.querySelectorAll('button').forEach(b=>b.classList.toggle('selected',b.dataset.color.toLowerCase()===selected.toLowerCase()));picker.value=selected;setAccentColor(selected);};
-  colors.forEach(color=>{const b=document.createElement('button');b.type='button';b.className='magi-brand-swatch';b.dataset.color=color;b.style.background=color;b.setAttribute('aria-label','Cor '+color);b.addEventListener('click',()=>{selected=color;render();});swatches.appendChild(b);});
-  trigger.addEventListener('click',()=>{previous=localStorage.getItem('centric-accent-color')||getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#c6ff57';selected=/^#[0-9a-f]{6}$/i.test(previous)?previous:'#c6ff57';render();modal.classList.add('open');});
+  const name=modal.querySelector('#magiBrandName');const logo=modal.querySelector('#magiBrandLogo');const appearance=modal.querySelector('#magiBrandAppearance');const status=modal.querySelector('#magiBrandStatus');
+  let selected='#c6ff57', previousAppearance='dark';
+  const render=()=>{picker.value=selected;swatches.querySelectorAll('button').forEach(b=>b.classList.toggle('selected',b.dataset.color===selected));setAccentColor(selected);};
+  colors.forEach(color=>{const button=document.createElement('button');button.type='button';button.className='magi-brand-swatch';button.dataset.color=color;button.style.background=color;button.setAttribute('aria-label','Selecionar '+color);button.addEventListener('click',()=>{selected=color;render();});swatches.appendChild(button);});
+  const restore=()=>{applyBrandingSettings({theme:magiBrandingCurrent});applyTheme(previousAppearance);};
+  const close=(revert=true)=>{if(revert)restore();modal.classList.remove('open');trigger.focus();};
+  trigger.addEventListener('click',()=>{name.value=magiBrandingCurrent.brand_name;logo.value=magiBrandingCurrent.logo_path;selected=magiBrandingCurrent.accent_color;previousAppearance=getThemePreference();appearance.value=previousAppearance;status.textContent='';render();modal.classList.add('open');name.focus();});
   picker.addEventListener('input',()=>{selected=picker.value;render();});
-  const close=(save)=>{if(save){localStorage.setItem('centric-accent-color',selected);document.dispatchEvent(new CustomEvent('magi:accent-changed',{detail:{color:selected}}));}else{setAccentColor(previous);}modal.classList.remove('open');};
-  modal.querySelector('#magiBrandCancel').addEventListener('click',()=>close(false));
-  modal.querySelector('#magiBrandSave').addEventListener('click',()=>close(true));
-  modal.addEventListener('click',e=>{if(e.target===modal)close(false);});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&modal.classList.contains('open'))close(false);});
+  appearance.addEventListener('change',()=>applyTheme(appearance.value));
+  modal.querySelector('#magiBrandCancel').addEventListener('click',()=>close());
+  modal.querySelector('#magiBrandSave').addEventListener('click',async()=>{
+    const save=modal.querySelector('#magiBrandSave');save.disabled=true;status.textContent='Salvando...';
+    const payload={theme:{logo_path:logo.value.trim()||'logo.png',brand_name:name.value.trim()||'MAGI',accent_color:selected,dark_mode:appearance.value!=='light'}};
+    try{const response=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!response.ok)throw new Error('HTTP '+response.status);applyBrandingSettings({theme:payload.theme});applyTheme(appearance.value);document.dispatchEvent(new CustomEvent('magi:branding-saved',{detail:payload.theme}));close(false);}
+    catch(error){status.textContent='Não foi possível salvar: '+error.message;}
+    finally{save.disabled=false;}
+  });
+  modal.addEventListener('click',event=>{if(event.target===modal)close();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&modal.classList.contains('open'))close();});
 }
-if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',initializeMagiBrandControl);}else{initializeMagiBrandControl();}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initializeMagiBrandControl);else initializeMagiBrandControl();
