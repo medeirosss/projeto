@@ -1,0 +1,18 @@
+/* MAGI 6.2.4 — shared visual tokens and overlay behavior */
+:root,body[data-theme="dark"]{--magi-bg:#080f14;--magi-panel:#111d25;--magi-input:#192833;--magi-border:#293a43;--magi-text:#edf4f5;--magi-muted:#9caeb8;--accent:#c6ff57;--bg:#080f14;--card:#111d25;--border:#293a43;--text:#edf4f5;--muted:#9caeb8;--blue:#c6ff57;--overlay-z:10000}
+body.centric-page,body.centric-page[data-theme="dark"]{background:#080f14!important;color:var(--magi-text)}
+body.centric-page .panel,body.centric-page .card,body.centric-page .modern-card,body.centric-page .ap-panel{background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
+body.centric-page input:not([type=checkbox]):not([type=radio]),body.centric-page select,body.centric-page textarea{background:var(--magi-input)!important;color:var(--magi-text)!important;border:1px solid var(--magi-border)!important}
+body.centric-page .btn.primary,body.centric-page button.primary{background:var(--accent)!important;color:#101a1f!important;border-color:var(--accent)!important}
+body.centric-page .btn.secondary,body.centric-page button.secondary{background:#192833!important;color:#e7f0f2!important;border:1px solid #344650!important}
+body.centric-page .btn.secondary:hover,body.centric-page button.secondary:hover{border-color:var(--accent)!important}
+body.centric-page .attack-subnav,body.centric-page .report-sidebar{background:#0e1b22!important}
+body.centric-page .attack-nav-item.active{background:rgba(198,255,87,.12)!important;color:var(--accent)!important;border-color:var(--accent)!important}
+.magi-camp-actions{flex-wrap:nowrap;justify-content:flex-end;white-space:nowrap}
+.magi-camp-menu-trigger{background:#192833;border:1px solid #344650;border-radius:8px;color:#e7f0f2;padding:6px 10px;cursor:pointer}
+.magi-camp-menu[hidden]{display:none!important}
+.magi-floating-menu{position:fixed!important;z-index:var(--overlay-z)!important;right:auto!important;top:auto;min-width:210px;max-height:min(70vh,420px);overflow-y:auto;background:#192833!important;border:1px solid #344650;border-radius:9px;padding:6px;box-shadow:0 16px 44px #000a}
+.magi-floating-menu button{display:block;width:100%;padding:10px 12px;text-align:left;background:transparent;border:0;color:#edf4f5;cursor:pointer;border-radius:6px}
+.magi-floating-menu button:hover{background:#304650}
+/* Keep the list itself unconstrained; only its inner table may scroll horizontally. */
+#campaignList,.magi-campaign-list{overflow:visible}
