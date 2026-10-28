@@ -52,7 +52,7 @@ body.centric-page .atk-pagination button:disabled{opacity:.45;cursor:not-allowed
 
 /* MAGI 6.1.1: shared elevated controls and contextual glyphs */
 
-body.centric-page :is(input:not([type=checkbox]):not([type=radio]),select,textarea){background:var(--magi-input-bg)!important;border-color:var(--magi-input-border)!important;min-height:36px}
+body.centric-page :is(input:not([type=checkbox]):not([type=radio]),select,textarea){min-height:36px}
 body.centric-page :is(input,select,textarea)::placeholder{color:var(--magi-muted);opacity:.9}
 body.centric-page :is(input,select,textarea):focus{border-color:var(--magi-accent)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--magi-accent) 16%,transparent)}
 body.centric-page .magi-context-svg{width:19px;height:19px;display:block;flex-shrink:0}
@@ -105,9 +105,9 @@ body.centric-page #campaignPanel .magi-campaign-field input:disabled{opacity:.75
 #campaignPanel .magi-gauge-fill{stroke:var(--accent,#c6ff57)}
 #campaignPanel .magi-gauge-value{font-size:29px;font-weight:700;fill:currentColor}
 
-/* MAGI 6.2.5 R3: canonical shared dark surfaces; colors from tokens.css only. */
-body.centric-page[data-theme="dark"] :is(.card,.modern-card,.kpi-card,.metric-card,.stat,.panel,.form-card,.scan-config-section,.pipeline-panel,.campaign-detail,.ap-panel,.percent-box,.report-card,.dashboard-card,.summary-card,.info-bar,.summary-strip){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
-body.centric-page[data-theme="dark"] :is(.card-header,.clean-header,.panel-header,.report-header){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
-body.centric-page[data-theme="dark"] :is(table,.modern-table,table tbody,table tbody tr,table tbody td,.modern-table td){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
-body.centric-page[data-theme="dark"] :is(table thead,table thead tr,table th,.modern-table th){background:var(--magi-elevated);border-color:var(--magi-border)}
-body.centric-page[data-theme="dark"] :is(input:not([type=checkbox]):not([type=radio]),select,textarea){background:var(--magi-input);border-color:var(--magi-border);color:var(--magi-text)}
+
+/* MAGI R5: canonical shared surfaces. Modules own layout, not palette. */
+body.centric-page :is(.card,.modern-card,.kpi-card,.metric-card,.stat,.panel,.form-card,.scan-config-section,.pipeline-panel,.campaign-detail,.ap-panel,.percent-box,.report-card,.dashboard-card,.summary-card,.info-bar,.summary-strip){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
+body.centric-page :is(.card-header,.clean-header,.panel-header,.report-header){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
+body.centric-page :is(table,.modern-table,table tbody,table tbody tr,table tbody td,.modern-table td){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
+body.centric-page :is(table thead,table thead tr,table th,.modern-table th){background:var(--magi-elevated);border-color:var(--magi-border)}

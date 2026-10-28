@@ -1,0 +1,8 @@
+MAGI 6.2.5 R5 — CSS consolidation (incremental)
+Baseline: uploaded R4. Login UI unchanged.
+Canonical theme tokens: frontend/design-system/tokens.css
+Shared surface rules: frontend/design-system/components.css
+Removed known conflicting legacy dark gradients and dark theme variables from style.css copies.
+Updated HTML stylesheet cache versions and ordering on non-login pages.
+Known technical debt: remaining legacy !important declarations, hard-coded colors and module-specific selectors.
+Not yet verified in a browser or Docker. Do not approve as stable without visual regression testing.
