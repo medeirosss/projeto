@@ -115,7 +115,7 @@ def _attack_path_payload(c: dict[str, Any]) -> dict[str, Any]:
     edges=[]; evidence=[]; barriers=[]
     for p in reversed(paths):  # chronological graph/evidence
         ev=p.get('evidence') or {}; kind=status_kind(p)
-        origin=str(p.get('origin_address') or 'runner'); target=str(p.get('target_address') or '')
+        origin=str(p.get('origin_address') or p.get('origin') or 'runner'); target=str(p.get('target_address') or p.get('target') or p.get('runner_target') or '').strip()
         protocol=p.get('protocol') or ev.get('protocol') or ev.get('access_method')
         display_protocol='Discovery / ICMP' if str(protocol).lower() in ('preflight','icmp') else protocol
         blob=(str(p.get('status') or '')+' '+str(p.get('result') or '')+' '+__import__('json').dumps(ev,default=str)).lower()
@@ -131,7 +131,7 @@ def _attack_path_payload(c: dict[str, Any]) -> dict[str, Any]:
             elif str(p.get('status') or '').lower() in ('failed','error','cancelled','not_confirmed'): reason=str(p.get('result') or 'Execution did not confirm the path.')
         item={'path_id':p.get('id'),'cycle_id':p.get('cycle_id'),'hop':p.get('hop'),'origin':origin,'target':target,
               'protocol':display_protocol,'raw_protocol':protocol,'reason':reason,'relation_type':p.get('relation_type'),'status':p.get('status'),'kind':kind,
-              'runner_job_id':p.get('runner_job_id'),'credential_ref':ev.get('credential_id') or ev.get('credential_ref'),
+              'runner_job_id':p.get('runner_job_id'),'target_ip':target,'credential_ref':ev.get('credential_id') or ev.get('credential_ref'),
               'result':p.get('result'),'evidence':ev,'started_at':p.get('started_at'),'finished_at':p.get('finished_at')}
         evidence.append(item)
         if target and str(p.get('result') or '')!='discovery_not_confirmed':

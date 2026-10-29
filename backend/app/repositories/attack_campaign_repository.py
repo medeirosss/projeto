@@ -209,7 +209,7 @@ def get_campaign(campaign_uuid: str) -> dict[str, Any] | None:
         if executions:
             eid = executions[0]["id"]
             out["assets"] = [dict(x) for x in db.execute(text("SELECT * FROM attack_campaign_assets WHERE execution_id=:e ORDER BY address"), {"e":eid}).mappings().all()]
-            out["paths"] = [dict(x) for x in db.execute(text("SELECT * FROM attack_campaign_paths WHERE execution_id=:e ORDER BY id DESC LIMIT 500"), {"e":eid}).mappings().all()]
+            out["paths"] = [dict(x) for x in db.execute(text("""SELECT p.*, j.target AS runner_target FROM attack_campaign_paths p LEFT JOIN runner_jobs j ON j.id=p.runner_job_id WHERE p.execution_id=:e ORDER BY p.id DESC LIMIT 500"""), {"e":eid}).mappings().all()]
             out["cycles"] = [dict(x) for x in db.execute(text("SELECT * FROM attack_campaign_cycles WHERE execution_id=:e ORDER BY cycle_number DESC LIMIT 100"), {"e":eid}).mappings().all()]
             out["dhcp_leases"] = [dict(x) for x in db.execute(text("SELECT * FROM attack_campaign_dhcp_leases WHERE execution_id=:e ORDER BY ip_address"), {"e":eid}).mappings().all()]
             out["coverage"] = [dict(x) for x in db.execute(text("SELECT * FROM attack_campaign_coverage WHERE execution_id=:e ORDER BY ip_address"), {"e":eid}).mappings().all()]
