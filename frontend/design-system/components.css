@@ -84,7 +84,7 @@ body.centric-page #campaignPanel .magi-campaign-field input:disabled{opacity:.75
 /* MAGI 6.2.0: shared Campaign management layout */
 #campaignPanel .magi-campaign-page-header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 #campaignPanel .magi-campaign-header-actions{display:flex;gap:8px;align-items:center}
-#campaignPanel .magi-campaign-section{background:var(--card-bg,#111d25);border:1px solid var(--border-color,#293d49);border-radius:12px;padding:16px;margin-top:16px;min-width:0}
+#campaignPanel .magi-campaign-section{background:var(--magi-panel);border:1px solid var(--magi-border);border-radius:12px;padding:16px;margin-top:16px;min-width:0}
 #campaignPanel .magi-campaign-section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 #campaignPanel .magi-campaign-section-title h3{margin:0}
 #campaignPanel .magi-campaign-count{color:var(--muted,#9fb2be);font-size:12px}
