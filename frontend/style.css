@@ -789,7 +789,7 @@ body.centric-page[data-theme="dark"]{background:var(--magi-bg);color:var(--magi-
 @media(max-width:1050px){.magi-camp-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.magi-camp-detail-grid{grid-template-columns:1fr}.magi-camp-detail-header{align-items:flex-start;flex-direction:column}}
 
 /* MAGI 6.2.2: dedicated Campaign details and global black canvas */
-:root,body[data-theme="dark"]{--magi-bg:#000000!important;--bg:#000000!important}
+:root,body[data-theme="dark"]{--bg:#000000!important}
 html,body,body.centric-page{background-color:#000000!important}
 .magi-campaign-list-hidden{display:none!important}
 #campaignDetail.magi-campaign-standalone{display:block;width:100%;margin-top:16px;padding:18px;border:1px solid var(--magi-border,#293a43);border-radius:12px;background:var(--magi-panel,#111d25)}

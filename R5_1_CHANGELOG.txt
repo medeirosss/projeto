@@ -1,0 +1,9 @@
+MAGI 6.2.5 R5.1 — CSS Architecture Stabilization
+- Dark theme token owner: frontend/design-system/tokens.css
+- Remove competing token definitions from legacy magi-design-system.css
+- Remove legacy hard-coded --magi-bg !important in style.css
+- Make dark/light token scopes explicit for centric-page
+- Cache-bust CSS assets on application pages; login excluded
+- Add tools/check_css_tokens.py for CI guardrails
+- No backend or runner changes.
+NOTE: browser/Docker UI regression testing still required.

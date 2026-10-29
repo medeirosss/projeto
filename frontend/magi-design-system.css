@@ -1,6 +1,5 @@
 /* MAGI 6.0.0 - approved corporate visual baseline */
-:root,body[data-theme="dark"]{--magi-bg:#000000;--magi-panel:var(--magi-panel);--magi-input:var(--magi-elevated);--magi-border:#293a43;--magi-text:#edf4f5;--magi-muted:#9caeb8;--accent:#c6ff57;--primary-color:var(--accent);--bg:var(--magi-bg);--top:#071117;--text:var(--magi-text);--muted:var(--magi-muted);--border:var(--magi-border);--card:var(--magi-panel);--blue:var(--accent);color-scheme:dark}
-body[data-theme="light"]{--magi-bg:#f4f7f8;--magi-panel:#fff;--magi-input:#edf2f5;--magi-border:#d5dfe4;--magi-text:#15242d;--magi-muted:#52636d;--bg:var(--magi-bg);--top:#101e25;--text:var(--magi-text);--muted:var(--magi-muted);--border:var(--magi-border);--card:var(--magi-panel);color-scheme:light}
+/* Theme tokens are owned exclusively by design-system/tokens.css. */
 body{background:var(--bg);color:var(--text);font-family:Inter,"Segoe UI",Arial,sans-serif}
 .topbar,.modern-topbar{min-height:56px;height:auto;background:var(--top);border-bottom:1px solid var(--magi-border);padding:7px 16px}
 .menu{gap:5px;align-items:center}.menu a{border:1px solid transparent;border-radius:9px;padding:11px 13px;color:#dce8ed;white-space:nowrap}.menu a.active,.menu a:hover{border-color:var(--accent);background:rgba(198,255,87,.1);color:var(--accent)}
