@@ -111,3 +111,19 @@ body.centric-page :is(.card,.modern-card,.kpi-card,.metric-card,.stat,.panel,.fo
 body.centric-page :is(.card-header,.clean-header,.panel-header,.report-header){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
 body.centric-page :is(table,.modern-table,table tbody,table tbody tr,table tbody td,.modern-table td){background:var(--magi-panel);border-color:var(--magi-border);color:var(--magi-text)}
 body.centric-page :is(table thead,table thead tr,table th,.modern-table th){background:var(--magi-elevated);border-color:var(--magi-border)}
+
+
+/* MAGI R5.2 — Overview KPI accent border.
+   Scoped to the six Overview KPI cards; all other panels remain neutral.
+   Uses the user-configurable accent token and preserves light theme styling. */
+body.centric-page.magi-overview[data-theme="dark"] .kpi-grid > .kpi-card {
+  border: 1px solid color-mix(in srgb, var(--magi-accent, #c6ff57) 48%, var(--magi-border, #292929));
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+body.centric-page.magi-overview[data-theme="dark"] .kpi-grid > .kpi-card:hover {
+  border-color: color-mix(in srgb, var(--magi-accent, #c6ff57) 76%, var(--magi-border, #292929));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--magi-accent, #c6ff57) 12%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  body.centric-page.magi-overview[data-theme="dark"] .kpi-grid > .kpi-card { transition: none; }
+}
