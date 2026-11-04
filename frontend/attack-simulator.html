@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="/assets/design-system/theme-surfaces.css?v=6.2.5r5.1">
 <link rel="stylesheet" href="/assets/design-system/tokens.css?v=6.2.5r5.1">
 <link rel="stylesheet" href="/assets/design-system/components.css?v=6.2.5r5.1">
+<link rel="stylesheet" href="/assets/attack-path-graph.css?v=6.3.0">
 </head>
 <body class="centric-page">
   <div class="topbar modern-topbar">
@@ -107,8 +108,8 @@
 
     <section class="panel" data-attack-view="attackpath">
       <div class="panel-header"><div><h2>Intelligent Attack Path 5.7.3</h2><p>Grafo operacional e telemetria de caminho. POSSIBLE/VALIDATABLE não são apresentados como salto lateral confirmado.</p></div><button id="refreshAttackPaths" class="btn secondary">Atualizar</button></div>
-      <div class="table-wrap"><table><thead><tr><th>Path</th><th>Origem</th><th>Status</th><th>Criado</th><th>Ação</th></tr></thead><tbody id="attackPathRuns"><tr><td colspan="5">Nenhum Attack Path carregado.</td></tr></tbody></table></div>
-      <div id="attackPathTelemetry" class="result-box">Selecione um Path para ver edges e telemetria ENTERED / ACTION / RELAY / RETURN.</div>
+      <div class="magi-ap-toolbar"><label>Campaign <select id="magiAttackPathCampaign"><option value="">Selecione uma Campaign</option></select></label><button type="button" class="btn secondary" id="magiAttackPathCampaignLoad">Visualizar grafo</button></div><div id="magiAttackPathMainGraph"></div><details><summary>Histórico técnico de Attack Paths</summary><div class="table-wrap"><table><thead><tr><th>Path</th><th>Origem</th><th>Status</th><th>Criado</th><th>Ação</th></tr></thead><tbody id="attackPathRuns"><tr><td colspan="5">Nenhum Attack Path carregado.</td></tr></tbody></table></div>
+      <div id="attackPathTelemetry" class="result-box">Selecione um Path para ver edges e telemetria ENTERED / ACTION / RELAY / RETURN.</div></details>
     </section>
 
     <section class="panel" id="campaignPanel" data-attack-view="campaign">
@@ -183,6 +184,7 @@
     </div>
   </main>
   <script src="/assets/common.js?v=6.2.0"></script>
-  <script src="/assets/attack-simulator.js?v=6.2.6"></script>
+  <script src="/assets/attack-path-graph.js?v=6.3.0"></script>
+  <script src="/assets/attack-simulator.js?v=6.3.0"></script>
 </body>
 </html>

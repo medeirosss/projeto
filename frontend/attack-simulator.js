@@ -12,7 +12,7 @@ function switchAttackView(view){
   if(view==='history') loadHistory();
   if(view==='campaign') loadCampaigns();
   if(view==='correlation') loadCorrelationTargets();
-  if(view==='attackpath') loadAttackPaths();
+  if(view==='attackpath'){loadAttackPaths();loadMagiGraphCampaigns();}
 }
 async function loadProviderStatus(){
   const el=document.getElementById('metasploitProviderStatus'); if(!el)return;
@@ -380,12 +380,9 @@ async function renderCampaignTab(id,tab,cached){
       const protocols=[...new Set(magiCampaignEvidenceRows.map(r=>r.protocol))].sort();
       panel.innerHTML=`<h4>Diagnóstico e evidências por host</h4><div class="magi-evidence-tools" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0"><input id="magiEvidenceSearch" type="search" placeholder="Pesquisar IP, hostname, protocolo, job ou diagnóstico" aria-label="Pesquisar evidências" oninput="magiFilterEvidence()" style="flex:2;min-width:220px"><select id="magiEvidenceProtocol" aria-label="Filtrar protocolo" onchange="magiFilterEvidence()"><option value="">Todos os protocolos</option>${protocols.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')}</select><button type="button" class="btn secondary btn-sm" onclick="magiDownloadEvidenceCsv()">Exportar CSV</button><small id="magiEvidenceCount">${magiCampaignEvidenceRows.length} registro(s) visível(is)</small></div><p>Somente testes registrados são classificados. Ausência de ICMP não equivale a host offline; protocolos não executados permanecem sem resultado.</p><div class="ap-evidence" id="magiEvidenceItems">${records.map(e=>`<div class="ap-panel" data-protocol="${esc(e.protocol||'Não informado')}"><span class="ap-badge ${campaignEvidenceClass(e)}">${esc(campaignEvidenceLabel(e))}</span> <strong>${esc(e.origin||'Runner')} → ${esc(campaignEvidenceIp(e)==='não informado'?'Destino não informado':campaignEvidenceIp(e))}</strong><br><small><strong>Protocolo:</strong> ${esc(e.protocol||'Não informado')} | <strong>Ciclo:</strong> ${esc(e.cycle_id??'Não informado')} | <strong>Runner Job:</strong> ${esc(e.runner_job_id??'Não informado')} | <strong>IP:</strong> ${esc(campaignEvidenceIp(e))}</small><p><strong>Diagnóstico:</strong> ${esc(campaignFailureHint(e))}</p>${e.reason?`<p><strong>Motivo original:</strong> ${esc(e.reason)}</p>`:''}${e.result?`<details><summary>Resultado técnico do Runner</summary><pre>${esc(typeof e.result==='object'?pretty(e.result):String(e.result))}</pre></details>`:''}</div>`).join('')}${missed.map(x=>`<div class="ap-panel" data-protocol="Não executado"><span class="ap-badge ap-badge-neutral">SEM ALCANCE CONFIRMADO</span> <strong>${esc(x.hostname||x.ip_address||'Host')}</strong> — ${esc(x.ip_address||'--')}<p>Ativo conhecido por ${esc((x.sources||[]).join(', ')||'inventário')}, mas não alcançado. Não há evidência de falha específica neste conjunto de resultados.</p><small>ICMP / SMB / WinRM / autenticação: sem resultados individuais disponíveis.</small></div>`).join('')}${!records.length&&!missed.length?'<p>Nenhuma evidência de execução disponível.</p>':''}</div>`;return;
     }
-    const visible=edges.filter(e=>['ACCESS','SNMP','AUTHENTICATION_FAILED','TRANSPORT_FAILED','SERVICE_UNAVAILABLE','BARRIER'].includes(e.kind));
-    panel.innerHTML=`<h4>Attack Path — somente esta Campaign / Execution #${esc(a.execution_number||'--')}</h4>
-      <p>O grafo abaixo não mistura resultados de outras Campaigns. Falhas relevantes são exibidas como barreiras.</p>
-      <div class="ap-graph"><div class="ap-row"><span class="ap-node">MAGI Runner</span></div>
-      ${visible.map(e=>`<div class="ap-row"><span class="ap-node">${esc(e.origin)}</span><span class="ap-edge">── ${esc(e.protocol||e.relation_type||'path')} / ${esc(attackKindLabel(e.kind))} ──►</span><span class="ap-node">${esc(e.target)}</span>${e.reason?`<span><strong>Motivo:</strong> ${esc(e.reason)}</span>`:''}</div>`).join('')||'<p>Nenhum path relevante consolidado ainda.</p>'}</div>
-      <div class="ap-kpis"><div><small>Acessos</small><br><strong>${esc(sum.access_confirmed||0)}</strong></div><div><small>Maior hop</small><br><strong>${esc(sum.max_hop||0)}</strong></div><div><small>Barreiras</small><br><strong>${esc(sum.barriers||0)}</strong></div></div>`;
+    panel.innerHTML=`<h4>Attack Path — Campaign / Execution #${esc(a.execution_number||'--')}</h4><p>Relações comprovadas, falhas e descobertas são diferenciadas. Clique em um nó para ver seus saltos.</p><div id="magiCampaignAttackGraph"></div><div class="ap-kpis"><div><small>Acessos</small><br><strong>${esc(sum.access_confirmed||0)}</strong></div><div><small>Maior hop</small><br><strong>${esc(sum.max_hop||0)}</strong></div><div><small>Barreiras</small><br><strong>${esc(sum.barriers||0)}</strong></div></div>`;
+    if(window.MAGIAttackPath)window.MAGIAttackPath.mount(document.getElementById('magiCampaignAttackGraph'),a);
+
   }catch(e){panel.textContent=e.message;}
 }
 
@@ -499,3 +496,23 @@ window.addEventListener('DOMContentLoaded',()=>{
  document.addEventListener('click',function(e){const b=e.target.closest?.('.magi-camp-menu-trigger');if(b){e.preventDefault();e.stopPropagation();if(trigger===b){closeMenu();return;}closeMenu();trigger=b;active=b.parentElement.querySelector('.magi-camp-menu');if(!active)return;document.body.appendChild(active);active.classList.add('magi-floating-menu');active.hidden=false;b.setAttribute('aria-expanded','true');positionMenu();return;}if(active&&!e.target.closest?.('.magi-floating-menu'))closeMenu();else if(active&&e.target.closest?.('.magi-floating-menu button'))setTimeout(closeMenu,0);},true);
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});window.addEventListener('resize',positionMenu);window.addEventListener('scroll',positionMenu,true);
 })();
+
+// MAGI 6.3.0: dedicated Attack Path view shares the exact same graph renderer as Campaign.
+async function loadMagiGraphCampaigns(){
+ const select=document.getElementById('magiAttackPathCampaign');if(!select)return;
+ try{const d=await api('/api/attack-simulator/campaigns');const current=select.value;
+  select.innerHTML='<option value="">Selecione uma Campaign</option>'+(d.campaigns||[]).map(c=>`<option value="${esc(c.campaign_uuid||c.uuid||c.id)}">${esc(c.name||c.campaign_uuid||'Campaign')}</option>`).join('');
+  if(current&&[...select.options].some(o=>o.value===current))select.value=current;
+ }catch(e){const el=document.getElementById('magiAttackPathMainGraph');if(el)el.textContent=e.message;}
+}
+async function loadMagiSelectedGraph(){
+ const id=document.getElementById('magiAttackPathCampaign')?.value,root=document.getElementById('magiAttackPathMainGraph');if(!root)return;
+ if(!id){root.textContent='Selecione uma Campaign para visualizar os caminhos registrados.';return;}
+ root.textContent='Carregando Attack Path...';
+ try{const d=await api(`/api/attack-simulator/campaigns/${encodeURIComponent(id)}/attack-path`);window.MAGIAttackPath.mount(root,d.attack_path||{});}
+ catch(e){root.textContent=e.message;}
+}
+window.addEventListener('load',()=>{
+ document.getElementById('magiAttackPathCampaignLoad')?.addEventListener('click',loadMagiSelectedGraph);
+ document.getElementById('magiAttackPathCampaign')?.addEventListener('change',loadMagiSelectedGraph);
+});
