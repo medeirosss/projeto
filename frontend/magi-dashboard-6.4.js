@@ -41,6 +41,17 @@ async function optionalMetrics(){
  // Ativos monitorados: manter indisponível até confirmar o contrato de Monitoring.
  put('m64Monitored','—');
 }
-async function boot(){try{if(typeof buildHeader==='function')buildHeader('centric');if(typeof bindThemeToggle==='function')bindThemeToggle();}catch(e){}await Promise.allSettled([exposures(),alerts(),cves(),campaigns(),optionalMetrics()]);put('magi64Status','Atualizado em '+new Date().toLocaleString('pt-BR'));put('lastUpdate',new Date().toLocaleString('pt-BR'));}
+function trendPlot(rows){
+ const root=$('m64Trend');if(!root)return;
+ if(!Array.isArray(rows)||!rows.length){root.innerHTML='<p class="magi64-empty">Nenhum snapshot registrado. A primeira coleta será exibida quando o backend iniciar.</p>';return;}
+ const W=760,H=260,L=44,R=18,T=22,B=40;const max=Math.max(1,...rows.map(r=>Math.max(Number(r.open||0),Number(r.total||0))));const X=i=>L+(W-L-R)*(rows.length===1?.5:i/(rows.length-1));const Y=v=>T+(H-T-B)*(1-Number(v||0)/max);
+ const path=key=>rows.map((r,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(r[key]).toFixed(1)).join(' ');
+ const ticks=[0,.25,.5,.75,1].map(f=>{const y=Y(max*f);return `<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" class="magi64-trend-grid"/><text x="${L-8}" y="${y+4}" text-anchor="end" class="magi64-trend-text">${Math.round(max*f)}</text>`;}).join('');
+ const dates=[0,Math.floor((rows.length-1)/2),rows.length-1].filter((v,i,a)=>a.indexOf(v)===i).map(i=>`<text x="${X(i)}" y="${H-12}" text-anchor="middle" class="magi64-trend-text">${esc(String(rows[i].day||'').slice(5))}</text>`).join('');
+ root.innerHTML=`<div style="width:100%"><svg class="magi64-trend-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Histórico real de exposições: total e abertas">${ticks}<path d="${path('total')}" class="magi64-trend-total"/><path d="${path('open')}" class="magi64-trend-open"/>${rows.map((r,i)=>`<circle class="magi64-trend-point" cx="${X(i)}" cy="${Y(r.open)}" r="3"><title>${esc(r.day)}: ${Number(r.open)} abertas, ${Number(r.total)} total</title></circle>`).join('')}${dates}</svg><div class="magi64-trend-text" style="display:flex;justify-content:space-between;gap:10px"><span>● Abertas</span><span>┄ Total registrado</span><span>${rows.length} dia(s) com coleta</span></div></div>`;
+}
+async function history(){try{const days=Number($('m64TrendRange')?.value||30);const d=await get(`/api/exposures/history?days=${days}`);trendPlot(d.items||[]);}catch(e){$('m64Trend').innerHTML='<p class="magi64-empty">Histórico indisponível. Verifique a migração e o agendador de snapshots.</p>';console.warn('[MAGI 6.4.2] Histórico indisponível',e);}}
+$('m64TrendRange')?.addEventListener('change',history);
+async function boot(){try{if(typeof buildHeader==='function')buildHeader('centric');if(typeof bindThemeToggle==='function')bindThemeToggle();}catch(e){}await Promise.allSettled([exposures(),alerts(),cves(),campaigns(),optionalMetrics(),history()]);put('magi64Status','Atualizado em '+new Date().toLocaleString('pt-BR'));put('lastUpdate',new Date().toLocaleString('pt-BR'));}
 $('autoRefreshToggle')?.addEventListener('change',()=>{});let timer=null;$('refreshHours')?.addEventListener('change',()=>{if(timer)clearInterval(timer);schedule();});function schedule(){if(timer)clearInterval(timer);if(!$('autoRefreshToggle')?.checked)return;timer=setInterval(boot,Number($('refreshHours')?.value||1)*3600000);}boot().then(schedule);
 })();

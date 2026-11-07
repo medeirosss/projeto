@@ -24,6 +24,7 @@ from app.routers.attack_campaigns import router as attack_campaigns_router
 from app.routers.security_monitoring import router as security_monitoring_router
 from app.services.security_monitoring_service import ensure_monitoring_schema
 from app.services.security_monitoring_scheduler import run_security_monitoring_scheduler
+from app.services.exposure_snapshot_service import ensure_exposure_snapshot_schema, run_exposure_snapshot_scheduler
 from app.routers.attack_knowledge import router as attack_knowledge_router
 from app.routers.web_assets import router as web_assets_router
 from app.routers.attack_paths import router as attack_paths_router
@@ -59,6 +60,7 @@ async def startup_event():
     ensure_validation_schema()
     ensure_attack_campaign_schema()
     ensure_monitoring_schema()
+    ensure_exposure_snapshot_schema()
     sync_repositories()
     ensure_bundled_knowledge()
     license_service.validate()
@@ -66,6 +68,7 @@ async def startup_event():
     asyncio.create_task(run_discovery_scheduler())
     asyncio.create_task(run_attack_campaign_scheduler())
     asyncio.create_task(run_security_monitoring_scheduler())
+    asyncio.create_task(run_exposure_snapshot_scheduler())
 
 
 if FRONTEND_DIR.exists():

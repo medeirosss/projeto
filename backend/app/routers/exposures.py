@@ -1,11 +1,17 @@
 from fastapi import APIRouter, Body, HTTPException, Query
 from app.repositories import exposure_repository as repo
 
+from app.services.exposure_snapshot_service import list_snapshots
+
 router=APIRouter(prefix='/api/exposures',tags=['exposures'])
 
 @router.get('')
 def list_exposures(status:str|None=Query(None),severity:str|None=Query(None),search:str|None=Query(None),limit:int=Query(500,ge=1,le=1000)):
     return {'items':repo.list_findings(status=status,severity=severity,search=search,limit=limit),'summary':repo.summary()}
+
+@router.get('/history')
+def exposure_history(days:int=Query(30,ge=1,le=365)):
+    return {'items':list_snapshots(days),'days':days,'timezone':'UTC'}
 
 @router.get('/summary')
 def exposure_summary(): return repo.summary()
