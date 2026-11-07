@@ -1,0 +1,42 @@
+/* MAGI 6.4.0 — Security Overview; read-only API consumers, no synthetic findings. */
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const put=(id,v)=>{const el=$(id);if(el)el.textContent=v??'—';};
+async function get(path){const r=await fetch(path,{credentials:'same-origin'});if(!r.ok)throw Error(`${path}: HTTP ${r.status}`);return r.json();}
+const num=v=>Number.isFinite(Number(v))?Number(v):null;
+const severityKey=v=>{const s=String(v||'').toLowerCase();if(/critical|cr[ií]tic/.test(s))return 'critical';if(/high|alta|alto/.test(s))return 'high';if(/medium|m[eé]di/.test(s))return 'medium';if(/low|baix/.test(s))return 'low';return 'unknown';};
+function drawSeverity(items,summary){
+ const values={critical:0,high:0,medium:0,low:0,unknown:0};
+ const summaryCounts=summary?.by_severity||summary?.severity_counts||summary?.severity||null;
+ let total=null;
+ if(summaryCounts && typeof summaryCounts==='object'&&!Array.isArray(summaryCounts)){
+   Object.entries(summaryCounts).forEach(([k,v])=>{const n=num(v);if(n!==null)values[severityKey(k)]+=n;});
+   total=Object.values(values).reduce((a,b)=>a+b,0);
+ }else if(Array.isArray(items)){
+   items.forEach(x=>values[severityKey(x.severity||x.risk_level)]++);total=items.length;
+ }
+ if(total===null){$('m64SeverityLegend').textContent='Distribuição indisponível';return;}
+ const count=num(summary?.total??summary?.total_findings??summary?.count);
+ put('m64Exposures',count??total);
+ const colors={critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#3b82f6',unknown:'#64748b'};
+ const labels={critical:'Crítica',high:'Alta',medium:'Média',low:'Baixa',unknown:'Não classificada'};
+ let start=0;const stops=[];
+ Object.entries(values).forEach(([k,v])=>{if(!v)return;const end=start+v/Math.max(1,total)*100;stops.push(`${colors[k]} ${start}% ${end}%`);start=end;});
+ $('m64Donut').style.background=stops.length?`conic-gradient(${stops.join(',')})`:'';
+ $('m64Donut').querySelector('span').innerHTML=`${total}<small>Exposições</small>`;
+ $('m64SeverityLegend').innerHTML=Object.entries(values).map(([k,v])=>`<div class="magi64-legend-row"><i class="magi64-dot" style="background:${colors[k]}"></i>${labels[k]}<b>${v}</b></div>`).join('');
+}
+async function exposures(){try{const data=await get('/api/exposures?limit=10000');drawSeverity(data.items,data.summary);}catch(e){put('m64Exposures','—');$('m64SeverityLegend').textContent='Fonte de exposições indisponível';}}
+async function alerts(){try{const d=await get('/api/alerts');const a=Array.isArray(d.alerts)?d.alerts:[];put('m64Alerts',d.summary?.open??(a.filter(x=>String(x.status||'').toLowerCase()==='open').length||a.length));$('m64RecentAlerts').innerHTML=a.slice(0,4).map(x=>`<div class="magi64-alert"><div><b>${esc(x.display_name||x.event_type_text||'Alerta')}</b><small>${esc(x.event_time||x.received_at||'Data não informada')}</small></div><span>${esc(x.severity||'')}</span></div>`).join('')||'<p class="magi64-empty">Nenhum alerta retornado.</p>';}catch(e){put('m64Alerts','—');$('m64RecentAlerts').textContent='Alertas indisponíveis.';}}
+async function cves(){try{const d=await get('/api/dashboard?page_size=5');const meta=d.critical_cves_meta||{};const source=String(meta.source||'none').toLowerCase();const connected=source.includes('nuclei');const rows=connected&&Array.isArray(d.critical_cves)?d.critical_cves:[];
+ put('m64Cves',connected?rows.length:'—');put('m64CveSource',connected?'Nuclei':'Aguardando dados do Nuclei');put('m64CveNotice',connected?'Fonte: Nuclei':'Aguardando integração Nuclei');$('m64CveRows').innerHTML=rows.length?rows.slice(0,10).map(x=>`<tr><td>${esc(x.cve_id||x.cve||x.id||'—')}</td><td>${esc(x.hostname||x.asset||'—')}</td><td>${esc(x.product||x.name||'—')}</td><td>${esc(x.severity||'—')}</td></tr>`).join(''):'<tr><td colspan="4">'+(connected?'Nenhuma CVE crítica retornada pelo Nuclei.':'Aguardando dados do Nuclei.')+'</td></tr>';
+ }catch(e){put('m64Cves','—');}}
+function campaignsFrom(d){return Array.isArray(d)?d:Array.isArray(d.items)?d.items:Array.isArray(d.campaigns)?d.campaigns:[];}
+async function campaigns(){const select=$('m64Campaign');try{const d=await get('/api/attack-simulator/campaigns');const list=campaignsFrom(d);select.innerHTML='<option value="">Selecione uma Campaign</option>'+list.map(c=>{const id=c.campaign_uuid||c.uuid||c.id;return `<option value="${esc(id)}">${esc(c.name||c.title||id)}</option>`;}).join('');select.addEventListener('change',loadPath);if(list.length){select.selectedIndex=1;await loadPath();}}catch(e){select.innerHTML='<option value="">Campaigns indisponíveis</option>';}}
+async function loadPath(){const id=$('m64Campaign').value;const root=$('m64AttackGraph');if(!id){root.textContent='Selecione uma Campaign.';put('m64Paths','—');return;}try{const d=await get(`/api/attack-simulator/campaigns/${encodeURIComponent(id)}/attack-path`);const graph=d.attack_path||d;const edges=graph.edges||[];put('m64Paths',edges.filter(e=>e.kind==='ACCESS').length);if(window.MAGIAttackPath?.mount)window.MAGIAttackPath.mount(root,graph,{compact:true});else root.textContent='Componente Attack Path indisponível.';}catch(e){root.textContent='Não foi possível carregar o Attack Path desta Campaign.';put('m64Paths','—');}}
+async function optionalMetrics(){// Não estimar métricas sem contratos de API validados.
+ put('m64Assets','—');put('m64Monitored','—');}
+async function boot(){try{if(typeof buildHeader==='function')buildHeader('centric');if(typeof bindThemeToggle==='function')bindThemeToggle();}catch(e){}await Promise.allSettled([exposures(),alerts(),cves(),campaigns(),optionalMetrics()]);put('magi64Status','Atualizado em '+new Date().toLocaleString('pt-BR'));put('lastUpdate',new Date().toLocaleString('pt-BR'));}
+$('autoRefreshToggle')?.addEventListener('change',()=>{});let timer=null;$('refreshHours')?.addEventListener('change',()=>{if(timer)clearInterval(timer);schedule();});function schedule(){if(timer)clearInterval(timer);if(!$('autoRefreshToggle')?.checked)return;timer=setInterval(boot,Number($('refreshHours')?.value||1)*3600000);}boot().then(schedule);
+})();

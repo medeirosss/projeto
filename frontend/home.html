@@ -6,6 +6,7 @@
   <title>MAGI</title>
   <link rel="stylesheet" href="/assets/style.css?v=6.2.5r5.1">
   <link rel="stylesheet" href="/assets/ai-chat.css">
+<link rel="stylesheet" href="/assets/magi-dashboard-6.4.css?v=6.4.0">
 <link rel="stylesheet" href="/assets/design-system/layout.css?v=6.2.5r5.1">
 <link rel="stylesheet" href="/assets/magi-global-6.2.4.css?v=6.2.5r5.1">
 <link rel="stylesheet" href="/assets/design-system/theme-surfaces.css?v=6.2.5r5.1">
@@ -44,62 +45,30 @@
       </div>
 
       <div class="container modern-dashboard">
-        <div class="info-bar modern-info">
-          <span>A comparação respeita a data de corte salva nas configurações. O painel faz releitura periódica dos JSONs e prepara o portal para comportamento de NOC.</span>
-          <span class="module-inline-status" id="moduleSummary">Carregando módulos...</span>
-          <span class="log-inline">Log da última execução: <strong id="logFileName">-</strong></span>
-        </div>
-
-        <section class="kpi-grid">
-          <div class="kpi-card"><div class="kpi-icon purple">▣</div><div><small>Total no AD</small><strong id="adCount">-</strong><span>Computadores</span></div></div>
-          <div class="kpi-card"><div class="kpi-icon green">▤</div><div><small>Total no UEM</small><strong id="ecCount">-</strong><span>Computadores</span></div></div>
-          <div class="kpi-card"><div class="kpi-icon yellow">◌</div><div><small>Sem agente</small><strong id="onlyAdCount">-</strong><span>Computadores</span></div></div>
-          <div class="kpi-card"><div class="kpi-icon purple">♙</div><div><small>Com agente</small><strong id="inBothCount">-</strong><span>Computadores</span></div></div>
-          <div class="kpi-card"><div class="kpi-icon red">◇</div><div><small>CVEs críticos</small><strong id="criticalCveCount">0</strong><span>Total de CVEs</span></div></div>
-          <div class="kpi-card"><div class="kpi-icon orange">◉</div><div><small>Alertas abertos</small><strong id="openAlertCount">0</strong><span>Total de alertas</span></div></div>
+        <header class="magi64-heading"><div><h1>Visão Geral de Segurança</h1><p>Exposições, caminhos de acesso e monitoramento do ambiente.</p></div><span id="magi64Status">Atualizando indicadores...</span></header>
+        <section class="magi64-kpis" aria-label="Indicadores de segurança">
+          <div class="magi64-kpi"><small>Ativos conhecidos</small><strong id="m64Assets">—</strong><span>Discovery / Inventário</span></div>
+          <div class="magi64-kpi"><small>Exposições</small><strong id="m64Exposures">—</strong><span>Achados identificados</span></div>
+          <div class="magi64-kpi"><small>CVEs críticas</small><strong id="m64Cves">—</strong><span id="m64CveSource">Aguardando dados do Nuclei</span></div>
+          <div class="magi64-kpi"><small>Alertas abertos</small><strong id="m64Alerts">—</strong><span>Alertas registrados</span></div>
+          <div class="magi64-kpi"><small>Caminhos confirmados</small><strong id="m64Paths">—</strong><span>Campaign selecionada</span></div>
+          <div class="magi64-kpi"><small>Ativos monitorados</small><strong id="m64Monitored">—</strong><span>Monitoring</span></div>
         </section>
-
-        <section class="dashboard-main-grid">
-          <div class="card modern-card coverage-card">
-            <div class="card-header clean-header"><span>Cobertura UEM no AD</span><button class="icon-button" type="button">⋮</button></div>
-            <div class="card-body gauge-area">
-              <div class="gauge-meter" id="coverageGauge" style="--pct:0;--gauge-color:#ef4444">
-                <div class="gauge-center"><strong id="percentValue">0%</strong><span>AD + Endpoint Central</span><em>Meta sugerida: 90%</em></div>
-              </div>
-              <div class="updated-note">ⓘ Atualizado pelo portal em <span id="coverageUpdated">-</span></div>
-            </div>
-          </div>
-
-          <div class="card modern-card cve-card">
-            <div class="card-header clean-header"><span>CVEs Críticos do Ambiente</span></div>
-            <div class="table-wrap cve-table-wrap">
-              <table class="modern-table">
-                <thead><tr><th>CVE</th><th>Produto</th><th>Risco Magi</th><th>Tipo</th><th>Defesa</th><th>Remediação</th><th></th></tr></thead>
-                <tbody id="cveTable"></tbody>
-              </table>
-            </div>
-            <div class="pagination modern-pagination">
-              <span id="cvePageInfo">Mostrando 0 CVEs</span>
-              <div class="page-buttons"><button id="cvePrev">‹</button><span id="cvePages"></span><button id="cveNext">›</button></div>
-              <select id="cvePageSize"><option value="5">5 por página</option><option value="10">10 por página</option><option value="15">15 por página</option></select>
-            </div>
-          </div>
+        <section class="magi64-primary">
+          <article class="magi64-panel"><header><h2>Attack Path — Resumo da Campaign</h2><select id="m64Campaign" aria-label="Selecionar Campaign"><option value="">Carregando Campaigns...</option></select></header><div id="m64AttackGraph" class="magi64-graph"><p class="magi64-empty">Selecione uma Campaign para visualizar caminhos registrados.</p></div><a class="magi64-link" href="/attack-simulator">Abrir Attack Path completo →</a></article>
+          <article class="magi64-panel"><header><h2>Exposições por severidade</h2></header><div class="magi64-severity"><div id="m64Donut" class="magi64-donut"><span>—<small>Exposições</small></span></div><div id="m64SeverityLegend" class="magi64-legend">Carregando...</div></div></article>
         </section>
-
-        <section class="grid devices-grid">
-          <div class="card modern-card"><div class="card-header clean-header">Somente no AD</div><div class="table-wrap"><table class="modern-table"><thead><tr><th>Hostname</th><th>DNS</th><th>LastLogonDate</th></tr></thead><tbody id="onlyAdTable"></tbody></table></div><div class="pagination modern-pagination"><span id="onlyAdPageInfo">Página 1</span><div class="page-buttons"><button id="onlyAdPrev">Anterior</button><button id="onlyAdNext">Próxima</button></div></div></div>
-          <div class="card modern-card"><div class="card-header clean-header">Somente no UEM</div><div class="table-wrap"><table class="modern-table"><thead><tr><th>Hostname</th><th>Usuário</th><th>Status</th></tr></thead><tbody id="onlyEcTable"></tbody></table></div><div class="pagination modern-pagination"><span id="onlyEcPageInfo">Página 1</span><div class="page-buttons"><button id="onlyEcPrev">Anterior</button><button id="onlyEcNext">Próxima</button></div></div></div>
-        </section>
-
-        <section class="grid bottom-grid">
-          <div class="card modern-card alerts-card"><div class="card-header clean-header">Alertas recentes</div><div class="alert-list" id="recentAlerts"><div class="empty-state">Carregando alertas...</div></div><a class="view-all" href="/alertas">Ver todos os alertas ›</a></div>
-          <div class="card modern-card score-card"><div class="card-header clean-header">Score de Segurança</div><div class="score-content"><div class="score-badge">◇</div><div class="score-main"><strong id="securityScore">0</strong><span>/ 100</span><em id="securityScoreLabel">Calculando...</em><p>Baseado em cobertura de agentes, CVEs críticas e alertas abertos.</p></div><div class="score-bar"><div id="securityScoreBar"></div></div></div><div class="score-metrics"><div>Conformidade <strong id="scoreCompliance">0%</strong></div><div>Vulnerabilidades <strong id="scoreVuln">0%</strong></div><div>Patches <strong id="scorePatch">0%</strong></div><div>Configurações <strong id="scoreConfig">0%</strong></div></div></div>
+        <section class="magi64-panel magi64-cve"><header><h2>CVEs Críticas do Ambiente</h2><span id="m64CveNotice">Aguardando integração Nuclei</span></header><div class="table-wrap"><table class="modern-table"><thead><tr><th>CVE</th><th>Ativo</th><th>Produto</th><th>Severidade</th></tr></thead><tbody id="m64CveRows"><tr><td colspan="4">Aguardando dados do Nuclei.</td></tr></tbody></table></div></section>
+        <section class="magi64-secondary">
+          <article class="magi64-panel"><header><h2>Alertas recentes</h2></header><div id="m64RecentAlerts" class="magi64-alerts">Carregando...</div><a class="magi64-link" href="/alertas">Ver todos os alertas →</a></article>
+          <article class="magi64-panel"><header><h2>Evolução das exposições conhecidas</h2><select id="m64TrendRange" aria-label="Período" disabled><option>Últimos 30 dias</option></select></header><div id="m64Trend" class="magi64-trend"><div class="magi64-empty">Histórico indisponível. É necessário habilitar snapshots persistentes de exposições para construir uma curva real.</div></div></article>
         </section>
       </div>
     </main>
   </div>
   <script src="/assets/common.js?v=6.0.1"></script>
-  <script src="/assets/home.js"></script>
+  <script src="/assets/attack-path-graph.js?v=6.3.0"></script>
+<script src="/assets/magi-dashboard-6.4.js?v=6.4.0"></script>
   <script src="/assets/ai-chat.js"></script>
 </body>
 </html>
