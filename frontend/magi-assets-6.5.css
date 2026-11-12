@@ -40,3 +40,11 @@
 @media(max-width:1600px){#knownAssetsSection .magi65-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){#knownAssetsSection .magi65-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){#knownAssetsSection .magi65-stats{grid-template-columns:1fr}}
+
+/* 6.5.0 R1.2 — ações e indicação condicional do Deep Inventory */
+#knownAssetsSection .magi65-row-actions{display:flex;align-items:center;justify-content:flex-start;gap:8px;white-space:nowrap}
+#knownAssetsSection .magi65-scan{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;padding:7px 11px;border:1px solid var(--magi-accent,#c6ff57);border-radius:8px;background:transparent;color:var(--magi-accent,#c6ff57);font:inherit;font-size:12px;font-weight:650;cursor:pointer}
+#knownAssetsSection .magi65-scan:hover{background:color-mix(in srgb,var(--magi-accent,#c6ff57) 14%,transparent)}
+#knownAssetsSection .magi65-scan:focus-visible{outline:2px solid var(--magi-accent,#c6ff57);outline-offset:2px}
+#knownAssetsSection .magi65-deep-failed{display:inline-grid;place-items:center;margin-left:7px;width:17px;height:17px;border-radius:50%;background:#f2b21d;color:#151515;font-weight:900;font-size:12px;cursor:help}
+#knownAssetsSection .magi65-row-actions .magi65-actions-menu{z-index:50}
