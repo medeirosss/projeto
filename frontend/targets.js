@@ -4,7 +4,18 @@ function dt(v){if(!v)return '—';const raw=String(v);const d=new Date(raw.endsW
 async function json(r){const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||d.message||`Erro HTTP ${r.status}`);return d}
 function assetName(x){const values=[x.hostname,x.dns_name,x.display_name];const name=values.find(v=>v&&String(v).trim()&&!String(v).trim().match(/^unknown|^desconhecido$/i));return name||x.ip_address||'Ativo sem nome'}
 function assetKind(x){const d=x.deep_inventory||{};const os=String(d.os_name||x.os_name||x.operating_system||x.os_family||'').toLowerCase();const type=String(x.asset_type||'').toLowerCase();if(/router|switch|firewall|network_device|access_point|appliance/.test(type))return 'network';if(/windows/.test(os))return 'windows';if(/linux|ubuntu|debian|red hat|centos|fedora|suse/.test(os))return 'linux';if(/macos|mac os|darwin|os x/.test(os))return 'macos';return 'unknown'}
-function assetIcon(x){const kind=assetKind(x);return `<span class="magi65-os magi65-${kind}" title="${({windows:'Windows',linux:'Linux',macos:'macOS',network:'Equipamento de rede',unknown:'Tipo não identificado'})[kind]}">${({windows:'⊞',linux:'♟',macos:'●',network:'⌘',unknown:'▣'})[kind]}</span>`}
+function assetIcon(x){
+ const kind=assetKind(x);
+ const label={windows:'Windows',linux:'Linux',macos:'macOS',network:'Equipamento de rede',unknown:'Sistema operacional não identificado'}[kind];
+ const paths={
+ windows:'<path d="M2 4.5 10.5 3v8H2zm9.5-1.7L22 1v10h-10.5zM2 12h8.5v8.1L2 18.7zm9.5 0H22v10l-10.5-1.7z"/>',
+ linux:'<path d="M12 2c-3 0-4 3-4 6v3l-2 4-2 3 4 1 4-2 4 2 4-1-2-3-2-4V8c0-3-1-6-4-6zm-2 7h.1m3.9 0h.1M10 13c1.3 1 2.7 1 4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+ macos:'<path d="M16.5 2c-2 1-3 2.6-3 4.2 1.8.1 3.5-1.4 3.9-3.4zM12 7c-2.2 0-3 1.1-4.4 1.1C6.3 8.1 5.5 7 3.7 8.4c-3 2.4-1.7 8.1.6 11.5 1.1 1.7 2.2 2.5 3.4 2.5 1.4 0 2-1 3.7-1 1.6 0 2.1 1 3.6 1 1.2 0 2.3-1.1 3.4-2.6.7-1 1.3-2 1.7-3.1-3.2-1.3-3.7-5.3-.3-7.1C16.7 7.5 15.4 7 14 7c-.7 0-1.3 0-2 .3z"/>',
+ network:'<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v6M5 17v-4h14v4" fill="none" stroke="currentColor" stroke-width="2"/>',
+ unknown:'<rect x="3" y="4" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 22h6m-3-4v4" fill="none" stroke="currentColor" stroke-width="2"/>'
+ };
+ return `<span class="magi65-os magi65-${kind}" title="${label}" aria-label="${label}"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">${paths[kind]}</svg></span>`;
+}
 
 function assetTypeLabel(v){const m={unknown:'Desconhecido',workstation:'Desktop',server:'Servidor',printer:'Impressora',router:'Roteador',switch:'Switch',firewall:'Firewall',nas:'NAS',hypervisor:'Hypervisor',virtual_machine:'Máquina virtual',network_device:'Nó de rede'};return m[String(v||'unknown').toLowerCase()]||v||'Desconhecido'}
 function sourceLabel(v){const s=String(v||'nmap').toLowerCase();if(s.includes('runner'))return 'Nmap / Runner';if(s.includes('local'))return 'Nmap / Local';if(s==='nmap')return 'Nmap';return v||'Nmap'}
@@ -25,7 +36,21 @@ async function showAssetDeep(id){try{const x=await json(await fetch(`/api/target
 async function loadProcessRules(){try{const d=await json(await fetch('/api/targets/process-rules'));const rows=d.items||[];processRulesTable.innerHTML=rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td><td><code>${esc(r.process_name)}</code></td><td>${esc(r.category)}</td><td>${esc(r.severity)}</td><td><button class="btn secondary btn-sm" onclick="deleteProcessRule(${r.id})">Excluir</button></td></tr>`).join(''):'<tr><td colspan="5">Nenhuma regra cadastrada.</td></tr>'}catch(e){processRulesTable.innerHTML=`<tr><td colspan="5">${esc(e.message)}</td></tr>`}}
 async function saveProcessRule(){const payload={name:procRuleName.value.trim(),process_name:procRuleProcess.value.trim(),category:procRuleCategory.value,severity:procRuleSeverity.value,description:procRuleDescription.value.trim(),enabled:true};try{await json(await fetch('/api/targets/process-rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}));procRuleName.value='';procRuleProcess.value='';procRuleDescription.value='';await loadProcessRules()}catch(e){alert(e.message)}}
 async function deleteProcessRule(id){if(!confirm('Excluir esta regra de processos?'))return;await json(await fetch(`/api/targets/process-rules/${id}`,{method:'DELETE'}));loadProcessRules()}
-async function loadTargets(){targetsTable.innerHTML='<tr><td colspan="14">Carregando...</td></tr>';try{const d=await json(await fetch('/api/targets?limit=500'));assets=d.items||[];targetsTotal.textContent=d.total??assets.length;document.getElementById('assetsWithExposures').textContent=assets.filter(x=>Number(x.exposure_count||0)>0).length;document.getElementById('assetsExposureTotal').textContent=assets.reduce((sum,x)=>sum+Number(x.exposure_count||0),0);renderAssets();await loadLast()}catch(e){targetsTable.innerHTML=`<tr><td colspan="14">${esc(e.message)}</td></tr>`}}
+async function loadAssetsExposureSummary(){
+ const ids=['assetsExposureTotal','assetsExposureCritical','assetsExposureMedium','assetsExposureLow'];
+ try{
+  const d=await json(await fetch('/api/exposures/summary'));
+  const status=d.status||{},sev=d.severity||{};
+  // Fonte idêntica à visão global: soma somente achados abertos e ignorados? 
+  // O summary existente agrega TODOS os estados; manter mesmo escopo da API.
+  document.getElementById('assetsExposureTotal').textContent=Number(d.total??0);
+  document.getElementById('assetsExposureCritical').textContent=Number(sev.critical||0);
+  document.getElementById('assetsExposureMedium').textContent=Number(sev.medium||0);
+  document.getElementById('assetsExposureLow').textContent=Number(sev.low||0);
+  document.getElementById('assetsExposureScope').textContent='Achados globais · todos os estados';
+ }catch(e){ids.forEach(id=>document.getElementById(id).textContent='—');document.getElementById('assetsExposureScope').textContent='Consulta indisponível';console.warn('Resumo de exposições indisponível',e)}
+}
+async function loadTargets(){targetsTable.innerHTML='<tr><td colspan="14">Carregando...</td></tr>';try{const d=await json(await fetch('/api/targets?limit=500'));assets=d.items||[];targetsTotal.textContent=d.total??assets.length;document.getElementById('assetsWithExposures').textContent=assets.filter(x=>Number(x.exposure_count||0)>0).length;document.getElementById('assetsExposureTotal').textContent='—';renderAssets();loadAssetsExposureSummary();await loadLast()}catch(e){targetsTable.innerHTML=`<tr><td colspan="14">${esc(e.message)}</td></tr>`}}
 async function loadNewAssets(){newAssetsTable.innerHTML='<tr><td colspan="7">Carregando...</td></tr>';try{const d=await json(await fetch('/api/targets/new/latest?limit=500'));newAssetsTotal.textContent=d.total||0;newAssetsRun.textContent=d.run?`${d.run.run_uuid} · ${dt(d.run.finished_at||d.run.started_at)}`:'Ainda não executado';const rows=d.items||[];newAssetsTable.innerHTML=rows.length?rows.map(x=>`<tr><td>${esc(assetTypeLabel(x.asset_type))}</td><td><strong>${esc(assetName(x))}</strong></td><td><code>${esc(x.ip_address)}</code></td><td><code>${esc(x.mac_address||'—')}</code></td><td>${esc(x.vendor||'Desconhecido')}</td><td>${scoreBadge(x)}</td><td>${esc(dt(x.last_seen_at))}</td></tr>`).join(''):'<tr><td colspan="7">Nenhum ativo novo no último scan.</td></tr>'}catch(e){newAssetsTable.innerHTML=`<tr><td colspan="7">${esc(e.message)}</td></tr>`}}
 async function loadLast(){try{const d=await json(await fetch('/api/targets/discovery-runs/list?limit=1')),r=d.items?.[0];lastDiscoveryStatus.textContent=r?`${r.status} · ${dt(r.started_at)}`:'Ainda não executada'}catch{lastDiscoveryStatus.textContent='Indisponível'}}
 async function deleteTarget(id,ip){if(!confirm(`Retirar o ativo ${ip} do inventário? Tarefas e auditoria serão preservadas. Se ele reaparecer, será reativado.`))return;await json(await fetch(`/api/targets/${id}`,{method:'DELETE'}));Promise.all([loadTargets(),loadNewAssets()])}
