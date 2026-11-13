@@ -518,6 +518,9 @@ def get_target(target_uuid):
         from app.repositories.service_discovery_repository import list_asset_services
         result["services"]=list_asset_services(int(r["id"]))
         result["service_count"]=len(result["services"])
+        result["exposure_count"]=int(db.execute(text("SELECT COUNT(*) FROM exposure_findings WHERE target_id=:id AND status='open'"),{"id":r["id"]}).scalar() or 0)
+        result["attack_count"]=int(db.execute(text("SELECT COUNT(DISTINCT attack_id) FROM asset_attack_exposure WHERE target_id=:id"),{"id":r["id"]}).scalar() or 0)
+        result["simulation_count"]=int(db.execute(text("SELECT COUNT(*) FROM asset_attack_exposure ae JOIN attack_technique_mappings atm ON atm.attack_id=ae.attack_id AND atm.executable=TRUE WHERE ae.target_id=:id"),{"id":r["id"]}).scalar() or 0)
         cred=db.execute(text("""SELECT ac.protocol,ac.last_success_at,ac.hostname_result,c.id AS credential_id,c.name AS credential_name,c.credential_type
             FROM asset_credentials ac JOIN stored_credentials c ON c.id=ac.credential_id WHERE ac.target_id=:id ORDER BY ac.last_success_at DESC"""),{"id":r["id"]}).mappings().all()
         result["credentials"]=[_serialize(dict(x)) for x in cred]
