@@ -58,7 +58,7 @@ function scoreBadge(x){return `<button class="score-chip ${scoreClass(x.fingerpr
 function formatBytes(v){const n=Number(v);if(!Number.isFinite(n))return v||'—';return `${(n/1073741824).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} GB`}
 function hardwareFieldLabel(v){return ({memory_bytes:'Memória RAM',cpu_model:'Processador',cpu_cores:'Núcleos da CPU',cpu_logical:'Processadores lógicos',disks:'Discos',manufacturer:'Fabricante',model:'Modelo',serial_number:'Número de série'})[v]||v}
 function hardwareChangeValue(field,v){if(v==null||v==='')return '—';if(field==='memory_bytes')return formatBytes(v);if(field==='disks'){try{const a=typeof v==='string'?JSON.parse(v):v;return (a||[]).map(z=>`${z.model||z.device||'Disco'}${z.size?' · '+formatBytes(z.size):''}`).join(' | ')||'—'}catch{return v}}return v}
-function renderAssets(){const rows=filteredAssets();targetsTable.innerHTML=rows.length?rows.map(x=>{const id=encodeURIComponent(x.target_uuid);return `<tr><td>${assetIcon(x)}</td><td><a class="magi65-asset-link" href="/assets/asset-detail.html?id=${id}">${esc(assetName(x))}</a></td><td><span class="asset-status detected">Detectado</span></td><td>${scoreBadge(x)}</td><td><button class="score-chip" onclick="showAssetServices('${esc(x.target_uuid)}')">${Number(x.service_count||0)}</button></td><td><button class="score-chip" onclick="showAssetExposures('${esc(x.target_uuid)}')">${Number(x.exposure_count||0)}</button></td><td><button class="score-chip" onclick="showAssetAttacks('${esc(x.target_uuid)}',false)">${Number(x.attack_count||0)}</button></td><td><button class="score-chip" onclick="showAssetAttacks('${esc(x.target_uuid)}',true)">${Number(x.simulation_count||0)}</button></td><td>${esc(dt(x.last_seen_at))} ${deepFailureBadge(x)}</td><td><div class="magi65-row-actions"><button type="button" class="magi65-scan" onclick="scanNow('${esc(x.target_uuid)}')" title="Executar Scan Now neste ativo"><span aria-hidden="true">▶</span> Scan Now</button><details class="magi65-actions"><summary title="Ações do ativo" aria-label="Ações do ativo">•••</summary><div class="magi65-actions-menu"><button type="button" onclick="deleteTarget('${esc(x.target_uuid)}','${esc(x.ip_address)}')">Retirar</button></div></details></td></tr>`}).join(''):'<tr><td colspan="10">Nenhum ativo encontrado.</td></tr>';document.querySelectorAll('#knownAssetsSection th[data-sort]').forEach(th=>{th.classList.toggle('sort-asc',th.dataset.sort===assetSort.key&&assetSort.direction==='asc');th.classList.toggle('sort-desc',th.dataset.sort===assetSort.key&&assetSort.direction==='desc')})}
+function renderAssets(){const rows=filteredAssets();targetsTable.innerHTML=rows.length?rows.map(x=>{const id=encodeURIComponent(x.target_uuid);return `<tr><td>${assetIcon(x)}</td><td><a class="magi65-asset-link" href="/assets/asset-detail.html?id=${id}">${esc(assetName(x))}</a></td><td><span class="asset-status detected">Detectado</span></td><td>${scoreBadge(x)}</td><td><button class="score-chip" onclick="showAssetServices('${esc(x.target_uuid)}')">${Number(x.service_count||0)}</button></td><td><button class="score-chip" onclick="showAssetExposures('${esc(x.target_uuid)}')">${Number(x.exposure_count||0)}</button></td><td><button class="score-chip" onclick="showAssetAttacks('${esc(x.target_uuid)}',false)">${Number(x.attack_count||0)}</button></td><td><button class="score-chip" onclick="showAssetAttacks('${esc(x.target_uuid)}',true)">${Number(x.simulation_count||0)}</button></td><td>${esc(dt(x.last_seen_at))} ${deepFailureBadge(x)}</td><td><div class="magi65-row-actions"><button type="button" class="magi65-scan" onclick="scanNow('${esc(x.target_uuid)}')" title="Executar Scan Now neste ativo"><span aria-hidden="true">▶</span> Scan Now</button><button type="button" class="magi65-action-trigger" aria-label="Ações do ativo" aria-haspopup="menu" aria-expanded="false" data-target-id="${esc(x.target_uuid)}" data-target-ip="${esc(x.ip_address)}">•••</button></td></tr>`}).join(''):'<tr><td colspan="10">Nenhum ativo encontrado.</td></tr>';document.querySelectorAll('#knownAssetsSection th[data-sort]').forEach(th=>{th.classList.toggle('sort-asc',th.dataset.sort===assetSort.key&&assetSort.direction==='asc');th.classList.toggle('sort-desc',th.dataset.sort===assetSort.key&&assetSort.direction==='desc')})}
 
 async function showAssetServices(id){try{const d=await json(await fetch(`/api/targets/${encodeURIComponent(id)}/services`));const rows=d.items||[];assetServicesPanel.hidden=false;assetServicesPanel.innerHTML=`<div class="pipeline-title"><strong>Serviços do ativo</strong><button class="btn secondary btn-sm" onclick="assetServicesPanel.hidden=true">Fechar</button></div>${rows.length?`<div class="table-wrap"><table><thead><tr><th>Porta</th><th>Protocolo</th><th>Serviço</th><th>Categoria</th><th>Produto</th><th>Versão</th><th>Última descoberta</th><th>Alerta</th></tr></thead><tbody>${rows.map(x=>`<tr><td><code>${esc(x.port)}</code></td><td>${esc(x.protocol)}</td><td><strong>${esc(x.friendly_name||x.service_name||'Unknown')}</strong></td><td>${esc(x.category||'Other')}</td><td>${esc(x.product||'—')}</td><td>${esc(x.version||'—')}</td><td>${esc(dt(x.last_seen_at))}</td><td><button class="btn secondary btn-sm service-alert-config" data-target="${esc(id)}" data-proto="${esc(x.protocol)}" data-port="${Number(x.port)}">🔔 Alerta</button></td></tr>`).join('')}</tbody></table></div><div id="serviceAlertConfig"></div>`:'<p>Nenhum serviço catalogado.</p>'}`;assetServicesPanel.querySelectorAll('.service-alert-config').forEach(b=>b.onclick=()=>configureServiceAlert(b.dataset.target,b.dataset.proto,Number(b.dataset.port)));assetServicesPanel.scrollIntoView({behavior:'smooth',block:'nearest'})}catch(e){alert(e.message)}}
 async function configureServiceAlert(id,proto,port){try{const base=`/api/targets/${encodeURIComponent(id)}/services/${encodeURIComponent(proto)}/${port}/alert-policy`;const d=await json(await fetch(base));const p=d.policy||{enabled:true,condition:'unavailable',polls:2,cooldown_minutes:60,severity:'warning'};const panel=document.getElementById('serviceAlertConfig');panel.innerHTML=`<h4>Política de alerta · ${esc(proto.toUpperCase())} ${port}</h4><label><input id="saEnabled" type="checkbox" ${p.enabled?'checked':''}> Habilitado</label><label>Condição <select id="saCondition"><option value="unavailable">Indisponível</option><option value="available">Disponível</option><option value="both">Mudança de estado</option></select></label><label>Polls consecutivos <input id="saPolls" type="number" min="1" max="20" value="${Number(p.polls)}"></label><label>Repetir notificação após (minutos; 0 = sem repetição) <input id="saCooldown" type="number" min="0" max="10080" value="${Number(p.cooldown_minutes)}"></label><label>Severidade <select id="saSeverity"><option value="info">Info</option><option value="warning">Warning</option><option value="critical">Critical</option></select></label><button class="btn primary btn-sm" id="saSave">Salvar alerta</button> <span id="saMessage"></span>`;panel.querySelector('#saCondition').value=p.condition;panel.querySelector('#saSeverity').value=p.severity;panel.querySelector('#saSave').onclick=async()=>{try{const payload={enabled:panel.querySelector('#saEnabled').checked,condition:panel.querySelector('#saCondition').value,polls:Number(panel.querySelector('#saPolls').value),cooldown_minutes:Number(panel.querySelector('#saCooldown').value),severity:panel.querySelector('#saSeverity').value};await json(await fetch(base,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}));panel.querySelector('#saMessage').textContent='Política salva.'}catch(e){panel.querySelector('#saMessage').textContent=e.message}}}catch(e){alert(e.message)}}
@@ -135,3 +135,47 @@ async function loadWebAssets(){const tb=document.getElementById('webAssetsTable'
 async function createWebAsset(){const out=document.getElementById('webAssetResult');out.textContent='Validando URL...';try{const d=await json(await fetch('/api/web-assets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:webAssetName.value.trim(),url:webAssetUrl.value.trim()})}));out.textContent=JSON.stringify(d,null,2);await loadWebAssets()}catch(e){out.textContent=e.message}}
 async function scanWebNow(id){try{await json(await fetch(`/api/web-assets/${id}/rescan`,{method:'POST'}));await loadWebAssets()}catch(e){alert(e.message)}}
 document.addEventListener('DOMContentLoaded',()=>{const n=document.getElementById('navWebAssets');if(n)n.onclick=e=>{e.preventDefault();location.hash='web';showTab('web')};const a=document.getElementById('addWebAssetBtn');if(a)a.onclick=()=>webAssetForm.hidden=false;const c=document.getElementById('cancelWebAsset');if(c)c.onclick=()=>webAssetForm.hidden=true;const s=document.getElementById('saveWebAsset');if(s)s.onclick=createWebAsset;});
+
+
+/* MAGI 6.5.0 R1.3 — Menu flutuante do inventário: não é recortado por .table-wrap. */
+(function initAssetActionPortal(){
+  let portal=null,trigger=null;
+  function close(){
+    if(trigger)trigger.setAttribute('aria-expanded','false');
+    if(portal){portal.remove();portal=null;}
+    trigger=null;
+  }
+  function place(){
+    if(!portal||!trigger||!trigger.isConnected){close();return;}
+    const rect=trigger.getBoundingClientRect();
+    const w=portal.offsetWidth||145,h=portal.offsetHeight||44;
+    const left=Math.max(8,Math.min(window.innerWidth-w-8,rect.right-w));
+    const below=window.innerHeight-rect.bottom;
+    const top=below>=h+8||rect.top<h+8?rect.bottom+5:rect.top-h-5;
+    portal.style.left=left+'px';portal.style.top=Math.max(8,top)+'px';
+  }
+  document.addEventListener('click',function(e){
+    const btn=e.target.closest?.('#knownAssetsSection .magi65-action-trigger');
+    if(btn){
+      e.preventDefault();e.stopPropagation();
+      if(trigger===btn){close();return;}
+      close();trigger=btn;trigger.setAttribute('aria-expanded','true');
+      portal=document.createElement('div');portal.className='magi65-action-portal';
+      portal.setAttribute('role','menu');
+      const remove=document.createElement('button');remove.type='button';remove.textContent='Retirar';
+      remove.setAttribute('role','menuitem');
+      remove.addEventListener('click',function(){
+        const id=btn.dataset.targetId,ip=btn.dataset.targetIp;
+        close();deleteTarget(id,ip);
+      });
+      portal.appendChild(remove);document.body.appendChild(portal);place();return;
+    }
+    if(portal&&!e.target.closest?.('.magi65-action-portal'))close();
+  });
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')close();});
+  document.addEventListener('scroll',function(e){if(portal)close();},true);
+  window.addEventListener('resize',close);
+  // Se a tabela for reconstruída por atualização/filtro, fechar menu órfão.
+  const ready=()=>{const table=document.getElementById('targetsTable');if(table){new MutationObserver(()=>{if(trigger&&!trigger.isConnected)close();}).observe(table,{childList:true});}};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ready,{once:true});else ready();
+})();

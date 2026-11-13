@@ -48,3 +48,32 @@
 #knownAssetsSection .magi65-scan:focus-visible{outline:2px solid var(--magi-accent,#c6ff57);outline-offset:2px}
 #knownAssetsSection .magi65-deep-failed{display:inline-grid;place-items:center;margin-left:7px;width:17px;height:17px;border-radius:50%;background:#f2b21d;color:#151515;font-weight:900;font-size:12px;cursor:help}
 #knownAssetsSection .magi65-row-actions .magi65-actions-menu{z-index:50}
+
+/* MAGI 6.5.0 R1.3 — não limitar a altura da tabela do inventário. */
+#knownAssetsSection .magi65-inventory .table-wrap{
+  height:auto;max-height:none;overflow-y:visible;
+}
+#knownAssetsSection .magi65-action-trigger{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:34px;min-height:30px;border-radius:8px;
+  border:1px solid var(--magi-border,#293a43);
+  background:var(--magi-panel,#111d25);
+  color:var(--magi-accent,#c6ff57);cursor:pointer;
+}
+#knownAssetsSection .magi65-action-trigger:hover,
+#knownAssetsSection .magi65-action-trigger[aria-expanded="true"]{
+  border-color:var(--magi-accent,#c6ff57);
+}
+/* O portal é filho de body, não de um contêiner com overflow. */
+.magi65-action-portal{
+  position:fixed;z-index:100000;min-width:145px;
+  border:1px solid var(--magi-border,#293a43);
+  border-radius:9px;background:var(--magi-panel,#111d25);
+  box-shadow:0 12px 28px rgba(0,0,0,.65);padding:5px;
+}
+.magi65-action-portal button{
+  width:100%;display:block;padding:9px 11px;border:0;border-radius:6px;
+  text-align:left;cursor:pointer;color:var(--magi-text,#edf4f5);
+  background:transparent;
+}
+.magi65-action-portal button:hover{background:var(--magi-elevated,#192833)}
